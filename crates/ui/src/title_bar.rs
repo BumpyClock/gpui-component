@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::{
-    ActiveTheme, Icon, IconName, InteractiveElementExt as _, Sizable as _, StyledExt, h_flex,
+    ActiveTheme, Icon, IconName
 };
 use gpui::{
     AnyElement, App, ClickEvent, Context, Decorations, Hsla, InteractiveElement, IntoElement,
@@ -155,10 +155,10 @@ impl ControlIcon {
     }
 }
 
-fn start_windows_titlebar_drag(window: &Window) {
+fn start_windows_titlebar_drag(_window: &Window) {
     #[cfg(target_os = "windows")]
     {
-        let Ok(handle) = window.window_handle() else {
+        let Ok(handle) = _window.window_handle() else {
             return;
         };
 
