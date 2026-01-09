@@ -260,6 +260,7 @@ impl RenderOnce for TitleBar {
         div().flex_shrink_0().child(
             div()
                 .id("title-bar")
+                .window_control_area(WindowControlArea::Drag)
                 .flex()
                 .flex_row()
                 .items_center()
@@ -300,7 +301,6 @@ impl RenderOnce for TitleBar {
                 .child(
                     h_flex()
                         .id("bar")
-                        .window_control_area(WindowControlArea::Drag)
                         .when(window.is_fullscreen(), |this| this.pl_3())
                         .h_full()
                         .justify_between()
