@@ -9,7 +9,14 @@ use gpui::{
     StyleRefinement, Styled, TitlebarOptions, Window, WindowControlArea, div,
     prelude::FluentBuilder as _, px,
 };
+#[cfg(target_os = "windows")]
+use raw_window_handle::{HasWindowHandle as _, RawWindowHandle};
 use smallvec::SmallVec;
+#[cfg(target_os = "windows")]
+use windows::Win32::{
+    Foundation::{HWND, LPARAM, WPARAM},
+    UI::WindowsAndMessaging::{HTCAPTION, ReleaseCapture, SendMessageW, WM_NCLBUTTONDOWN},
+};
 
 pub const TITLE_BAR_HEIGHT: Pixels = px(34.);
 #[cfg(target_os = "macos")]
@@ -148,9 +155,31 @@ impl ControlIcon {
     }
 }
 
+fn start_windows_titlebar_drag(window: &Window) {
+    #[cfg(target_os = "windows")]
+    {
+        let Ok(handle) = window.window_handle() else {
+            return;
+        };
+
+        let RawWindowHandle::Win32(handle) = handle.as_raw() else {
+            return;
+        };
+
+        let hwnd = HWND(handle.hwnd.get() as _);
+        unsafe {
+            ReleaseCapture().ok();
+            // Ask Windows to begin a standard non-client titlebar drag.
+            // This is more reliable than relying on WM_NCHITTEST state when using client-side decorations.
+            let _ = SendMessageW(hwnd, WM_NCLBUTTONDOWN, WPARAM(HTCAPTION as _), LPARAM(0));
+        }
+    }
+}
+
 impl RenderOnce for ControlIcon {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let is_linux = cfg!(target_os = "linux");
+        let is_windows = cfg!(target_os = "windows");
         let hover_fg = self.hover_fg(cx);
         let hover_bg = self.hover_bg(cx);
         let active_bg = self.active_bg(cx);
@@ -171,8 +200,10 @@ impl RenderOnce for ControlIcon {
             .hover(|style| style.bg(hover_bg).text_color(hover_fg))
             .active(|style| style.bg(active_bg).text_color(hover_fg))
             .window_control_area(self.window_control_area())
-            // Linux needs explicit click handlers since it doesn't use native NC handling
-            .when(is_linux, |this| {
+            // Linux + Windows use explicit click handlers for reliability.
+            // - Linux doesn't have native NC handling for these custom buttons.
+            // - Windows should always work, even if WM_NCHITTEST mapping is flaky in some layouts.
+            .when(is_linux || is_windows, |this| {
                 this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     window.prevent_default();
                     cx.stop_propagation();
@@ -250,6 +281,7 @@ impl RenderOnce for TitleBar {
         let is_client_decorated = matches!(window.window_decorations(), Decorations::Client { .. });
         let is_linux = cfg!(target_os = "linux");
         let is_macos = cfg!(target_os = "macos");
+        let is_windows = cfg!(target_os = "windows");
 
         let state = window.use_state(cx, |_, _| TitleBarState { should_move: false });
 
@@ -261,27 +293,43 @@ impl RenderOnce for TitleBar {
             .h(TITLE_BAR_HEIGHT)
             // Mouse handlers for window dragging (same as Zed)
             .map(|this| {
-                this.on_mouse_down_out(window.listener_for(&state, |state, _, _, _| {
-                    state.should_move = false;
-                }))
-                .on_mouse_up(
-                    MouseButton::Left,
-                    window.listener_for(&state, |state, _, _, _| {
+                // Windows: explicitly start a native titlebar drag via Win32.
+                // This avoids reliance on WM_NCHITTEST + cached hit-testing state.
+                this.when(is_windows, |this| {
+                    this.on_mouse_down(MouseButton::Left, move |event, window, cx| {
+                        // Let the double-click handler run instead of starting a drag.
+                        if event.click_count >= 2 {
+                            return;
+                        }
+                        window.prevent_default();
+                        cx.stop_propagation();
+                        start_windows_titlebar_drag(window);
+                    })
+                })
+                // Non-Windows: use GPUI's platform implementation.
+                .when(!is_windows, |this| {
+                    this.on_mouse_down_out(window.listener_for(&state, |state, _, _, _| {
                         state.should_move = false;
-                    }),
-                )
-                .on_mouse_down(
-                    MouseButton::Left,
-                    window.listener_for(&state, |state, _, _, _| {
-                        state.should_move = true;
-                    }),
-                )
-                .on_mouse_move(window.listener_for(&state, |state, _, window, _| {
-                    if state.should_move {
-                        state.should_move = false;
-                        window.start_window_move();
-                    }
-                }))
+                    }))
+                    .on_mouse_up(
+                        MouseButton::Left,
+                        window.listener_for(&state, |state, _, _, _| {
+                            state.should_move = false;
+                        }),
+                    )
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        window.listener_for(&state, |state, _, _, _| {
+                            state.should_move = true;
+                        }),
+                    )
+                    .on_mouse_move(window.listener_for(&state, |state, _, window, _| {
+                        if state.should_move {
+                            state.should_move = false;
+                            window.start_window_move();
+                        }
+                    }))
+                })
             })
             // Platform-specific double-click behavior
             .map(|this| {
@@ -290,6 +338,13 @@ impl RenderOnce for TitleBar {
                         this.on_click(|event, window, _| {
                             if event.click_count() == 2 {
                                 window.titlebar_double_click();
+                            }
+                        })
+                    })
+                    .when(is_windows, |this| {
+                        this.on_click(|event, window, _| {
+                            if event.click_count() == 2 {
+                                window.zoom_window();
                             }
                         })
                     })
