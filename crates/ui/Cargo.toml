@@ -66,6 +66,8 @@ smallvec.workspace = true
 smol.workspace = true
 sum-tree.workspace = true
 tracing.workspace = true
+raw-window-handle = "0.6"
+windows = { workspace = true }
 
 enum-iterator = "2.1.0"
 itertools = "0.13.0"
