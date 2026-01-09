@@ -173,8 +173,31 @@ impl RenderOnce for ControlIcon {
             .text_color(cx.theme().foreground)
             .hover(|style| style.bg(hover_bg).text_color(hover_fg))
             .active(|style| style.bg(active_bg).text_color(hover_fg))
+            // On Windows: Use explicit click handlers since WM_NCHITTEST hit testing
+            // doesn't work reliably with GPUI's async rendering model.
+            // Keep window_control_area for potential future GPUI fixes.
             .when(is_windows, |this| {
+                let icon_for_click = icon.clone();
+                let on_close_for_click = on_close_window.clone();
                 this.window_control_area(self.window_control_area())
+                    .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                        window.prevent_default();
+                        cx.stop_propagation();
+                    })
+                    .on_click(move |_, window, cx| {
+                        cx.stop_propagation();
+                        match icon_for_click {
+                            Self::Minimize => window.minimize_window(),
+                            Self::Restore | Self::Maximize => window.zoom_window(),
+                            Self::Close { .. } => {
+                                if let Some(f) = on_close_for_click.clone() {
+                                    f(&ClickEvent::default(), window, cx);
+                                } else {
+                                    window.remove_window();
+                                }
+                            }
+                        }
+                    })
             })
             .when(is_linux, |this| {
                 this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
@@ -254,6 +277,7 @@ impl RenderOnce for TitleBar {
         let is_client_decorated = matches!(window.window_decorations(), Decorations::Client { .. });
         let is_linux = cfg!(target_os = "linux");
         let is_macos = cfg!(target_os = "macos");
+        let is_windows = cfg!(target_os = "windows");
 
         let state = window.use_state(cx, |_, _| TitleBarState { should_move: false });
 
@@ -270,11 +294,16 @@ impl RenderOnce for TitleBar {
                 .border_color(cx.theme().title_bar_border)
                 .bg(cx.theme().title_bar)
                 .refine_style(&self.style)
-                .when(is_linux, |this| {
-                    this.on_double_click(|_, window, _| window.zoom_window())
+                // Double-click to maximize/restore on all non-macOS platforms
+                .when(is_linux || is_windows, |this| {
+                    this.on_double_click(|_, window, _| {
+                        window.zoom_window()
+                    })
                 })
                 .when(is_macos, |this| {
-                    this.on_double_click(|_, window, _| window.titlebar_double_click())
+                    this.on_double_click(|_, window, _| {
+                        window.titlebar_double_click()
+                    })
                 })
                 .on_mouse_down_out(window.listener_for(&state, |state, _, _, _| {
                     state.should_move = false;
