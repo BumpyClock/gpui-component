@@ -161,21 +161,18 @@ impl RenderOnce for ControlIcon {
             _ => None,
         };
 
-        div()
+        h_flex()
             .id(self.id())
-            .flex()
+            .justify_center()
+            .content_center()
+            .occlude()
             .w(TITLE_BAR_HEIGHT)
             .h_full()
             .flex_shrink_0()
-            .justify_center()
-            .content_center()
-            .items_center()
             .text_color(cx.theme().foreground)
             .hover(|style| style.bg(hover_bg).text_color(hover_fg))
             .active(|style| style.bg(active_bg).text_color(hover_fg))
-            .when(is_windows, |this| {
-                this.window_control_area(self.window_control_area())
-            })
+            .window_control_area(self.window_control_area())
             .when(is_linux, |this| {
                 this.on_mouse_down(MouseButton::Left, move |_, window, cx| {
                     window.prevent_default();
