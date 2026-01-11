@@ -1282,6 +1282,8 @@ impl Render for PopupMenu {
                 }),
             )
             .popover_style(cx)
+            .backdrop_blur(px(12.))
+            .bg(cx.theme().popover.opacity(0.6))
             .text_color(cx.theme().popover_foreground)
             .relative()
             .child(

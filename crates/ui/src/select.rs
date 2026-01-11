@@ -882,7 +882,7 @@ where
                                         .occlude()
                                         .mt_1p5()
                                         .backdrop_blur(px(12.))
-                                        .bg(cx.theme().popover.opacity(0.1))
+                                        .bg(cx.theme().popover.opacity(0.6))
                                         .border_1()
                                         .border_color(cx.theme().border)
                                         .rounded(popup_radius)
