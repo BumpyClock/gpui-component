@@ -99,8 +99,7 @@ impl RenderOnce for Progress {
                                 "progress-animation",
                                 Animation::new(duration),
                                 move |this, delta| {
-                                    let current_value =
-                                        prev_value + (value - prev_value) * delta;
+                                    let current_value = prev_value + (value - prev_value) * delta;
                                     let relative_w = relative(match current_value {
                                         v if v < 0. => 0.,
                                         v if v > 100. => 1.,

@@ -1,8 +1,6 @@
 use std::rc::Rc;
 
-use crate::{
-    ActiveTheme, Icon, IconName
-};
+use crate::{ActiveTheme, Icon, IconName, Sizable, StyledExt, h_flex};
 use gpui::{
     AnyElement, App, ClickEvent, Context, Decorations, Hsla, InteractiveElement, IntoElement,
     MouseButton, ParentElement, Pixels, Render, RenderOnce, StatefulInteractiveElement as _,
@@ -195,7 +193,7 @@ impl RenderOnce for ControlIcon {
             .justify_center()
             .content_center()
             .occlude()
-            .w(px(36.))  // Match Zed's 36px width
+            .w(px(36.)) // Match Zed's 36px width
             .h_full()
             .hover(|style| style.bg(hover_bg).text_color(hover_fg))
             .active(|style| style.bg(active_bg).text_color(hover_fg))
@@ -323,12 +321,15 @@ impl RenderOnce for TitleBar {
                             state.should_move = true;
                         }),
                     )
-                    .on_mouse_move(window.listener_for(&state, |state, _, window, _| {
-                        if state.should_move {
-                            state.should_move = false;
-                            window.start_window_move();
-                        }
-                    }))
+                    .on_mouse_move(window.listener_for(
+                        &state,
+                        |state, _, window, _| {
+                            if state.should_move {
+                                state.should_move = false;
+                                window.start_window_move();
+                            }
+                        },
+                    ))
                 })
             })
             // Platform-specific double-click behavior
