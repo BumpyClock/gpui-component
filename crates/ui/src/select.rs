@@ -893,21 +893,18 @@ where
                                     SurfacePreset::flyout()
                                         .with_radius(popup_radius)
                                         .wrap_with_bounds(
-                                            v_flex()
-                                                .occlude()
-                                                .mt_1p5()
-                                                .child(
-                                                    List::new(&self.list)
-                                                        .when_some(
-                                                            self.options.search_placeholder.clone(),
-                                                            |this, placeholder| {
-                                                                this.search_placeholder(placeholder)
-                                                            },
-                                                        )
-                                                        .with_size(self.options.size)
-                                                        .max_h(rems(20.))
-                                                        .paddings(Edges::all(px(4.))),
-                                                ),
+                                            v_flex().occlude().mt_1p5().child(
+                                                List::new(&self.list)
+                                                    .when_some(
+                                                        self.options.search_placeholder.clone(),
+                                                        |this, placeholder| {
+                                                            this.search_placeholder(placeholder)
+                                                        },
+                                                    )
+                                                    .with_size(self.options.size)
+                                                    .max_h(rems(20.))
+                                                    .paddings(Edges::all(px(4.))),
+                                            ),
                                             menu_width,
                                             menu_height,
                                             window,
@@ -1140,7 +1137,10 @@ impl RenderOnce for SelectListItem {
                     this.hover(|this| this.bg(cx.theme().state_hover))
                 })
             })
-            .when(self.selected, |this| this.bg(cx.theme().state_selected))
+            .when(self.selected, |this| {
+                this.bg(cx.theme().accent)
+                    .text_color(cx.theme().accent_foreground)
+            })
             .when(self.disabled, |this| {
                 this.text_color(cx.theme().muted_foreground)
             })

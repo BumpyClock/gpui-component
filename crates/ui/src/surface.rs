@@ -20,7 +20,7 @@ use gpui::{
 
 use crate::{ActiveTheme, StyledExt};
 
-const GLASS_NOISE_ASSET_PATH: &str = "noise/NoiseAsset_256.png";
+const GLASS_NOISE_ASSET_PATH: &str = "NoiseAsset_256.png";
 const GLASS_NOISE_TILE_SIZE_BASE: f32 = 128.0;
 
 /// Runtime context for surface rendering decisions.
@@ -199,7 +199,7 @@ impl SurfacePreset {
     ///
     /// - No blur
     /// - Heavy noise (only rendered when blur_enabled)
-    /// - Background color at full opacity
+    /// - No background color (transparent)
     /// - No elevation or stroke
     pub fn base() -> Self {
         Self {
@@ -208,8 +208,8 @@ impl SurfacePreset {
             noise_intensity: NoiseIntensity::Heavy,
             background: SurfaceBackground {
                 color_source: SurfaceColorSource::Background,
-                light_opacity: 1.0,
-                dark_opacity: 1.0,
+                light_opacity: 0.0,
+                dark_opacity: 0.0,
             },
             elevation: ElevationToken::None,
             stroke: None,
@@ -228,17 +228,17 @@ impl SurfacePreset {
     pub fn flyout() -> Self {
         Self {
             kind: SurfaceKind::Flyout,
-            blur_radius: Some(px(0.0)),
+            blur_radius: Some(px(60.0)),
             noise_intensity: NoiseIntensity::Subtle,
             background: SurfaceBackground {
                 color_source: SurfaceColorSource::Popover,
-                light_opacity: 0.0,
-                dark_opacity: 0.0,
+                light_opacity: 0.85,
+                dark_opacity: 0.90,
             },
-            elevation: ElevationToken::Md,
+            elevation: ElevationToken::None,
             stroke: Some(StrokeSpec::subtle()),
             transparency_factor: 1.0,
-            radius: Some(px(8.0)),
+            radius: Some(px(12.0)),
         }
     }
 
@@ -346,23 +346,24 @@ impl SurfacePreset {
         let radius = self.radius.unwrap_or(cx.theme().radius);
         let scale_factor = window.scale_factor();
 
-        let bg_color = {
-            let base = self.background.resolve(cx);
-            base.opacity(base.a * self.transparency_factor)
-        };
+        let bg_color = self
+            .background
+            .resolve(cx)
+            .opacity(self.transparency_factor);
+        let noise_opacity = self.noise_intensity.opacity();
+        let should_render_noise = ctx.blur_enabled && noise_opacity > 0.0;
 
-        let should_render_noise =
-            ctx.blur_enabled && self.noise_intensity != NoiseIntensity::None;
+        let mut surface = div().relative().rounded(radius).overflow_hidden();
 
-        let mut surface = div()
-            .relative()
-            .bg(bg_color)
-            .rounded(radius)
-            .overflow_hidden();
+        if bg_color.a > 0.0 {
+            surface = surface.bg(bg_color);
+        }
 
-        if let Some(blur_radius) = self.blur_radius {
-            if ctx.blur_enabled {
-                surface = surface.backdrop_blur(blur_radius);
+        if ctx.blur_enabled {
+            if let Some(blur_radius) = self.blur_radius {
+                if (blur_radius / px(1.0)) > 0.0 {
+                    surface = surface.backdrop_blur(blur_radius);
+                }
             }
         }
 
@@ -379,7 +380,7 @@ impl SurfacePreset {
                 width,
                 height,
                 radius,
-                self.noise_intensity.opacity(),
+                noise_opacity,
                 scale_factor,
             ));
         }
