@@ -576,6 +576,90 @@
         "base.yellow.light": {
           "description": "Base light yellow color.",
           "type": ["string", "null"]
+        },
+        "border.default": {
+          "description": "Default border color - standard interactive elements",
+          "type": ["string", "null"]
+        },
+        "border.strong": {
+          "description": "Strong border color - high-emphasis elements, focused inputs",
+          "type": ["string", "null"]
+        },
+        "border.subtle": {
+          "description": "Subtle border color - decorative dividers, subtle separations",
+          "type": ["string", "null"]
+        },
+        "overlay.popover": {
+          "description": "Popover overlay background",
+          "type": ["string", "null"]
+        },
+        "overlay.scrim": {
+          "description": "Scrim overlay for modals/dialogs (darkens background)",
+          "type": ["string", "null"]
+        },
+        "overlay.tooltip": {
+          "description": "Tooltip overlay background",
+          "type": ["string", "null"]
+        },
+        "state.active": {
+          "description": "Active/pressed state overlay color",
+          "type": ["string", "null"]
+        },
+        "state.disabled": {
+          "description": "Disabled state overlay color",
+          "type": ["string", "null"]
+        },
+        "state.focus": {
+          "description": "Focus state ring/outline color",
+          "type": ["string", "null"]
+        },
+        "state.hover": {
+          "description": "Hover state overlay color",
+          "type": ["string", "null"]
+        },
+        "state.selected": {
+          "description": "Selected state background color",
+          "type": ["string", "null"]
+        },
+        "surface.base": {
+          "description": "Base surface color - primary content areas (forms, cards, main sections)",
+          "type": ["string", "null"]
+        },
+        "surface.base.foreground": {
+          "description": "Base surface foreground color",
+          "type": ["string", "null"]
+        },
+        "surface.elevated": {
+          "description": "Elevated surface color - modals, popovers (high prominence)",
+          "type": ["string", "null"]
+        },
+        "surface.elevated.foreground": {
+          "description": "Elevated surface foreground color",
+          "type": ["string", "null"]
+        },
+        "surface.raised": {
+          "description": "Raised surface color - cards, dropdowns (slight elevation)",
+          "type": ["string", "null"]
+        },
+        "surface.raised.foreground": {
+          "description": "Raised surface foreground color",
+          "type": ["string", "null"]
+        },
+        "surface.subtle": {
+          "description": "Subtle surface color - secondary panels, wells, inset areas",
+          "type": ["string", "null"]
+        },
+        "surface.subtle.foreground": {
+          "description": "Subtle surface foreground color",
+          "type": ["string", "null"]
+        },
+        "surface.sunken": {
+          "description": "Sunken surface color - sidebars, navigation, recessed areas",
+          "type": ["string", "null"]
+        },
+        "surface.sunken.foreground": {
+          "description": "Sunken surface foreground color",
+          "type": ["string", "null"]
         }
       },
       "required": [

@@ -206,6 +206,56 @@ pub struct ThemeColor {
     /// This is only works on Linux, other platforms we can't change the window border color.
     pub window_border: Hsla,
 
+    // === SURFACE TOKENS ===
+    /// Base surface color - primary content areas
+    pub surface_base: Hsla,
+    /// Base surface foreground color
+    pub surface_base_foreground: Hsla,
+    /// Subtle surface color - secondary panels
+    pub surface_subtle: Hsla,
+    /// Subtle surface foreground color
+    pub surface_subtle_foreground: Hsla,
+    /// Raised surface color - cards, dropdowns
+    pub surface_raised: Hsla,
+    /// Raised surface foreground color
+    pub surface_raised_foreground: Hsla,
+    /// Elevated surface color - modals, popovers
+    pub surface_elevated: Hsla,
+    /// Elevated surface foreground color
+    pub surface_elevated_foreground: Hsla,
+    /// Sunken surface color - sidebars, navigation
+    pub surface_sunken: Hsla,
+    /// Sunken surface foreground color
+    pub surface_sunken_foreground: Hsla,
+
+    // === BORDER TOKENS ===
+    /// Subtle border color
+    pub border_subtle: Hsla,
+    /// Default border color
+    pub border_default: Hsla,
+    /// Strong border color
+    pub border_strong: Hsla,
+
+    // === STATE TOKENS ===
+    /// Hover state overlay color
+    pub state_hover: Hsla,
+    /// Active/pressed state overlay color
+    pub state_active: Hsla,
+    /// Selected state background color
+    pub state_selected: Hsla,
+    /// Disabled state overlay color
+    pub state_disabled: Hsla,
+    /// Focus state ring/outline color
+    pub state_focus: Hsla,
+
+    // === OVERLAY TOKENS ===
+    /// Scrim overlay for modals/dialogs
+    pub overlay_scrim: Hsla,
+    /// Popover overlay background
+    pub overlay_popover: Hsla,
+    /// Tooltip overlay background
+    pub overlay_tooltip: Hsla,
+
     /// The base red color.
     pub red: Hsla,
     /// The base red light color.

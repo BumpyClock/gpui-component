@@ -176,7 +176,7 @@ impl RenderOnce for ListItem {
                         this.on_mouse_move(move |ev, window, cx| (on_mouse_enter)(ev, window, cx))
                     })
                     .when(!is_active, |this| {
-                        this.hover(|this| this.bg(cx.theme().list_hover))
+                        this.hover(|this| this.bg(cx.theme().state_hover))
                     })
             })
             .when(!is_selectable, |this| {
@@ -204,9 +204,9 @@ impl RenderOnce for ListItem {
             .map(|this| {
                 if is_selectable && (self.selected || self.secondary_selected) {
                     let bg = if self.selected && cx.theme().list.active_highlight {
-                        cx.theme().list_active
+                        cx.theme().state_selected
                     } else {
-                        cx.theme().accent
+                        cx.theme().state_active
                     };
 
                     this.bg(bg).when(cx.theme().list.active_highlight, |this| {

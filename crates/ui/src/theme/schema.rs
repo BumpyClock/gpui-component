@@ -377,6 +377,77 @@ pub struct ThemeConfigColors {
     #[serde(rename = "window.border")]
     pub window_border: Option<SharedString>,
 
+    // === SURFACE TOKENS ===
+    /// Base surface color - primary content areas
+    #[serde(rename = "surface.base")]
+    pub surface_base: Option<SharedString>,
+    /// Base surface foreground color
+    #[serde(rename = "surface.base.foreground")]
+    pub surface_base_foreground: Option<SharedString>,
+    /// Subtle surface color - secondary panels
+    #[serde(rename = "surface.subtle")]
+    pub surface_subtle: Option<SharedString>,
+    /// Subtle surface foreground color
+    #[serde(rename = "surface.subtle.foreground")]
+    pub surface_subtle_foreground: Option<SharedString>,
+    /// Raised surface color - cards, dropdowns
+    #[serde(rename = "surface.raised")]
+    pub surface_raised: Option<SharedString>,
+    /// Raised surface foreground color
+    #[serde(rename = "surface.raised.foreground")]
+    pub surface_raised_foreground: Option<SharedString>,
+    /// Elevated surface color - modals, popovers
+    #[serde(rename = "surface.elevated")]
+    pub surface_elevated: Option<SharedString>,
+    /// Elevated surface foreground color
+    #[serde(rename = "surface.elevated.foreground")]
+    pub surface_elevated_foreground: Option<SharedString>,
+    /// Sunken surface color - sidebars, navigation
+    #[serde(rename = "surface.sunken")]
+    pub surface_sunken: Option<SharedString>,
+    /// Sunken surface foreground color
+    #[serde(rename = "surface.sunken.foreground")]
+    pub surface_sunken_foreground: Option<SharedString>,
+
+    // === BORDER TOKENS ===
+    /// Subtle border color - decorative dividers
+    #[serde(rename = "border.subtle")]
+    pub border_subtle: Option<SharedString>,
+    /// Default border color - standard interactive elements
+    #[serde(rename = "border.default")]
+    pub border_default: Option<SharedString>,
+    /// Strong border color - high-emphasis elements
+    #[serde(rename = "border.strong")]
+    pub border_strong: Option<SharedString>,
+
+    // === STATE TOKENS ===
+    /// Hover state overlay color
+    #[serde(rename = "state.hover")]
+    pub state_hover: Option<SharedString>,
+    /// Active/pressed state overlay color
+    #[serde(rename = "state.active")]
+    pub state_active: Option<SharedString>,
+    /// Selected state background color
+    #[serde(rename = "state.selected")]
+    pub state_selected: Option<SharedString>,
+    /// Disabled state overlay color
+    #[serde(rename = "state.disabled")]
+    pub state_disabled: Option<SharedString>,
+    /// Focus state ring/outline color
+    #[serde(rename = "state.focus")]
+    pub state_focus: Option<SharedString>,
+
+    // === OVERLAY TOKENS ===
+    /// Scrim overlay for modals/dialogs
+    #[serde(rename = "overlay.scrim")]
+    pub overlay_scrim: Option<SharedString>,
+    /// Popover overlay background
+    #[serde(rename = "overlay.popover")]
+    pub overlay_popover: Option<SharedString>,
+    /// Tooltip overlay background
+    #[serde(rename = "overlay.tooltip")]
+    pub overlay_tooltip: Option<SharedString>,
+
     /// Base blue color.
     #[serde(rename = "base.blue")]
     blue: Option<String>,
@@ -637,6 +708,35 @@ impl ThemeColor {
         apply_color!(tiles, fallback = self.background);
         apply_color!(overlay);
         apply_color!(window_border, fallback = self.border);
+
+        // === SURFACE TOKENS with semantic fallbacks ===
+        apply_color!(surface_base, fallback = self.background);
+        apply_color!(surface_base_foreground, fallback = self.foreground);
+        apply_color!(surface_subtle, fallback = self.background.blend(self.muted.opacity(0.3)));
+        apply_color!(surface_subtle_foreground, fallback = self.foreground);
+        apply_color!(surface_raised, fallback = self.popover);
+        apply_color!(surface_raised_foreground, fallback = self.popover_foreground);
+        apply_color!(surface_elevated, fallback = self.popover);
+        apply_color!(surface_elevated_foreground, fallback = self.popover_foreground);
+        apply_color!(surface_sunken, fallback = self.sidebar);
+        apply_color!(surface_sunken_foreground, fallback = self.sidebar_foreground);
+
+        // === BORDER TOKENS ===
+        apply_color!(border_subtle, fallback = self.border.opacity(0.5));
+        apply_color!(border_default, fallback = self.border);
+        apply_color!(border_strong, fallback = self.border.darken(0.2));
+
+        // === STATE TOKENS ===
+        apply_color!(state_hover, fallback = self.foreground.opacity(0.04));
+        apply_color!(state_active, fallback = self.foreground.opacity(0.08));
+        apply_color!(state_selected, fallback = self.primary.opacity(0.16));
+        apply_color!(state_disabled, fallback = self.foreground.opacity(0.24));
+        apply_color!(state_focus, fallback = self.primary.opacity(0.24));
+
+        // === OVERLAY TOKENS ===
+        apply_color!(overlay_scrim, fallback = self.overlay);
+        apply_color!(overlay_popover, fallback = self.popover);
+        apply_color!(overlay_tooltip, fallback = self.popover);
 
         // TODO: Apply default fallback colors to highlight.
 

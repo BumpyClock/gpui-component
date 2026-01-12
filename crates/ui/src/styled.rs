@@ -203,10 +203,10 @@ pub trait StyledExt: Styled + Sized {
     /// Set as Popover style
     #[inline]
     fn popover_style(self, cx: &App) -> Self {
-        self.bg(cx.theme().popover)
-            .text_color(cx.theme().popover_foreground)
+        self.bg(cx.theme().surface_elevated)
+            .text_color(cx.theme().surface_elevated_foreground)
             .border_1()
-            .border_color(cx.theme().border)
+            .border_color(cx.theme().border_subtle)
             .elevation_md(cx)
             .rounded(cx.theme().radius)
     }
