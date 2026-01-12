@@ -128,9 +128,7 @@ pub struct Theme {
     pub tile_shadow: bool,
     /// The border radius of the tile panel, default is 0px.
     pub tile_radius: Pixels,
-    /// The list settings.
     pub list: ListSettings,
-    /// The sheet settings.
     pub sheet: SheetSettings,
 }
 

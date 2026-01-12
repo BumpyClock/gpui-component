@@ -15,17 +15,49 @@ use std::rc::Rc;
 
 const CONTEXT: &str = "PopupMenu";
 const GLASS_NOISE_OPACITY: f32 = 0.02;
-const GLASS_NOISE_ASSET_PATH: &str = "NoiseAsset_256.png";
+const GLASS_NOISE_ASSET_PATH: &str = "noise/NoiseAsset_256.png";
+const GLASS_NOISE_TILE_SIZE: f32 = 128.0;
 
-fn glass_noise_overlay(radius: Pixels) -> impl IntoElement {
-    img(GLASS_NOISE_ASSET_PATH)
+fn glass_noise_overlay(
+    width: Pixels,
+    height: Pixels,
+    radius: Pixels,
+    scale_factor: f32,
+) -> impl IntoElement {
+    let tile_size_value = (GLASS_NOISE_TILE_SIZE / scale_factor.max(1.0)).round();
+    let tile_size = px(tile_size_value);
+    let cols = ((width / tile_size).max(0.0).ceil() as usize).max(1) + 12;
+    let rows = ((height / tile_size).max(0.0).ceil() as usize).max(1) + 12;
+    let tiled_width = px(tile_size_value * cols as f32);
+    let tiled_height = px(tile_size_value * rows as f32);
+    let tiles = cols.saturating_mul(rows);
+
+    div()
         .absolute()
         .inset_0()
-        .w_full()
-        .h_full()
-        .object_fit(ObjectFit::Cover)
-        .opacity(GLASS_NOISE_OPACITY)
+        .size_full()
+        .overflow_hidden()
         .rounded(radius)
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .w(tiled_width)
+                .h(tiled_height)
+                .flex()
+                .flex_wrap()
+                .items_start()
+                .justify_start()
+                .children((0..tiles).map(|_| {
+                    img(GLASS_NOISE_ASSET_PATH)
+                        .w(tile_size)
+                        .h(tile_size)
+                        .flex_none()
+                        .object_fit(ObjectFit::Cover)
+                        .opacity(GLASS_NOISE_OPACITY)
+                })),
+        )
 }
 
 pub fn init(cx: &mut App) {
@@ -1269,6 +1301,18 @@ impl Render for PopupMenu {
             check_side: self.check_side,
             radius: cx.theme().radius.min(px(8.)),
         };
+        let overlay_width = if (self.bounds.size.width / px(1.0)) > 0.0 {
+            self.bounds.size.width
+        } else {
+            max_width
+        };
+        let overlay_height = if (self.bounds.size.height / px(1.0)) > 0.0 {
+            self.bounds.size.height
+        } else {
+            max_height
+        };
+        let popover_radius = cx.theme().radius;
+        let scale_factor = window.scale_factor();
 
         v_flex()
             .id("popup-menu")
@@ -1300,7 +1344,12 @@ impl Render for PopupMenu {
             .bg(cx.theme().popover.opacity(0.75))
             .text_color(cx.theme().popover_foreground)
             .relative()
-            .child(glass_noise_overlay(popover_radius))
+            .child(glass_noise_overlay(
+                overlay_width,
+                overlay_height,
+                popover_radius,
+                scale_factor,
+            ))
             .child(
                 v_flex()
                     .id("items")

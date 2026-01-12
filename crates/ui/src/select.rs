@@ -1,9 +1,9 @@
 use gpui::{
-    AnyElement, App, AppContext, Bounds, ClickEvent, Context, DismissEvent, Edges, ElementId,
-    Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
-    Length, ParentElement, Pixels, Render, RenderOnce, SharedString, StatefulInteractiveElement,
-    StyleRefinement, Styled, Subscription, Task, WeakEntity, Window, anchored, deferred, div,
-    img, prelude::FluentBuilder, px, rems, ObjectFit, StyledImage,
+    AbsoluteLength, AnyElement, App, AppContext, Bounds, ClickEvent, Context, DismissEvent, Edges,
+    ElementId, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
+    KeyBinding, Length, ParentElement, Pixels, Render, RenderOnce, SharedString,
+    StatefulInteractiveElement, StyleRefinement, Styled, Subscription, Task, WeakEntity, Window,
+    anchored, deferred, div, img, prelude::FluentBuilder, px, rems, ObjectFit, StyledImage,
 };
 use rust_i18n::t;
 
@@ -19,17 +19,49 @@ use crate::{
 
 const CONTEXT: &str = "Select";
 const GLASS_NOISE_OPACITY: f32 = 0.02;
-const GLASS_NOISE_ASSET_PATH: &str = "NoiseAsset_256.png";
+const GLASS_NOISE_ASSET_PATH: &str = "noise/NoiseAsset_256.png";
+const GLASS_NOISE_TILE_SIZE: f32 = 128.0;
 
-fn glass_noise_overlay(radius: Pixels) -> impl IntoElement {
-    img(GLASS_NOISE_ASSET_PATH)
+fn glass_noise_overlay(
+    width: Pixels,
+    height: Pixels,
+    radius: Pixels,
+    scale_factor: f32,
+) -> impl IntoElement {
+    let tile_size_value = (GLASS_NOISE_TILE_SIZE / scale_factor.max(1.0)).round();
+    let tile_size = px(tile_size_value);
+    let cols = ((width / tile_size).max(0.0).ceil() as usize).max(1) + 12;
+    let rows = ((height / tile_size).max(0.0).ceil() as usize).max(1) + 12;
+    let tiled_width = px(tile_size_value * cols as f32);
+    let tiled_height = px(tile_size_value * rows as f32);
+    let tiles = cols.saturating_mul(rows);
+
+    div()
         .absolute()
         .inset_0()
-        .w_full()
-        .h_full()
-        .object_fit(ObjectFit::Cover)
-        .opacity(GLASS_NOISE_OPACITY)
+        .size_full()
+        .overflow_hidden()
         .rounded(radius)
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .w(tiled_width)
+                .h(tiled_height)
+                .flex()
+                .flex_wrap()
+                .items_start()
+                .justify_start()
+                .children((0..tiles).map(|_| {
+                    img(GLASS_NOISE_ASSET_PATH)
+                        .w(tile_size)
+                        .h(tile_size)
+                        .flex_none()
+                        .object_fit(ObjectFit::Cover)
+                        .opacity(GLASS_NOISE_OPACITY)
+                })),
+        )
 }
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
@@ -801,6 +833,15 @@ where
         let allow_open = !(self.open || self.options.disabled);
         let outline_visible = self.open || is_focused && !self.options.disabled;
         let popup_radius = cx.theme().radius.min(px(8.));
+        let rem_size = window.rem_size();
+        let menu_width = match self.options.menu_width {
+            Length::Auto => bounds.size.width + px(2.),
+            Length::Definite(width) => {
+                width.to_pixels(AbsoluteLength::Pixels(bounds.size.width), rem_size)
+            }
+        };
+        let menu_height = rems(20.).to_pixels(rem_size);
+        let scale_factor = window.scale_factor();
 
         self.list
             .update(cx, |list, cx| list.set_searchable(searchable, cx));
@@ -901,7 +942,12 @@ where
                                         .rounded(popup_radius)
                                         .elevation_md(cx)
                                         .relative()
-                                        .child(glass_noise_overlay(popup_radius))
+                                        .child(glass_noise_overlay(
+                                            menu_width,
+                                            menu_height,
+                                            popup_radius,
+                                            scale_factor,
+                                        ))
                                         .child(
                                             List::new(&self.list)
                                                 .when_some(
