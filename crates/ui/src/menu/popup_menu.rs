@@ -8,12 +8,25 @@ use gpui::{
     Action, AnyElement, App, AppContext, Bounds, Context, Corner, DismissEvent, Edges, Entity,
     EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
     ParentElement, Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled,
-    WeakEntity, Window, anchored, div, prelude::FluentBuilder, px, rems,
+    WeakEntity, Window, anchored, div, img, prelude::FluentBuilder, px, rems, ObjectFit, StyledImage,
 };
 use gpui::{ClickEvent, Half, MouseButton, MouseUpEvent, OwnedMenuItem, Subscription};
 use std::rc::Rc;
 
 const CONTEXT: &str = "PopupMenu";
+const GLASS_NOISE_OPACITY: f32 = 0.02;
+const GLASS_NOISE_ASSET_PATH: &str = "NoiseAsset_256.png";
+
+fn glass_noise_overlay(radius: Pixels) -> impl IntoElement {
+    img(GLASS_NOISE_ASSET_PATH)
+        .absolute()
+        .inset_0()
+        .w_full()
+        .h_full()
+        .object_fit(ObjectFit::Cover)
+        .opacity(GLASS_NOISE_OPACITY)
+        .rounded(radius)
+}
 
 pub fn init(cx: &mut App) {
     cx.bind_keys([
@@ -1250,6 +1263,7 @@ impl Render for PopupMenu {
             .any(|item| item.has_left_icon(self.check_side));
 
         let max_width = self.max_width();
+        let popover_radius = cx.theme().radius;
         let options = RenderOptions {
             has_left_icon,
             check_side: self.check_side,
@@ -1286,6 +1300,7 @@ impl Render for PopupMenu {
             .bg(cx.theme().popover.opacity(0.75))
             .text_color(cx.theme().popover_foreground)
             .relative()
+            .child(glass_noise_overlay(popover_radius))
             .child(
                 v_flex()
                     .id("items")

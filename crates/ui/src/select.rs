@@ -3,7 +3,7 @@ use gpui::{
     Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
     Length, ParentElement, Pixels, Render, RenderOnce, SharedString, StatefulInteractiveElement,
     StyleRefinement, Styled, Subscription, Task, WeakEntity, Window, anchored, deferred, div,
-    prelude::FluentBuilder, px, rems,
+    img, prelude::FluentBuilder, px, rems, ObjectFit, StyledImage,
 };
 use rust_i18n::t;
 
@@ -18,6 +18,19 @@ use crate::{
 };
 
 const CONTEXT: &str = "Select";
+const GLASS_NOISE_OPACITY: f32 = 0.02;
+const GLASS_NOISE_ASSET_PATH: &str = "NoiseAsset_256.png";
+
+fn glass_noise_overlay(radius: Pixels) -> impl IntoElement {
+    img(GLASS_NOISE_ASSET_PATH)
+        .absolute()
+        .inset_0()
+        .w_full()
+        .h_full()
+        .object_fit(ObjectFit::Cover)
+        .opacity(GLASS_NOISE_OPACITY)
+        .rounded(radius)
+}
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("up", SelectUp, Some(CONTEXT)),
@@ -887,6 +900,8 @@ where
                                         .border_color(cx.theme().border_subtle)
                                         .rounded(popup_radius)
                                         .elevation_md(cx)
+                                        .relative()
+                                        .child(glass_noise_overlay(popup_radius))
                                         .child(
                                             List::new(&self.list)
                                                 .when_some(
