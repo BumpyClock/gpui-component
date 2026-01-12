@@ -712,14 +712,26 @@ impl ThemeColor {
         // === SURFACE TOKENS with semantic fallbacks ===
         apply_color!(surface_base, fallback = self.background);
         apply_color!(surface_base_foreground, fallback = self.foreground);
-        apply_color!(surface_subtle, fallback = self.background.blend(self.muted.opacity(0.3)));
+        apply_color!(
+            surface_subtle,
+            fallback = self.background.blend(self.muted.opacity(0.3))
+        );
         apply_color!(surface_subtle_foreground, fallback = self.foreground);
         apply_color!(surface_raised, fallback = self.popover);
-        apply_color!(surface_raised_foreground, fallback = self.popover_foreground);
+        apply_color!(
+            surface_raised_foreground,
+            fallback = self.popover_foreground
+        );
         apply_color!(surface_elevated, fallback = self.popover);
-        apply_color!(surface_elevated_foreground, fallback = self.popover_foreground);
+        apply_color!(
+            surface_elevated_foreground,
+            fallback = self.popover_foreground
+        );
         apply_color!(surface_sunken, fallback = self.sidebar);
-        apply_color!(surface_sunken_foreground, fallback = self.sidebar_foreground);
+        apply_color!(
+            surface_sunken_foreground,
+            fallback = self.sidebar_foreground
+        );
 
         // === BORDER TOKENS ===
         apply_color!(border_subtle, fallback = self.border.opacity(0.5));

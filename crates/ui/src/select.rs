@@ -805,8 +805,8 @@ where
                     .border_1()
                     .border_color(cx.theme().transparent)
                     .when(self.options.appearance, |this| {
-                        this.bg(cx.theme().background)
-                            .border_color(cx.theme().input)
+                        this.bg(cx.theme().surface_base)
+                            .border_color(cx.theme().border_default)
                             .rounded(cx.theme().radius)
                             .when(cx.theme().shadow, |this| this.elevation_xs(cx))
                     })
@@ -884,7 +884,7 @@ where
                                         .backdrop_blur(px(60.))
                                         .bg(cx.theme().popover.opacity(0.75))
                                         .border_1()
-                                        .border_color(cx.theme().border)
+                                        .border_color(cx.theme().border_subtle)
                                         .rounded(popup_radius)
                                         .elevation_md(cx)
                                         .child(
@@ -1122,10 +1122,10 @@ impl RenderOnce for SelectListItem {
             .refine_style(&self.style)
             .when(!self.disabled, |this| {
                 this.when(!self.selected, |this| {
-                    this.hover(|this| this.bg(cx.theme().accent.alpha(0.7)))
+                    this.hover(|this| this.bg(cx.theme().state_hover))
                 })
             })
-            .when(self.selected, |this| this.bg(cx.theme().accent))
+            .when(self.selected, |this| this.bg(cx.theme().state_selected))
             .when(self.disabled, |this| {
                 this.text_color(cx.theme().muted_foreground)
             })
