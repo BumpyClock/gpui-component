@@ -6,6 +6,7 @@ use gpui::{
 };
 
 use super::{InputEvent, blink_cursor::BlinkCursor};
+use crate::styled::StyledExt;
 use crate::{ActiveTheme, Disableable, Icon, IconName, Sizable, Size, h_flex, v_flex};
 
 pub struct OtpState {
@@ -262,7 +263,7 @@ impl RenderOnce for OtpInput {
                             .text_color(cx.theme().muted_foreground)
                     })
                     .when(is_input_focused, |this| this.border_color(cx.theme().ring))
-                    .when(cx.theme().shadow, |this| this.shadow_xs())
+                    .when(cx.theme().shadow, |this| this.elevation_xs(cx))
                     .items_center()
                     .justify_center()
                     .rounded(cx.theme().radius)

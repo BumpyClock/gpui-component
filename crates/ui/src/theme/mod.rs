@@ -2,7 +2,7 @@ use crate::{
     highlighter::HighlightTheme, list::ListSettings, notification::NotificationSettings,
     scroll::ScrollbarShow, sheet::SheetSettings,
 };
-use gpui::{App, Global, Hsla, Pixels, SharedString, Window, WindowAppearance, px};
+use gpui::{App, BoxShadow, Global, Hsla, Pixels, SharedString, Window, WindowAppearance, px};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -39,6 +39,53 @@ impl ActiveTheme for App {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ThemeElevation {
+    pub xs: Vec<BoxShadow>,
+    pub sm: Vec<BoxShadow>,
+    pub md: Vec<BoxShadow>,
+    pub lg: Vec<BoxShadow>,
+    pub xl: Vec<BoxShadow>,
+}
+
+impl ThemeElevation {
+    fn default_for_mode(mode: ThemeMode) -> Self {
+        let (ambient, key) = if mode.is_dark() {
+            ("rgba(0,0,0,0.24)", "rgba(0,0,0,0.28)")
+        } else {
+            ("rgba(0,0,0,0.12)", "rgba(0,0,0,0.14)")
+        };
+        let xs = format!("0 0 2px {ambient}, 0 1px 2px {key}");
+        let sm = format!("0 0 2px {ambient}, 0 2px 4px {key}");
+        let md = format!("0 0 2px {ambient}, 0 4px 8px {key}");
+        let lg = format!("0 0 2px {ambient}, 0 8px 16px {key}");
+        let xl = format!("0 0 8px {ambient}, 0 14px 28px {key}");
+        Self {
+            xs: try_parse_box_shadows(&xs).unwrap_or_default(),
+            sm: try_parse_box_shadows(&sm).unwrap_or_default(),
+            md: try_parse_box_shadows(&md).unwrap_or_default(),
+            lg: try_parse_box_shadows(&lg).unwrap_or_default(),
+            xl: try_parse_box_shadows(&xl).unwrap_or_default(),
+        }
+    }
+
+    fn from_config(config: &ThemeConfig, default: &ThemeElevation) -> Self {
+        let fallback = |value: &Option<SharedString>, base: &Vec<BoxShadow>| {
+            value
+                .as_ref()
+                .and_then(|shadow| try_parse_box_shadows(shadow).ok())
+                .unwrap_or_else(|| base.clone())
+        };
+        Self {
+            xs: fallback(&config.elevation_xs, &default.xs),
+            sm: fallback(&config.elevation_sm, &default.sm),
+            md: fallback(&config.elevation_md, &default.md),
+            lg: fallback(&config.elevation_lg, &default.lg),
+            xl: fallback(&config.elevation_xl, &default.xl),
+        }
+    }
+}
+
 /// The global theme configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Theme {
@@ -67,6 +114,9 @@ pub struct Theme {
     /// Radius for the large elements, e.g.: Dialog, Notification border radius.
     pub radius_lg: Pixels,
     pub shadow: bool,
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub elevation: ThemeElevation,
     pub transparent: Hsla,
     /// Show the scrollbar mode, default: Scrolling
     pub scrollbar_show: ScrollbarShow,
@@ -132,6 +182,26 @@ impl Theme {
         } else {
             &self.light_theme.name
         }
+    }
+
+    pub fn elevation_xs(&self) -> &[BoxShadow] {
+        &self.elevation.xs
+    }
+
+    pub fn elevation_sm(&self) -> &[BoxShadow] {
+        &self.elevation.sm
+    }
+
+    pub fn elevation_md(&self) -> &[BoxShadow] {
+        &self.elevation.md
+    }
+
+    pub fn elevation_lg(&self) -> &[BoxShadow] {
+        &self.elevation.lg
+    }
+
+    pub fn elevation_xl(&self) -> &[BoxShadow] {
+        &self.elevation.xl
     }
 
     /// Sync the theme with the system appearance
@@ -204,9 +274,10 @@ impl From<&ThemeColor> for Theme {
                 "DejaVu Sans Mono".into()
             },
             mono_font_size: px(13.),
-            radius: px(6.),
-            radius_lg: px(8.),
+            radius: px(12.),
+            radius_lg: px(16.),
             shadow: true,
+            elevation: ThemeElevation::default_for_mode(ThemeMode::default()),
             scrollbar_show: ScrollbarShow::default(),
             notification: NotificationSettings::default(),
             tile_grid_size: px(8.),

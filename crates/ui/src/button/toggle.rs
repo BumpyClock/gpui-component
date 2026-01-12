@@ -1,13 +1,13 @@
 use std::{cell::Cell, rc::Rc};
 
 use gpui::{
-    div, prelude::FluentBuilder as _, AnyElement, App, ElementId, InteractiveElement, IntoElement,
-    ParentElement, RenderOnce, SharedString, StatefulInteractiveElement, StyleRefinement, Styled,
-    Window,
+    AnyElement, App, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce,
+    SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Window, div,
+    prelude::FluentBuilder as _,
 };
-use smallvec::{smallvec, SmallVec};
+use smallvec::{SmallVec, smallvec};
 
-use crate::{h_flex, ActiveTheme, Disableable, Icon, Sizable, Size, StyledExt};
+use crate::{ActiveTheme, Disableable, Icon, Sizable, Size, StyledExt, h_flex};
 
 #[derive(Default, Copy, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ToggleVariant {
@@ -141,7 +141,7 @@ impl RenderOnce for Toggle {
                 this.border_1()
                     .border_color(cx.theme().border)
                     .bg(cx.theme().background)
-                    .when(cx.theme().shadow, |this| this.shadow_xs())
+                    .when(cx.theme().shadow, |this| this.elevation_xs(cx))
             })
             .when(hoverable, |this| {
                 this.hover(|this| {

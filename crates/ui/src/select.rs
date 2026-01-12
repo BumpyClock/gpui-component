@@ -808,7 +808,7 @@ where
                         this.bg(cx.theme().background)
                             .border_color(cx.theme().input)
                             .rounded(cx.theme().radius)
-                            .when(cx.theme().shadow, |this| this.shadow_xs())
+                            .when(cx.theme().shadow, |this| this.elevation_xs(cx))
                     })
                     .map(|this| {
                         if self.options.disabled {
@@ -881,12 +881,12 @@ where
                                     v_flex()
                                         .occlude()
                                         .mt_1p5()
-                                        .backdrop_blur(px(12.))
-                                        .bg(cx.theme().popover.opacity(0.6))
+                                        .backdrop_blur(px(60.))
+                                        .bg(cx.theme().popover.opacity(0.75))
                                         .border_1()
                                         .border_color(cx.theme().border)
                                         .rounded(popup_radius)
-                                        .shadow_md()
+                                        .elevation_md(cx)
                                         .child(
                                             List::new(&self.list)
                                                 .when_some(

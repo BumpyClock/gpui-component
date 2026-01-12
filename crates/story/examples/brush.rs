@@ -181,7 +181,7 @@ impl BrushStory {
             .bg(color)
             .border_2()
             .when(is_selected, |this| {
-                this.border_color(theme.primary).shadow_md()
+                this.border_color(theme.primary).shadow_md(cx)
             })
             .when(!is_selected, |this| this.border_color(theme.border))
             .cursor_pointer()

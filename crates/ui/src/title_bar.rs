@@ -296,14 +296,10 @@ impl RenderOnce for TitleBar {
                 .refine_style(&self.style)
                 // Double-click to maximize/restore on all non-macOS platforms
                 .when(is_linux || is_windows, |this| {
-                    this.on_double_click(|_, window, _| {
-                        window.zoom_window()
-                    })
+                    this.on_double_click(|_, window, _| window.zoom_window())
                 })
                 .when(is_macos, |this| {
-                    this.on_double_click(|_, window, _| {
-                        window.titlebar_double_click()
-                    })
+                    this.on_double_click(|_, window, _| window.titlebar_double_click())
                 })
                 .on_mouse_down_out(window.listener_for(&state, |state, _, _, _| {
                     state.should_move = false;

@@ -447,7 +447,7 @@ impl Slider {
             .flex_shrink_0()
             .corner_radii(radius)
             .bg(bar_color.opacity(0.5))
-            .when(cx.theme().shadow, |this| this.shadow_md())
+            .when(cx.theme().shadow, |this| this.elevation_md(cx))
             .size_4()
             .p(px(1.))
             .child(

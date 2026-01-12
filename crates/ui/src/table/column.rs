@@ -6,6 +6,7 @@ use gpui::{
 };
 
 use crate::ActiveTheme as _;
+use crate::styled::StyledExt;
 
 /// Represents a column in a table, used for initializing table columns.
 #[derive(Debug, Clone)]
@@ -237,7 +238,7 @@ impl Render for DragColumn {
             .opacity(0.9)
             .border_1()
             .border_color(cx.theme().border)
-            .shadow_md()
+            .elevation_md(cx)
             .w(self.width)
             .min_w(px(100.))
             .max_w(px(450.))

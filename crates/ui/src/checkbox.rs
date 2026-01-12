@@ -1,13 +1,13 @@
 use std::{rc::Rc, time::Duration};
 
 use crate::{
-    icon::IconNamed, text::Text, v_flex, ActiveTheme, Disableable, FocusableExt, IconName,
-    Selectable, Sizable, Size, StyledExt as _,
+    ActiveTheme, Disableable, FocusableExt, IconName, Selectable, Sizable, Size, StyledExt as _,
+    icon::IconNamed, text::Text, v_flex,
 };
 use gpui::{
-    div, prelude::FluentBuilder as _, px, relative, rems, svg, Animation, AnimationExt, AnyElement,
-    App, Div, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce,
-    StatefulInteractiveElement, StyleRefinement, Styled, Window,
+    Animation, AnimationExt, AnyElement, App, Div, ElementId, InteractiveElement, IntoElement,
+    ParentElement, RenderOnce, StatefulInteractiveElement, StyleRefinement, Styled, Window, div,
+    prelude::FluentBuilder as _, px, relative, rems, svg,
 };
 
 /// A Checkbox element.
@@ -253,7 +253,9 @@ impl RenderOnce for Checkbox {
                         .border_1()
                         .border_color(color)
                         .rounded(radius)
-                        .when(cx.theme().shadow && !self.disabled, |this| this.shadow_xs())
+                        .when(cx.theme().shadow && !self.disabled, |this| {
+                            this.elevation_xs(cx)
+                        })
                         .map(|this| match checked {
                             false => this.bg(cx.theme().background),
                             _ => this.bg(color),

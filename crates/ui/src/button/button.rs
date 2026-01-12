@@ -463,7 +463,7 @@ impl RenderOnce for Button {
             .cursor_default()
             .when(self.variant.is_link(), |this| this.cursor_pointer())
             .when(cx.theme().shadow && normal_style.shadow, |this| {
-                this.shadow_xs()
+                this.elevation_xs(cx)
             })
             .when(!style.no_padding(), |this| {
                 if self.label.is_none() && self.children.is_empty() {

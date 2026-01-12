@@ -678,7 +678,7 @@ impl RenderOnce for Tab {
                     })
                     .bg(tab_style.inner_bg)
                     .rounded(inner_radius)
-                    .when(tab_style.shadow, |this| this.shadow_xs())
+                    .when(tab_style.shadow, |this| this.elevation_xs(cx))
                     .hover(|this| this.bg(hover_style.inner_bg).rounded(inner_radius)),
             )
             .when_some(self.suffix, |this, suffix| this.child(suffix))

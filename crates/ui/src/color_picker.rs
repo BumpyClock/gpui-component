@@ -13,6 +13,7 @@ use crate::{
     h_flex,
     input::{Input, InputEvent, InputState},
     popover::Popover,
+    styled::StyledExt,
     tooltip::Tooltip,
     v_flex,
 };
@@ -238,9 +239,14 @@ impl ColorPicker {
         color: Hsla,
         clickable: bool,
         window: &mut Window,
-        _: &mut App,
+        cx: &mut App,
     ) -> Stateful<Div> {
         let state = self.state.clone();
+        let hover_shadow = if cx.theme().shadow {
+            Some(cx.theme().elevation_xs().to_vec())
+        } else {
+            None
+        };
         div()
             .id(SharedString::from(format!("color-{}", color.to_hex())))
             .h_5()
@@ -249,10 +255,16 @@ impl ColorPicker {
             .border_1()
             .border_color(color.darken(0.1))
             .when(clickable, |this| {
-                this.hover(|this| {
-                    this.border_color(color.darken(0.3))
-                        .bg(color.lighten(0.1))
-                        .shadow_xs()
+                this.hover({
+                    let hover_shadow = hover_shadow.clone();
+                    move |this| {
+                        let next = this.border_color(color.darken(0.3)).bg(color.lighten(0.1));
+                        if let Some(shadow) = &hover_shadow {
+                            next.shadow(shadow.clone())
+                        } else {
+                            next
+                        }
+                    }
                 })
                 .active(|this| this.border_color(color.darken(0.5)).bg(color.darken(0.2)))
                 .on_mouse_move(window.listener_for(&state, move |state, _, window, cx| {
@@ -392,7 +404,7 @@ impl RenderOnce for ColorPicker {
                                         .border_1()
                                         .m_1()
                                         .border_color(cx.theme().input)
-                                        .when(cx.theme().shadow, |this| this.shadow_xs())
+                                        .when(cx.theme().shadow, |this| this.elevation_xs(cx))
                                         .rounded(cx.theme().radius)
                                         .overflow_hidden()
                                         .size_with(self.size)

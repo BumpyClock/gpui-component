@@ -79,6 +79,31 @@
           "type": ["boolean", "null"],
           "default": true
         },
+        "elevation.xs": {
+          "description": "Extra small elevation shadow value.",
+          "type": ["string", "null"],
+          "default": null
+        },
+        "elevation.sm": {
+          "description": "Small elevation shadow value.",
+          "type": ["string", "null"],
+          "default": null
+        },
+        "elevation.md": {
+          "description": "Medium elevation shadow value.",
+          "type": ["string", "null"],
+          "default": null
+        },
+        "elevation.lg": {
+          "description": "Large elevation shadow value.",
+          "type": ["string", "null"],
+          "default": null
+        },
+        "elevation.xl": {
+          "description": "Extra large elevation shadow value.",
+          "type": ["string", "null"],
+          "default": null
+        },
         "colors": {
           "description": "The colors of the theme.",
           "$ref": "#/$defs/ThemeConfigColors",

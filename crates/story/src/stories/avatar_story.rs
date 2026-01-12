@@ -1,11 +1,12 @@
 use gpui::{
-    px, App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement,
-    Render, Styled, Window,
+    App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, ParentElement, Render,
+    Styled, Window, px,
 };
 use gpui_component::{
+    ActiveTheme, IconName, Sizable as _, StyledExt,
     avatar::{Avatar, AvatarGroup},
     dock::PanelControl,
-    v_flex, ActiveTheme, IconName, Sizable as _, StyledExt,
+    v_flex,
 };
 
 use crate::section;
@@ -147,7 +148,7 @@ impl Render for AvatarStory {
                         .with_size(px(100.))
                         .border_3()
                         .border_color(cx.theme().foreground)
-                        .shadow_sm(),
+                        .shadow_sm(cx),
                 ),
             )
     }

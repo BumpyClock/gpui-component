@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Display};
 
-use gpui::{Hsla, SharedString, hsla};
+use gpui::{BoxShadow, Hsla, Pixels, Rgba, SharedString, hsla, point, px};
 use serde::{Deserialize, Deserializer, de::Error as _};
 
 use anyhow::{Error, Result, anyhow};
@@ -504,6 +504,40 @@ color_methods!(fuchsia);
 color_methods!(pink);
 color_methods!(rose);
 
+fn parse_css_rgb(color: &str) -> Option<Rgba> {
+    let color = color.trim();
+    let (is_rgba, body) = if let Some(body) = color.strip_prefix("rgba(") {
+        (true, body)
+    } else if let Some(body) = color.strip_prefix("rgb(") {
+        (false, body)
+    } else {
+        return None;
+    };
+    let body = body.strip_suffix(')')?;
+    let parts: Vec<&str> = body.split(',').map(|part| part.trim()).collect();
+    if is_rgba && parts.len() != 4 {
+        return None;
+    }
+    if !is_rgba && parts.len() != 3 {
+        return None;
+    }
+    let r = parts[0].parse::<f32>().ok()?;
+    let g = parts[1].parse::<f32>().ok()?;
+    let b = parts[2].parse::<f32>().ok()?;
+    let alpha = if is_rgba {
+        parts[3].parse::<f32>().ok()?
+    } else {
+        1.0
+    };
+    let a = if alpha > 1.0 { alpha / 255.0 } else { alpha };
+    Some(Rgba {
+        r: (r / 255.0).clamp(0.0, 1.0),
+        g: (g / 255.0).clamp(0.0, 1.0),
+        b: (b / 255.0).clamp(0.0, 1.0),
+        a: a.clamp(0.0, 1.0),
+    })
+}
+
 /// Try to parse the color, HEX or [Tailwind Color](https://tailwindcss.com/docs/colors) expression.
 ///
 /// # Parameter `color` should be one string value listed below:
@@ -518,7 +552,11 @@ color_methods!(rose);
 /// - `name/opacity` - The color name with opacity, `opacity` should be an integer between 0 and 100.
 /// - `name-scale/opacity` - The color name with scale and opacity.
 ///
+///
 pub fn try_parse_color(color: &str) -> Result<Hsla> {
+    if let Some(rgba) = parse_css_rgb(color) {
+        return Ok(rgba.into());
+    }
     if color.starts_with("#") {
         let rgba = gpui::Rgba::try_from(color)?;
         return Ok(rgba.into());
@@ -582,6 +620,91 @@ pub fn try_parse_color(color: &str) -> Result<Hsla> {
     }
 
     Ok(hsla)
+}
+
+pub fn try_parse_box_shadows(value: &str) -> Result<Vec<BoxShadow>> {
+    let mut shadows = Vec::new();
+    for layer in split_shadow_layers(value) {
+        let trimmed = layer.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let color_start =
+            find_shadow_color_start(trimmed).ok_or_else(|| anyhow!("Invalid shadow color"))?;
+        let (lengths_part, color_part) = trimmed.split_at(color_start);
+        let color = try_parse_color(color_part.trim())?;
+        let lengths: Vec<&str> = lengths_part.split_whitespace().collect();
+        if lengths.len() < 2 || lengths.len() > 4 {
+            return Err(anyhow!("Invalid shadow length"));
+        }
+        let offset_x = parse_shadow_length(lengths[0])?;
+        let offset_y = parse_shadow_length(lengths[1])?;
+        let blur = if lengths.len() >= 3 {
+            parse_shadow_length(lengths[2])?
+        } else {
+            px(0.0)
+        };
+        let spread = if lengths.len() == 4 {
+            parse_shadow_length(lengths[3])?
+        } else {
+            px(0.0)
+        };
+        shadows.push(BoxShadow {
+            offset: point(offset_x, offset_y),
+            blur_radius: blur,
+            spread_radius: spread,
+            color,
+        });
+    }
+    Ok(shadows)
+}
+
+fn split_shadow_layers(value: &str) -> Vec<String> {
+    let mut layers = Vec::new();
+    let mut current = String::new();
+    let mut depth: i32 = 0;
+    for ch in value.chars() {
+        match ch {
+            '(' => {
+                depth += 1;
+                current.push(ch);
+            }
+            ')' => {
+                depth = depth.saturating_sub(1);
+                current.push(ch);
+            }
+            ',' if depth == 0 => {
+                if !current.trim().is_empty() {
+                    layers.push(current.trim().to_string());
+                }
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+    if !current.trim().is_empty() {
+        layers.push(current.trim().to_string());
+    }
+    layers
+}
+
+fn find_shadow_color_start(value: &str) -> Option<usize> {
+    if let Some(index) = value.find("rgba(") {
+        return Some(index);
+    }
+    if let Some(index) = value.find("rgb(") {
+        return Some(index);
+    }
+    if let Some(index) = value.rfind('#') {
+        return Some(index);
+    }
+    value.rfind(' ').map(|index| index + 1)
+}
+
+fn parse_shadow_length(value: &str) -> Result<Pixels> {
+    let trimmed = value.trim().trim_end_matches("px");
+    let parsed = trimmed.parse::<f32>()?;
+    Ok(px(parsed))
 }
 
 #[cfg(test)]
@@ -696,6 +819,10 @@ mod tests {
         assert_eq!(
             try_parse_color("#00f21888").ok(),
             Some(hsla(0.34986225, 1.0, 0.4745098, 0.53333336))
+        );
+        assert_eq!(
+            try_parse_color("rgba(0, 0, 0, 0.5)").ok(),
+            Some(hsla(0.0, 0.0, 0.0, 0.5))
         );
         assert_eq!(try_parse_color("black").ok(), Some(crate::black()));
         assert_eq!(try_parse_color("white-800").ok(), Some(crate::white()));

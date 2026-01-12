@@ -393,7 +393,7 @@ impl RenderOnce for DatePicker {
                             .border_1()
                             .border_color(cx.theme().input)
                             .rounded(cx.theme().radius)
-                            .when(cx.theme().shadow, |this| this.shadow_xs())
+                            .when(cx.theme().shadow, |this| this.elevation_xs(cx))
                             .when(is_focused, |this| this.focused_border(cx))
                             .when(self.disabled, |this| {
                                 this.bg(cx.theme().muted)
@@ -441,7 +441,7 @@ impl RenderOnce for DatePicker {
                                 .p_3()
                                 .border_1()
                                 .border_color(cx.theme().border)
-                                .shadow_lg()
+                                .elevation_lg(cx)
                                 .rounded((cx.theme().radius * 2.).min(px(8.)))
                                 .bg(cx.theme().popover)
                                 .text_color(cx.theme().popover_foreground)

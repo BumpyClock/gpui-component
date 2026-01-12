@@ -207,7 +207,7 @@ impl RenderOnce for Sheet {
                             .occlude()
                             .bg(cx.theme().background)
                             .border_color(cx.theme().border)
-                            .shadow_xl()
+                            .elevation_xl(cx)
                             .refine_style(&self.style)
                             .map(|this| {
                                 // Set the size of the sheet.

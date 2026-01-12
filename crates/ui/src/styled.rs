@@ -162,6 +162,34 @@ pub trait StyledExt: Styled + Sized {
         self.border_1().border_color(cx.theme().ring)
     }
 
+    fn elevation_with(self, cx: &App, shadows: &[BoxShadow]) -> Self {
+        if cx.theme().shadow {
+            self.shadow(shadows.to_vec())
+        } else {
+            self
+        }
+    }
+
+    fn elevation_xs(self, cx: &App) -> Self {
+        self.elevation_with(cx, cx.theme().elevation_xs())
+    }
+
+    fn elevation_sm(self, cx: &App) -> Self {
+        self.elevation_with(cx, cx.theme().elevation_sm())
+    }
+
+    fn elevation_md(self, cx: &App) -> Self {
+        self.elevation_with(cx, cx.theme().elevation_md())
+    }
+
+    fn elevation_lg(self, cx: &App) -> Self {
+        self.elevation_with(cx, cx.theme().elevation_lg())
+    }
+
+    fn elevation_xl(self, cx: &App) -> Self {
+        self.elevation_with(cx, cx.theme().elevation_xl())
+    }
+
     font_weight!(font_thin, THIN);
     font_weight!(font_extralight, EXTRA_LIGHT);
     font_weight!(font_light, LIGHT);
@@ -179,7 +207,7 @@ pub trait StyledExt: Styled + Sized {
             .text_color(cx.theme().popover_foreground)
             .border_1()
             .border_color(cx.theme().border)
-            .shadow_lg()
+            .elevation_md(cx)
             .rounded(cx.theme().radius)
     }
 

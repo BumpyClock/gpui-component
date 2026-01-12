@@ -5,7 +5,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Colorize, Theme, ThemeColor, ThemeMode,
+    Colorize, Theme, ThemeColor, ThemeElevation, ThemeMode,
     highlighter::{HighlightTheme, HighlightThemeStyle},
     try_parse_color,
 };
@@ -60,6 +60,16 @@ pub struct ThemeConfig {
     /// Set shadows in the theme, for example the Input and Button, default is true.
     #[serde(rename = "shadow")]
     pub shadow: Option<bool>,
+    #[serde(rename = "elevation.xs")]
+    pub elevation_xs: Option<SharedString>,
+    #[serde(rename = "elevation.sm")]
+    pub elevation_sm: Option<SharedString>,
+    #[serde(rename = "elevation.md")]
+    pub elevation_md: Option<SharedString>,
+    #[serde(rename = "elevation.lg")]
+    pub elevation_lg: Option<SharedString>,
+    #[serde(rename = "elevation.xl")]
+    pub elevation_xl: Option<SharedString>,
 
     /// The colors of the theme.
     pub colors: ThemeConfigColors,
@@ -695,6 +705,9 @@ impl Theme {
         } else {
             self.shadow = default_theme.shadow;
         }
+
+        let default_elevation = ThemeElevation::default_for_mode(config.mode);
+        self.elevation = ThemeElevation::from_config(config, &default_elevation);
 
         self.colors.apply_config(&config, &default_theme.colors);
         self.mode = config.mode;
