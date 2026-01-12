@@ -3,7 +3,7 @@ use gpui::{
     ElementId, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
     KeyBinding, Length, ParentElement, Pixels, Render, RenderOnce, SharedString,
     StatefulInteractiveElement, StyleRefinement, Styled, Subscription, Task, WeakEntity, Window,
-    anchored, deferred, div, img, prelude::FluentBuilder, px, rems, ObjectFit, StyledImage,
+    anchored, deferred, div, prelude::FluentBuilder, px, rems,
 };
 use rust_i18n::t;
 
@@ -14,55 +14,12 @@ use crate::{
     h_flex,
     input::clear_button,
     list::{List, ListDelegate, ListState},
+    surface::{SurfaceContext, SurfacePreset},
     v_flex,
 };
 
 const CONTEXT: &str = "Select";
-const GLASS_NOISE_OPACITY: f32 = 0.02;
-const GLASS_NOISE_ASSET_PATH: &str = "noise/NoiseAsset_256.png";
-const GLASS_NOISE_TILE_SIZE: f32 = 128.0;
 
-fn glass_noise_overlay(
-    width: Pixels,
-    height: Pixels,
-    radius: Pixels,
-    scale_factor: f32,
-) -> impl IntoElement {
-    let tile_size_value = (GLASS_NOISE_TILE_SIZE / scale_factor.max(1.0)).round();
-    let tile_size = px(tile_size_value);
-    let cols = ((width / tile_size).max(0.0).ceil() as usize).max(1) + 12;
-    let rows = ((height / tile_size).max(0.0).ceil() as usize).max(1) + 12;
-    let tiled_width = px(tile_size_value * cols as f32);
-    let tiled_height = px(tile_size_value * rows as f32);
-    let tiles = cols.saturating_mul(rows);
-
-    div()
-        .absolute()
-        .inset_0()
-        .size_full()
-        .overflow_hidden()
-        .rounded(radius)
-        .child(
-            div()
-                .absolute()
-                .top_0()
-                .left_0()
-                .w(tiled_width)
-                .h(tiled_height)
-                .flex()
-                .flex_wrap()
-                .items_start()
-                .justify_start()
-                .children((0..tiles).map(|_| {
-                    img(GLASS_NOISE_ASSET_PATH)
-                        .w(tile_size)
-                        .h(tile_size)
-                        .flex_none()
-                        .object_fit(ObjectFit::Cover)
-                        .opacity(GLASS_NOISE_OPACITY)
-                })),
-        )
-}
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("up", SelectUp, Some(CONTEXT)),
@@ -841,7 +798,6 @@ where
             }
         };
         let menu_height = rems(20.).to_pixels(rem_size);
-        let scale_factor = window.scale_factor();
 
         self.list
             .update(cx, |list, cx| list.set_searchable(searchable, cx));
@@ -931,36 +887,34 @@ where
                                     Length::Auto => this.w(bounds.size.width + px(2.)),
                                     Length::Definite(w) => this.w(w),
                                 })
-                                .child(
-                                    v_flex()
-                                        .occlude()
-                                        .mt_1p5()
-                                        .backdrop_blur(px(60.))
-                                        .bg(cx.theme().popover.opacity(0.75))
-                                        .border_1()
-                                        .border_color(cx.theme().border_subtle)
-                                        .rounded(popup_radius)
-                                        .elevation_md(cx)
-                                        .relative()
-                                        .child(glass_noise_overlay(
+                                .child({
+                                    let ctx = SurfaceContext { blur_enabled: true };
+
+                                    SurfacePreset::flyout()
+                                        .with_radius(popup_radius)
+                                        .wrap_with_bounds(
+                                            v_flex()
+                                                .occlude()
+                                                .mt_1p5()
+                                                .child(
+                                                    List::new(&self.list)
+                                                        .when_some(
+                                                            self.options.search_placeholder.clone(),
+                                                            |this, placeholder| {
+                                                                this.search_placeholder(placeholder)
+                                                            },
+                                                        )
+                                                        .with_size(self.options.size)
+                                                        .max_h(rems(20.))
+                                                        .paddings(Edges::all(px(4.))),
+                                                ),
                                             menu_width,
                                             menu_height,
-                                            popup_radius,
-                                            scale_factor,
-                                        ))
-                                        .child(
-                                            List::new(&self.list)
-                                                .when_some(
-                                                    self.options.search_placeholder.clone(),
-                                                    |this, placeholder| {
-                                                        this.search_placeholder(placeholder)
-                                                    },
-                                                )
-                                                .with_size(self.options.size)
-                                                .max_h(rems(20.))
-                                                .paddings(Edges::all(px(4.))),
-                                        ),
-                                )
+                                            window,
+                                            cx,
+                                            ctx,
+                                        )
+                                })
                                 .on_mouse_down_out(cx.listener(|this, _, window, cx| {
                                     this.escape(&Cancel, window, cx);
                                 })),

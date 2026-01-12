@@ -2,63 +2,19 @@ use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::actions::{SelectLeft, SelectRight};
 use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::ScrollableElement;
+use crate::surface::{SurfacePreset, SurfaceContext};
 use crate::{ActiveTheme, ElementExt, Icon, IconName, Sizable as _, h_flex, v_flex};
-use crate::{Side, Size, StyledExt, kbd::Kbd};
+use crate::{Side, Size, kbd::Kbd};
 use gpui::{
     Action, AnyElement, App, AppContext, Bounds, Context, Corner, DismissEvent, Edges, Entity,
     EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
     ParentElement, Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled,
-    WeakEntity, Window, anchored, div, img, prelude::FluentBuilder, px, rems, ObjectFit, StyledImage,
+    WeakEntity, Window, anchored, div, prelude::FluentBuilder, px, rems,
 };
 use gpui::{ClickEvent, Half, MouseButton, MouseUpEvent, OwnedMenuItem, Subscription};
 use std::rc::Rc;
 
 const CONTEXT: &str = "PopupMenu";
-const GLASS_NOISE_OPACITY: f32 = 0.02;
-const GLASS_NOISE_ASSET_PATH: &str = "noise/NoiseAsset_256.png";
-const GLASS_NOISE_TILE_SIZE: f32 = 128.0;
-
-fn glass_noise_overlay(
-    width: Pixels,
-    height: Pixels,
-    radius: Pixels,
-    scale_factor: f32,
-) -> impl IntoElement {
-    let tile_size_value = (GLASS_NOISE_TILE_SIZE / scale_factor.max(1.0)).round();
-    let tile_size = px(tile_size_value);
-    let cols = ((width / tile_size).max(0.0).ceil() as usize).max(1) + 12;
-    let rows = ((height / tile_size).max(0.0).ceil() as usize).max(1) + 12;
-    let tiled_width = px(tile_size_value * cols as f32);
-    let tiled_height = px(tile_size_value * rows as f32);
-    let tiles = cols.saturating_mul(rows);
-
-    div()
-        .absolute()
-        .inset_0()
-        .size_full()
-        .overflow_hidden()
-        .rounded(radius)
-        .child(
-            div()
-                .absolute()
-                .top_0()
-                .left_0()
-                .w(tiled_width)
-                .h(tiled_height)
-                .flex()
-                .flex_wrap()
-                .items_start()
-                .justify_start()
-                .children((0..tiles).map(|_| {
-                    img(GLASS_NOISE_ASSET_PATH)
-                        .w(tile_size)
-                        .h(tile_size)
-                        .flex_none()
-                        .object_fit(ObjectFit::Cover)
-                        .opacity(GLASS_NOISE_OPACITY)
-                })),
-        )
-}
 
 pub fn init(cx: &mut App) {
     cx.bind_keys([
@@ -1295,7 +1251,6 @@ impl Render for PopupMenu {
             .any(|item| item.has_left_icon(self.check_side));
 
         let max_width = self.max_width();
-        let popover_radius = cx.theme().radius;
         let options = RenderOptions {
             has_left_icon,
             check_side: self.check_side,
@@ -1311,71 +1266,70 @@ impl Render for PopupMenu {
         } else {
             max_height
         };
-        let popover_radius = cx.theme().radius;
-        let scale_factor = window.scale_factor();
 
-        v_flex()
-            .id("popup-menu")
-            .key_context(CONTEXT)
-            .track_focus(&self.focus_handle)
-            .on_action(cx.listener(Self::select_up))
-            .on_action(cx.listener(Self::select_down))
-            .on_action(cx.listener(Self::select_left))
-            .on_action(cx.listener(Self::select_right))
-            .on_action(cx.listener(Self::confirm))
-            .on_action(cx.listener(Self::dismiss))
-            .on_mouse_up_out(
-                MouseButton::Left,
-                cx.listener(|this, ev: &MouseUpEvent, window, cx| {
-                    // Do not dismiss, if click inside the parent menu
-                    if let Some(parent) = this.parent_menu.as_ref() {
-                        if let Some(parent) = parent.upgrade() {
-                            if parent.read(cx).bounds.contains(&ev.position) {
-                                return;
+        let ctx = SurfaceContext { blur_enabled: true };
+
+        SurfacePreset::flyout().wrap_with_bounds(
+            v_flex()
+                .id("popup-menu")
+                .key_context(CONTEXT)
+                .track_focus(&self.focus_handle)
+                .on_action(cx.listener(Self::select_up))
+                .on_action(cx.listener(Self::select_down))
+                .on_action(cx.listener(Self::select_left))
+                .on_action(cx.listener(Self::select_right))
+                .on_action(cx.listener(Self::confirm))
+                .on_action(cx.listener(Self::dismiss))
+                .on_mouse_up_out(
+                    MouseButton::Left,
+                    cx.listener(|this, ev: &MouseUpEvent, window, cx| {
+                        // Do not dismiss, if click inside the parent menu
+                        if let Some(parent) = this.parent_menu.as_ref() {
+                            if let Some(parent) = parent.upgrade() {
+                                if parent.read(cx).bounds.contains(&ev.position) {
+                                    return;
+                                }
                             }
                         }
-                    }
 
-                    this.dismiss(&Cancel, window, cx);
+                        this.dismiss(&Cancel, window, cx);
+                    }),
+                )
+                // Note: Don't use .popover_style(cx) here - SurfacePreset::flyout() handles
+                // background, border, radius, and elevation. Only set text color.
+                .text_color(cx.theme().popover_foreground)
+                .child(
+                    v_flex()
+                        .id("items")
+                        .p_1()
+                        .gap_y_0p5()
+                        .min_w(rems(8.))
+                        .when_some(self.min_width, |this, min_width| this.min_w(min_width))
+                        .max_w(max_width)
+                        .when(self.scrollable, |this| {
+                            this.max_h(max_height)
+                                .overflow_y_scroll()
+                                .track_scroll(&self.scroll_handle)
+                        })
+                        .children(
+                            self.menu_items
+                                .iter()
+                                .enumerate()
+                                // Ignore last separator
+                                .filter(|(ix, item)| !(*ix + 1 == items_count && item.is_separator()))
+                                .map(|(ix, item)| self.render_item(ix, item, options, window, cx)),
+                        )
+                        .on_prepaint(move |bounds, _, cx| view.update(cx, |r, _| r.bounds = bounds)),
+                )
+                .when(self.scrollable, |this| {
+                    // TODO: When the menu is limited by `overflow_y_scroll`, the sub-menu will cannot be displayed.
+                    this.vertical_scrollbar(&self.scroll_handle)
                 }),
-            )
-            .popover_style(cx)
-            .backdrop_blur(px(60.))
-            .bg(cx.theme().popover.opacity(0.75))
-            .text_color(cx.theme().popover_foreground)
-            .relative()
-            .child(glass_noise_overlay(
-                overlay_width,
-                overlay_height,
-                popover_radius,
-                scale_factor,
-            ))
-            .child(
-                v_flex()
-                    .id("items")
-                    .p_1()
-                    .gap_y_0p5()
-                    .min_w(rems(8.))
-                    .when_some(self.min_width, |this, min_width| this.min_w(min_width))
-                    .max_w(max_width)
-                    .when(self.scrollable, |this| {
-                        this.max_h(max_height)
-                            .overflow_y_scroll()
-                            .track_scroll(&self.scroll_handle)
-                    })
-                    .children(
-                        self.menu_items
-                            .iter()
-                            .enumerate()
-                            // Ignore last separator
-                            .filter(|(ix, item)| !(*ix + 1 == items_count && item.is_separator()))
-                            .map(|(ix, item)| self.render_item(ix, item, options, window, cx)),
-                    )
-                    .on_prepaint(move |bounds, _, cx| view.update(cx, |r, _| r.bounds = bounds)),
-            )
-            .when(self.scrollable, |this| {
-                // TODO: When the menu is limited by `overflow_y_scroll`, the sub-menu will cannot be displayed.
-                this.vertical_scrollbar(&self.scroll_handle)
-            })
+            overlay_width,
+            overlay_height,
+            window,
+            cx,
+            ctx,
+        )
     }
 }

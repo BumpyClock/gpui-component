@@ -10,6 +10,7 @@ use gpui::{
 use crate::{
     StyledExt,
     input::{InputState, popovers::render_markdown},
+    surface::{SurfaceContext, SurfacePreset},
 };
 
 pub struct HoverPopover {
@@ -189,21 +190,28 @@ impl Element for Popover {
 
         let is_open = *open_state.read(cx);
 
+        let ctx = SurfaceContext { blur_enabled: true };
+
         let mut popover = deferred(
-            div()
-                .id("hover-popover-content")
-                .when(!is_open, |s| s.invisible())
-                .flex_none()
-                .occlude()
-                .p_1()
-                .text_xs()
-                .popover_style(cx)
-                .elevation_md(cx)
-                .max_w(max_width)
-                .max_h(max_height)
-                .overflow_y_scroll()
-                .refine_style(&self.style)
-                .child((self.content_builder)(window, cx)),
+            SurfacePreset::flyout().wrap_with_bounds(
+                div()
+                    .id("hover-popover-content")
+                    .when(!is_open, |s| s.invisible())
+                    .flex_none()
+                    .occlude()
+                    .p_1()
+                    .text_xs()
+                    .max_w(max_width)
+                    .max_h(max_height)
+                    .overflow_y_scroll()
+                    .refine_style(&self.style)
+                    .child((self.content_builder)(window, cx)),
+                max_width,
+                max_height,
+                window,
+                cx,
+                ctx,
+            ),
         )
         .into_any_element();
 
