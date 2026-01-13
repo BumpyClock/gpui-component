@@ -1,5 +1,6 @@
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::actions::{SelectLeft, SelectRight};
+use crate::global_state::GlobalState;
 use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::ScrollableElement;
 use crate::surface::{SurfaceContext, SurfacePreset};
@@ -290,6 +291,9 @@ pub struct PopupMenu {
     scroll_handle: ScrollHandle,
     // This will update on render
     submenu_anchor: (Corner, Pixels),
+    /// Whether blur effects are enabled for the popup menu.
+    /// If `None`, inherits from context. If `Some(value)`, uses the explicit value.
+    blur_enabled: Option<bool>,
 
     _subscriptions: Vec<Subscription>,
 }
@@ -312,6 +316,7 @@ impl PopupMenu {
             external_link_icon: true,
             size: Size::default(),
             submenu_anchor: (Corner::TopLeft, Pixels::ZERO),
+            blur_enabled: None, // Inherit from context by default
             _subscriptions: vec![],
         }
     }
@@ -369,6 +374,16 @@ impl PopupMenu {
     /// Set the menu to show external link icon, default is true.
     pub fn external_link_icon(mut self, visible: bool) -> Self {
         self.external_link_icon = visible;
+        self
+    }
+
+    /// Explicitly set whether blur effects are enabled for the popup menu.
+    ///
+    /// When set, this value overrides any inherited context from the parent
+    /// `WindowShell`. When not called, the menu inherits `blur_enabled`
+    /// from the parent context.
+    pub fn blur_enabled(mut self, enabled: bool) -> Self {
+        self.blur_enabled = Some(enabled);
         self
     }
 
@@ -1267,7 +1282,11 @@ impl Render for PopupMenu {
             max_height
         };
 
-        let ctx = SurfaceContext { blur_enabled: true };
+        let ctx = SurfaceContext {
+            blur_enabled: self
+                .blur_enabled
+                .unwrap_or_else(|| GlobalState::global(cx).blur_enabled()),
+        };
 
         SurfacePreset::flyout().wrap_with_bounds(
             v_flex()

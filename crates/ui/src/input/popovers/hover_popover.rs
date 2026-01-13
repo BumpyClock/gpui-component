@@ -9,6 +9,7 @@ use gpui::{
 
 use crate::{
     StyledExt,
+    global_state::GlobalState,
     input::{InputState, popovers::render_markdown},
     surface::{SurfaceContext, SurfacePreset},
 };
@@ -190,7 +191,10 @@ impl Element for Popover {
 
         let is_open = *open_state.read(cx);
 
-        let ctx = SurfaceContext { blur_enabled: true };
+        // Inherit blur_enabled from context
+        let ctx = SurfaceContext {
+            blur_enabled: GlobalState::global(cx).blur_enabled(),
+        };
 
         let mut popover = deferred(
             SurfacePreset::flyout().wrap_with_bounds(

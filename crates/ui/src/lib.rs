@@ -10,6 +10,7 @@ mod index_path;
 #[cfg(any(feature = "inspector", debug_assertions))]
 mod inspector;
 mod root;
+mod sidebar_shell;
 mod styled;
 mod surface;
 mod time;
@@ -17,6 +18,7 @@ mod title_bar;
 mod virtual_list;
 mod window_border;
 mod window_ext;
+mod window_shell;
 
 pub(crate) mod actions;
 
@@ -76,12 +78,14 @@ pub use crate::Disableable;
 pub use element_ext::ElementExt;
 pub use event::InteractiveElementExt;
 pub use geometry::*;
+pub use global_state::{BlurContext, GlobalState};
 pub use icon::*;
 pub use index_path::IndexPath;
 pub use input::{Rope, RopeExt, RopeLines};
 #[cfg(any(feature = "inspector", debug_assertions))]
 pub use inspector::*;
 pub use root::Root;
+pub use sidebar_shell::{SidebarShell, sidebar_shadow};
 pub use styled::*;
 pub use surface::*;
 pub use theme::*;
@@ -90,6 +94,7 @@ pub use title_bar::*;
 pub use virtual_list::{VirtualList, VirtualListScrollHandle, h_virtual_list, v_virtual_list};
 pub use window_border::{WindowBorder, window_border, window_paddings};
 pub use window_ext::WindowExt;
+pub use window_shell::{BlurEnabledScope, WindowLayoutMode, WindowShell};
 
 rust_i18n::i18n!("locales", fallback = "en");
 

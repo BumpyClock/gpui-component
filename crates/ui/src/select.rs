@@ -11,6 +11,7 @@ use crate::{
     ActiveTheme, Disableable, ElementExt as _, Icon, IconName, IndexPath, Selectable, Sizable,
     Size, StyleSized, StyledExt,
     actions::{Cancel, Confirm, SelectDown, SelectUp},
+    global_state::GlobalState,
     h_flex,
     input::clear_button,
     list::{List, ListDelegate, ListState},
@@ -320,6 +321,9 @@ struct SelectOptions {
     menu_width: Length,
     disabled: bool,
     appearance: bool,
+    /// Whether blur effects are enabled for the dropdown menu.
+    /// If `None`, inherits from context. If `Some(value)`, uses the explicit value.
+    blur_enabled: Option<bool>,
 }
 
 impl Default for SelectOptions {
@@ -336,6 +340,7 @@ impl Default for SelectOptions {
             disabled: false,
             appearance: true,
             search_placeholder: None,
+            blur_enabled: None, // Inherit from context by default
         }
     }
 }
@@ -888,7 +893,12 @@ where
                                     Length::Definite(w) => this.w(w),
                                 })
                                 .child({
-                                    let ctx = SurfaceContext { blur_enabled: true };
+                                    // Use explicit value if set, otherwise inherit from context
+                                    let blur_enabled = self
+                                        .options
+                                        .blur_enabled
+                                        .unwrap_or_else(|| GlobalState::global(cx).blur_enabled());
+                                    let ctx = SurfaceContext { blur_enabled };
 
                                     SurfacePreset::flyout()
                                         .with_radius(popup_radius)
@@ -990,6 +1000,16 @@ where
     /// Set the appearance of the select, if false the select input will no border, background.
     pub fn appearance(mut self, appearance: bool) -> Self {
         self.options.appearance = appearance;
+        self
+    }
+
+    /// Explicitly set whether blur effects are enabled for the dropdown menu.
+    ///
+    /// When set, this value overrides any inherited context from the parent
+    /// `WindowShell`. When not called, the dropdown inherits `blur_enabled`
+    /// from the parent context.
+    pub fn blur_enabled(mut self, enabled: bool) -> Self {
+        self.options.blur_enabled = Some(enabled);
         self
     }
 }

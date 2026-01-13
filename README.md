@@ -77,6 +77,48 @@ fn main() {
 }
 ```
 
+### Window Layout Primitives
+
+GPUI Component provides layout primitives for building window-based applications.
+
+#### SidebarShell
+
+A resizable sidebar panel with built-in shadow and glass effects. Uses a consumer-managed resize model where the component fires start/end callbacks and the consumer handles mouse move at the root level:
+
+```rust
+use gpui_component::SidebarShell;
+
+SidebarShell::left(px(260.0))
+    .min_width(px(200.0))
+    .max_width(px(400.0))
+    .blur_enabled(true)
+    .on_resize_start(|width, x, window, cx| {
+        // Store: resizing = true, start_width = width, start_x = x
+    })
+    .on_resize_end(|window, cx| {
+        // Clear: resizing = false
+    })
+    .child(sidebar_content)
+
+// Consumer handles mouse move at root level to calculate new width
+```
+
+#### WindowShell
+
+A layout shell with title bar regions and content slots:
+
+```rust
+use gpui_component::WindowShell;
+
+WindowShell::new()
+    .title_bar_height(px(40.0))
+    .blur_enabled(true)
+    .title_bar_left(logo_element)
+    .title_bar_center(title_element)
+    .sidebar_left(sidebar_content)
+    .main(main_content)
+```
+
 ### Icons
 
 GPUI Component has an `Icon` element, but it does not include SVG files by default.
