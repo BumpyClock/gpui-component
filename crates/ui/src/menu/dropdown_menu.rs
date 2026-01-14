@@ -4,8 +4,12 @@ use gpui::{
     Context, Corner, DismissEvent, ElementId, Entity, Focusable, InteractiveElement, IntoElement,
     RenderOnce, SharedString, StyleRefinement, Styled, Window,
 };
+use smol::Timer;
+use std::time::Duration;
 
-use crate::{Selectable, button::Button, menu::PopupMenu, popover::Popover};
+use crate::{Selectable, button::Button, global_state::GlobalState, menu::PopupMenu, popover::Popover};
+
+const DROPDOWN_MENU_CLOSE_DELAY: Duration = Duration::from_millis(140);
 
 /// A dropdown menu trait for buttons and other interactive elements
 pub trait DropdownMenu: Styled + Selectable + InteractiveElement + IntoElement + 'static {
@@ -76,6 +80,7 @@ where
 #[derive(Default)]
 struct DropdownMenuState {
     menu: Option<Entity<PopupMenu>>,
+    closing_id: u64,
 }
 
 impl<T> RenderOnce for DropdownMenuPopover<T>
@@ -109,6 +114,7 @@ where
                         });
                         menu_state.update(cx, |state, _| {
                             state.menu = Some(menu.clone());
+                            state.closing_id = state.closing_id.wrapping_add(1);
                         });
                         menu.focus_handle(cx).focus(window, cx);
 
@@ -121,9 +127,34 @@ where
                                     popover_state.update(cx, |state, cx| {
                                         state.dismiss(window, cx);
                                     });
-                                    menu_state.update(cx, |state, _| {
-                                        state.menu = None;
+                                    let reduced_motion =
+                                        GlobalState::global(cx).reduced_motion();
+                                    let closing_id = menu_state.update(cx, |state, _| {
+                                        state.closing_id = state.closing_id.wrapping_add(1);
+                                        state.closing_id
                                     });
+                                    if reduced_motion {
+                                        menu_state.update(cx, |state, _| {
+                                            if state.closing_id == closing_id {
+                                                state.menu = None;
+                                            }
+                                        });
+                                    } else {
+                                        let menu_state = menu_state.clone();
+                                        window
+                                            .spawn(cx, async move |cx| {
+                                                Timer::after(DROPDOWN_MENU_CLOSE_DELAY).await;
+                                                cx.update(|_, cx| {
+                                                    _ = menu_state.update(cx, |state, _| {
+                                                        if state.closing_id == closing_id {
+                                                            state.menu = None;
+                                                        }
+                                                    });
+                                                })
+                                                .ok();
+                                            })
+                                            .detach();
+                                    }
                                 }
                             })
                             .detach();

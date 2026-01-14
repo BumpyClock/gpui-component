@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, time::{Duration, Instant}};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use gpui::{
     Animation, AnimationExt as _, AnyElement, App, Context, Corner, DismissEvent, Element,
@@ -7,6 +7,7 @@ use gpui::{
     StyleRefinement, Styled, Subscription, Window, anchored, deferred, div,
     prelude::FluentBuilder, px,
 };
+use smol::Timer;
 
 use crate::{animation::cubic_bezier, global_state::GlobalState, menu::PopupMenu};
 
@@ -110,7 +111,7 @@ struct ContextMenuSharedState {
     menu_view: Option<Entity<PopupMenu>>,
     open: bool,
     closing: bool,
-    closing_started_at: Option<Instant>,
+    closing_id: u64,
     position: Point<Pixels>,
     _subscription: Option<Subscription>,
 }
@@ -128,7 +129,7 @@ impl Default for ContextMenuState {
                 menu_view: None,
                 open: false,
                 closing: false,
-                closing_started_at: None,
+                closing_id: 0,
                 position: Default::default(),
                 _subscription: None,
             })),
@@ -162,22 +163,6 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
             window,
             cx,
             |this, state: &mut ContextMenuState, window, cx| {
-                {
-                    let mut shared_state = state.shared_state.borrow_mut();
-                    if shared_state.closing {
-                        if let Some(started_at) = shared_state.closing_started_at {
-                            if started_at.elapsed() >= CONTEXT_MENU_CLOSE_DURATION {
-                                shared_state.closing = false;
-                                shared_state.open = false;
-                                shared_state.menu_view = None;
-                                shared_state.closing_started_at = None;
-                            } else {
-                                window.request_animation_frame();
-                            }
-                        }
-                    }
-                }
-
                 let (position, open, closing, menu_view) = {
                     let shared_state = state.shared_state.borrow();
                     (
@@ -345,7 +330,7 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                             shared_state.position = event.position;
                             shared_state.open = true;
                             shared_state.closing = false;
-                            shared_state.closing_started_at = None;
+                            shared_state.closing_id = shared_state.closing_id.wrapping_add(1);
                         }
 
                         // Use defer to build the menu in the next frame, avoiding race conditions
@@ -366,19 +351,40 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                     move |_, _: &DismissEvent, window, cx| {
                                         let reduced_motion =
                                             GlobalState::global(cx).reduced_motion();
-                                        let mut state = shared_state.borrow_mut();
-                                        if reduced_motion {
-                                            state.open = false;
-                                            state.closing = false;
-                                            state.closing_started_at = None;
-                                            state.menu_view = None;
-                                        } else {
+                                        let closing_id = {
+                                            let mut state = shared_state.borrow_mut();
+                                            if reduced_motion {
+                                                state.open = false;
+                                                state.closing = false;
+                                                state.menu_view = None;
+                                                state.closing_id = state.closing_id.wrapping_add(1);
+                                                window.refresh();
+                                                return;
+                                            }
+
                                             state.open = false;
                                             state.closing = true;
-                                            state.closing_started_at = Some(Instant::now());
-                                            window.request_animation_frame();
-                                        }
-                                        window.refresh();
+                                            state.closing_id = state.closing_id.wrapping_add(1);
+                                            let closing_id = state.closing_id;
+                                            window.refresh();
+                                            closing_id
+                                        };
+
+                                        let shared_state = shared_state.clone();
+                                        window
+                                            .spawn(cx, async move |cx| {
+                                                Timer::after(CONTEXT_MENU_CLOSE_DURATION).await;
+                                                cx.update(|_, _| {
+                                                    let mut state = shared_state.borrow_mut();
+                                                    if state.closing && state.closing_id == closing_id
+                                                    {
+                                                        state.closing = false;
+                                                        state.menu_view = None;
+                                                    }
+                                                })
+                                                .ok();
+                                            })
+                                            .detach();
                                     }
                                 });
 
