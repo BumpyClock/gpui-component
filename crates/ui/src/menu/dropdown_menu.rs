@@ -7,7 +7,9 @@ use gpui::{
 use smol::Timer;
 use std::time::Duration;
 
-use crate::{Selectable, button::Button, global_state::GlobalState, menu::PopupMenu, popover::Popover};
+use crate::{
+    Selectable, button::Button, global_state::GlobalState, menu::PopupMenu, popover::Popover,
+};
 
 const DROPDOWN_MENU_CLOSE_DELAY: Duration = Duration::from_millis(140);
 
@@ -127,8 +129,7 @@ where
                                     popover_state.update(cx, |state, cx| {
                                         state.dismiss(window, cx);
                                     });
-                                    let reduced_motion =
-                                        GlobalState::global(cx).reduced_motion();
+                                    let reduced_motion = GlobalState::global(cx).reduced_motion();
                                     let closing_id = menu_state.update(cx, |state, _| {
                                         state.closing_id = state.closing_id.wrapping_add(1);
                                         state.closing_id

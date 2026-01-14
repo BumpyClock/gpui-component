@@ -684,7 +684,9 @@ where
                     .h_full()
                     .justify_center()
                     .bg(cx.theme().table_row_border)
-                    .group_hover(&group_id, |this| this.bg(cx.theme().border_default).h_full())
+                    .group_hover(&group_id, |this| {
+                        this.bg(cx.theme().border_default).h_full()
+                    })
                     .w(px(1.)),
             )
             .on_drag_move(

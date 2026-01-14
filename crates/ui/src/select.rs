@@ -1016,9 +1016,8 @@ where
                                                     this.opacity(1.0 - delta)
                                                         .top(SELECT_MOTION_OFFSET * delta)
                                                 } else {
-                                                    this.opacity(delta).top(
-                                                        SELECT_MOTION_OFFSET * (1.0 - delta),
-                                                    )
+                                                    this.opacity(delta)
+                                                        .top(SELECT_MOTION_OFFSET * (1.0 - delta))
                                                 }
                                             },
                                         )

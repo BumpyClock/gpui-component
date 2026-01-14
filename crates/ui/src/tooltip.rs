@@ -4,8 +4,8 @@ use gpui::{
 };
 
 use crate::{
-    ActiveTheme, StyledExt, SurfaceContext, SurfacePreset, global_state::GlobalState,
-    h_flex, kbd::Kbd, text::Text,
+    ActiveTheme, StyledExt, SurfaceContext, SurfacePreset, global_state::GlobalState, h_flex,
+    kbd::Kbd, text::Text,
 };
 
 enum TooltipContext {

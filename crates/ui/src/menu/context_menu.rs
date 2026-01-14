@@ -4,8 +4,8 @@ use gpui::{
     Animation, AnimationExt as _, AnyElement, App, Context, Corner, DismissEvent, Element,
     ElementId, Entity, Focusable, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId,
     InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Point,
-    StyleRefinement, Styled, Subscription, Window, anchored, deferred, div,
-    prelude::FluentBuilder, px,
+    StyleRefinement, Styled, Subscription, Window, anchored, deferred, div, prelude::FluentBuilder,
+    px,
 };
 use smol::Timer;
 
@@ -217,7 +217,8 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                                         } else {
                                                             CONTEXT_MENU_OPEN_DURATION
                                                         };
-                                                        let easing = cubic_bezier(0.25, 1.0, 0.5, 1.0);
+                                                        let easing =
+                                                            cubic_bezier(0.25, 1.0, 0.5, 1.0);
                                                         div()
                                                             .relative()
                                                             .child(menu)
@@ -229,8 +230,9 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                                                 Animation::new(duration)
                                                                     .with_easing(easing),
                                                                 move |this, delta| {
-                                                                    let offset = CONTEXT_MENU_MOTION_OFFSET
-                                                                        * motion_direction;
+                                                                    let offset =
+                                                                        CONTEXT_MENU_MOTION_OFFSET
+                                                                            * motion_direction;
                                                                     if is_closing {
                                                                         this.opacity(1.0 - delta)
                                                                             .top(offset * delta)
@@ -376,7 +378,8 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                                 Timer::after(CONTEXT_MENU_CLOSE_DURATION).await;
                                                 cx.update(|_, _| {
                                                     let mut state = shared_state.borrow_mut();
-                                                    if state.closing && state.closing_id == closing_id
+                                                    if state.closing
+                                                        && state.closing_id == closing_id
                                                     {
                                                         state.closing = false;
                                                         state.menu_view = None;

@@ -17,9 +17,10 @@ use smol::Timer;
 
 use crate::{
     ActiveTheme as _, Anchor, Edges, ElevationToken, Icon, IconName, Sizable as _, StyledExt,
-    SurfaceContext, SurfacePreset, TITLE_BAR_HEIGHT, global_state::GlobalState,
+    SurfaceContext, SurfacePreset, TITLE_BAR_HEIGHT,
     animation::cubic_bezier,
     button::{Button, ButtonVariants as _},
+    global_state::GlobalState,
     h_flex, v_flex,
 };
 

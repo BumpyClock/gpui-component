@@ -973,7 +973,10 @@ impl ButtonVariant {
         };
         let fg = cx.theme().muted_foreground.opacity(0.5);
         let (bg, border) = if outline {
-            (cx.theme().transparent, cx.theme().border_default.opacity(0.5))
+            (
+                cx.theme().transparent,
+                cx.theme().border_default.opacity(0.5),
+            )
         } else {
             (bg, bg)
         };

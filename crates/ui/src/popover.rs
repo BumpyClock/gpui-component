@@ -1,12 +1,12 @@
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, Bounds, Context, Corner, DismissEvent, ElementId,
-    EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyBinding,
-    MouseButton, ParentElement, Pixels, Point, Render, RenderOnce, StyleRefinement, Styled,
-    Subscription, Window, anchored, deferred, div, prelude::FluentBuilder as _, px,
+    Animation, AnimationExt as _, AnyElement, App, Bounds, Context, Corner, DismissEvent,
+    ElementId, EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
+    KeyBinding, MouseButton, ParentElement, Pixels, Point, Render, RenderOnce, StyleRefinement,
+    Styled, Subscription, Window, anchored, deferred, div, prelude::FluentBuilder as _, px,
 };
 use smol::Timer;
-use std::time::Duration;
 use std::rc::Rc;
+use std::time::Duration;
 
 use crate::{
     ActiveTheme as _, ElementExt, Selectable, StyledExt as _, SurfaceContext, SurfacePreset,

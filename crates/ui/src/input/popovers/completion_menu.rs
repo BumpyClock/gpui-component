@@ -423,17 +423,15 @@ impl Render for CompletionMenu {
                 .gap(POPOVER_GAP)
                 .items_start()
                 .when(vertical_layout, |this| this.flex_col())
-                .child(
-                    editor_popover(
-                        div()
-                            .id("completion-menu")
-                            .max_w(max_width)
-                            .min_w(px(120.))
-                            .child(List::new(&self.list).max_h(MAX_MENU_HEIGHT)),
-                        window,
-                        cx,
-                    ),
-                )
+                .child(editor_popover(
+                    div()
+                        .id("completion-menu")
+                        .max_w(max_width)
+                        .min_w(px(120.))
+                        .child(List::new(&self.list).max_h(MAX_MENU_HEIGHT)),
+                    window,
+                    cx,
+                ))
                 .when_some(selected_documentation, |this, documentation| {
                     let mut doc = match documentation {
                         lsp_types::Documentation::String(s) => s.clone(),
@@ -444,17 +442,15 @@ impl Render for CompletionMenu {
                     }
 
                     this.child(
-                        div().child(
-                            editor_popover(
-                                div()
-                                    .id("completion-menu")
-                                    .w(MAX_MENU_WIDTH)
-                                    .px_2()
-                                    .child(render_markdown("doc", doc, window, cx)),
-                                window,
-                                cx,
-                            ),
-                        ),
+                        div().child(editor_popover(
+                            div()
+                                .id("completion-menu")
+                                .w(MAX_MENU_WIDTH)
+                                .px_2()
+                                .child(render_markdown("doc", doc, window, cx)),
+                            window,
+                            cx,
+                        )),
                     )
                 })
                 .on_mouse_down_out(cx.listener(|this, _, _, cx| {

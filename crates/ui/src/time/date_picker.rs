@@ -11,7 +11,8 @@ use rust_i18n::t;
 
 use crate::{
     ActiveTheme, Disableable, ElevationToken, Icon, IconName, Sizable, Size, StyleSized as _,
-    StyledExt as _, SurfaceContext, SurfacePreset, actions::{Cancel, Confirm},
+    StyledExt as _, SurfaceContext, SurfacePreset,
+    actions::{Cancel, Confirm},
     button::{Button, ButtonVariants as _},
     global_state::GlobalState,
     h_flex,
@@ -434,77 +435,69 @@ impl RenderOnce for DatePicker {
             )
             .when(state.open, |this| {
                 this.child(
-                    deferred(
-                        anchored().snap_to_window_with_margin(px(8.)).child({
-                            let window_size = window.bounds().size;
-                            let ctx = SurfaceContext {
-                                blur_enabled: GlobalState::global(cx).blur_enabled(),
-                            };
-                            let radius = (cx.theme().radius * 2.).min(px(8.));
+                    deferred(anchored().snap_to_window_with_margin(px(8.)).child({
+                        let window_size = window.bounds().size;
+                        let ctx = SurfaceContext {
+                            blur_enabled: GlobalState::global(cx).blur_enabled(),
+                        };
+                        let radius = (cx.theme().radius * 2.).min(px(8.));
 
-                            let content = div()
-                                .occlude()
-                                .p_3()
-                                .text_color(cx.theme().surface_raised_foreground)
-                                .on_mouse_up_out(
-                                    MouseButton::Left,
-                                    window.listener_for(&self.state, |view, _, window, cx| {
-                                        view.on_escape(&Cancel, window, cx);
-                                    }),
-                                )
-                                .child(
-                                    h_flex()
-                                        .gap_3()
-                                        .h_full()
-                                        .items_start()
-                                        .when_some(self.presets.clone(), |this, presets| {
-                                            this.child(
-                                                v_flex().my_1().gap_2().justify_end().children(
-                                                    presets.into_iter().enumerate().map(
-                                                        |(i, preset)| {
-                                                            Button::new(("preset", i))
-                                                                .small()
-                                                                .ghost()
-                                                                .tab_stop(false)
-                                                                .label(preset.label.clone())
-                                                                .on_click(window.listener_for(
-                                                                    &self.state,
-                                                                    move |this, _, window, cx| {
-                                                                        this.select_preset(
-                                                                            &preset, window, cx,
-                                                                        );
-                                                                    },
-                                                                ))
+                        let content = div()
+                            .occlude()
+                            .p_3()
+                            .text_color(cx.theme().surface_raised_foreground)
+                            .on_mouse_up_out(
+                                MouseButton::Left,
+                                window.listener_for(&self.state, |view, _, window, cx| {
+                                    view.on_escape(&Cancel, window, cx);
+                                }),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_3()
+                                    .h_full()
+                                    .items_start()
+                                    .when_some(self.presets.clone(), |this, presets| {
+                                        this.child(v_flex().my_1().gap_2().justify_end().children(
+                                            presets.into_iter().enumerate().map(|(i, preset)| {
+                                                Button::new(("preset", i))
+                                                    .small()
+                                                    .ghost()
+                                                    .tab_stop(false)
+                                                    .label(preset.label.clone())
+                                                    .on_click(window.listener_for(
+                                                        &self.state,
+                                                        move |this, _, window, cx| {
+                                                            this.select_preset(&preset, window, cx);
                                                         },
-                                                    ),
-                                                ),
-                                            )
-                                        })
-                                        .child(
-                                            Calendar::new(&state.calendar)
-                                                .number_of_months(self.number_of_months)
-                                                .border_0()
-                                                .rounded_none()
-                                                .p_0()
-                                                .with_size(self.size),
-                                        ),
-                                );
+                                                    ))
+                                            }),
+                                        ))
+                                    })
+                                    .child(
+                                        Calendar::new(&state.calendar)
+                                            .number_of_months(self.number_of_months)
+                                            .border_0()
+                                            .rounded_none()
+                                            .p_0()
+                                            .with_size(self.size),
+                                    ),
+                            );
 
-                            SurfacePreset::flyout()
-                                .with_radius(radius)
-                                .with_elevation(ElevationToken::Lg)
-                                .wrap_with_bounds(
-                                    content,
-                                    window_size.width,
-                                    window_size.height,
-                                    window,
-                                    cx,
-                                    ctx,
-                                )
-                                .bg(cx.theme().surface_raised)
-                                .mt_1p5()
-                        }),
-                    )
+                        SurfacePreset::flyout()
+                            .with_radius(radius)
+                            .with_elevation(ElevationToken::Lg)
+                            .wrap_with_bounds(
+                                content,
+                                window_size.width,
+                                window_size.height,
+                                window,
+                                cx,
+                                ctx,
+                            )
+                            .bg(cx.theme().surface_raised)
+                            .mt_1p5()
+                    }))
                     .with_priority(2),
                 )
             })

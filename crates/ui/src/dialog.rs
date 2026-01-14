@@ -10,10 +10,11 @@ use rust_i18n::t;
 
 use crate::{
     ActiveTheme as _, ElevationToken, IconName, Root, Sizable as _, StyledExt, SurfaceContext,
-    SurfacePreset, TITLE_BAR_HEIGHT, WindowExt as _, global_state::GlobalState,
+    SurfacePreset, TITLE_BAR_HEIGHT, WindowExt as _,
     actions::{Cancel, Confirm},
     animation::cubic_bezier,
     button::{Button, ButtonVariant, ButtonVariants as _},
+    global_state::GlobalState,
     h_flex,
     scroll::ScrollableElement as _,
     v_flex,
