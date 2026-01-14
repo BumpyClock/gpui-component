@@ -1,13 +1,18 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, time::{Duration, Instant}};
 
 use gpui::{
-    AnyElement, App, Context, Corner, DismissEvent, Element, ElementId, Entity, Focusable,
-    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement, IntoElement,
-    MouseButton, MouseDownEvent, ParentElement, Pixels, Point, StyleRefinement, Styled,
-    Subscription, Window, anchored, deferred, div, prelude::FluentBuilder, px,
+    Animation, AnimationExt as _, AnyElement, App, Context, Corner, DismissEvent, Element,
+    ElementId, Entity, Focusable, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId,
+    InteractiveElement, IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Point,
+    StyleRefinement, Styled, Subscription, Window, anchored, deferred, div,
+    prelude::FluentBuilder, px,
 };
 
-use crate::menu::PopupMenu;
+use crate::{animation::cubic_bezier, global_state::GlobalState, menu::PopupMenu};
+
+const CONTEXT_MENU_OPEN_DURATION: Duration = Duration::from_millis(180);
+const CONTEXT_MENU_CLOSE_DURATION: Duration = Duration::from_millis(140);
+const CONTEXT_MENU_MOTION_OFFSET: Pixels = px(6.);
 
 /// A extension trait for adding a context menu to an element.
 pub trait ContextMenuExt: ParentElement + Styled {
@@ -104,6 +109,8 @@ impl<E: ParentElement + Styled + IntoElement + 'static> IntoElement for ContextM
 struct ContextMenuSharedState {
     menu_view: Option<Entity<PopupMenu>>,
     open: bool,
+    closing: bool,
+    closing_started_at: Option<Instant>,
     position: Point<Pixels>,
     _subscription: Option<Subscription>,
 }
@@ -120,6 +127,8 @@ impl Default for ContextMenuState {
             shared_state: Rc::new(RefCell::new(ContextMenuSharedState {
                 menu_view: None,
                 open: false,
+                closing: false,
+                closing_started_at: None,
                 position: Default::default(),
                 _subscription: None,
             })),
@@ -153,19 +162,44 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
             window,
             cx,
             |this, state: &mut ContextMenuState, window, cx| {
-                let (position, open) = {
+                {
+                    let mut shared_state = state.shared_state.borrow_mut();
+                    if shared_state.closing {
+                        if let Some(started_at) = shared_state.closing_started_at {
+                            if started_at.elapsed() >= CONTEXT_MENU_CLOSE_DURATION {
+                                shared_state.closing = false;
+                                shared_state.open = false;
+                                shared_state.menu_view = None;
+                                shared_state.closing_started_at = None;
+                            } else {
+                                window.request_animation_frame();
+                            }
+                        }
+                    }
+                }
+
+                let (position, open, closing, menu_view) = {
                     let shared_state = state.shared_state.borrow();
-                    (shared_state.position, shared_state.open)
+                    (
+                        shared_state.position,
+                        shared_state.open,
+                        shared_state.closing,
+                        shared_state.menu_view.clone(),
+                    )
                 };
-                let menu_view = state.shared_state.borrow().menu_view.clone();
                 let mut menu_element = None;
-                if open {
+                if open || closing {
                     let has_menu_item = menu_view
                         .as_ref()
                         .map(|menu| !menu.read(cx).is_empty())
                         .unwrap_or(false);
 
                     if has_menu_item {
+                        let reduced_motion = GlobalState::global(cx).reduced_motion();
+                        let motion_direction = match anchor {
+                            Corner::TopLeft | Corner::TopRight => 1.0,
+                            Corner::BottomLeft | Corner::BottomRight => -1.0,
+                        };
                         menu_element = Some(
                             deferred(
                                 anchored().child(
@@ -188,8 +222,44 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                                     {
                                                         menu.focus_handle(cx).focus(window, cx);
                                                     }
+                                                    let menu = menu.clone().into_any_element();
+                                                    let menu = if reduced_motion {
+                                                        menu
+                                                    } else {
+                                                        let is_closing = closing;
+                                                        let duration = if is_closing {
+                                                            CONTEXT_MENU_CLOSE_DURATION
+                                                        } else {
+                                                            CONTEXT_MENU_OPEN_DURATION
+                                                        };
+                                                        let easing = cubic_bezier(0.25, 1.0, 0.5, 1.0);
+                                                        div()
+                                                            .relative()
+                                                            .child(menu)
+                                                            .with_animation(
+                                                                ElementId::NamedInteger(
+                                                                    "context-menu-motion".into(),
+                                                                    is_closing as u64,
+                                                                ),
+                                                                Animation::new(duration)
+                                                                    .with_easing(easing),
+                                                                move |this, delta| {
+                                                                    let offset = CONTEXT_MENU_MOTION_OFFSET
+                                                                        * motion_direction;
+                                                                    if is_closing {
+                                                                        this.opacity(1.0 - delta)
+                                                                            .top(offset * delta)
+                                                                    } else {
+                                                                        this.opacity(delta).top(
+                                                                            offset * (1.0 - delta),
+                                                                        )
+                                                                    }
+                                                                },
+                                                            )
+                                                            .into_any_element()
+                                                    };
 
-                                                    this.child(menu.clone())
+                                                    this.child(menu)
                                                 }),
                                         ),
                                 ),
@@ -274,6 +344,8 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                             shared_state._subscription = None;
                             shared_state.position = event.position;
                             shared_state.open = true;
+                            shared_state.closing = false;
+                            shared_state.closing_started_at = None;
                         }
 
                         // Use defer to build the menu in the next frame, avoiding race conditions
@@ -291,8 +363,21 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                 // Set up the subscription for dismiss handling
                                 let _subscription = window.subscribe(&menu, cx, {
                                     let shared_state = shared_state.clone();
-                                    move |_, _: &DismissEvent, window, _cx| {
-                                        shared_state.borrow_mut().open = false;
+                                    move |_, _: &DismissEvent, window, cx| {
+                                        let reduced_motion =
+                                            GlobalState::global(cx).reduced_motion();
+                                        let mut state = shared_state.borrow_mut();
+                                        if reduced_motion {
+                                            state.open = false;
+                                            state.closing = false;
+                                            state.closing_started_at = None;
+                                            state.menu_view = None;
+                                        } else {
+                                            state.open = false;
+                                            state.closing = true;
+                                            state.closing_started_at = Some(Instant::now());
+                                            window.request_animation_frame();
+                                        }
                                         window.refresh();
                                     }
                                 });

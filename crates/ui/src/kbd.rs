@@ -225,7 +225,7 @@ impl RenderOnce for Kbd {
             .bg(cx.theme().muted)
             .when(self.outline, |this| {
                 this.border_1()
-                    .border_color(cx.theme().border)
+                    .border_color(cx.theme().border_default)
                     .bg(cx.theme().background)
             })
             .py_0p5()

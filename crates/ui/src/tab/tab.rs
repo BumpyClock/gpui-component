@@ -142,7 +142,7 @@ impl TabVariant {
                 fg: cx.theme().tab_foreground,
                 bg: cx.theme().transparent,
                 borders: Edges::all(px(1.)),
-                border_color: cx.theme().border,
+                border_color: cx.theme().border_default,
                 ..Default::default()
             },
             TabVariant::Pill => TabStyle {
@@ -187,7 +187,7 @@ impl TabVariant {
                 fg: cx.theme().secondary_foreground,
                 bg: cx.theme().secondary_hover,
                 borders: Edges::all(px(1.)),
-                border_color: cx.theme().border,
+                border_color: cx.theme().border_default,
                 ..Default::default()
             },
             TabVariant::Pill => TabStyle {
@@ -230,7 +230,7 @@ impl TabVariant {
                     right: px(1.),
                     ..Default::default()
                 },
-                border_color: cx.theme().border,
+                border_color: cx.theme().border_default,
                 ..Default::default()
             },
             TabVariant::Outline => TabStyle {
@@ -271,7 +271,7 @@ impl TabVariant {
                 fg: cx.theme().muted_foreground,
                 bg: cx.theme().transparent,
                 border_color: if selected {
-                    cx.theme().border
+                    cx.theme().border_default
                 } else {
                     cx.theme().transparent
                 },
@@ -290,7 +290,7 @@ impl TabVariant {
                 border_color: if selected {
                     cx.theme().primary
                 } else {
-                    cx.theme().border
+                    cx.theme().border_default
                 },
                 ..Default::default()
             },
@@ -321,7 +321,7 @@ impl TabVariant {
                 fg: cx.theme().muted_foreground,
                 bg: cx.theme().transparent,
                 border_color: if selected {
-                    cx.theme().border
+                    cx.theme().border_default
                 } else {
                     cx.theme().transparent
                 },

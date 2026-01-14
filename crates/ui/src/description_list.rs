@@ -285,13 +285,13 @@ impl RenderOnce for DescriptionList {
             .when(self.bordered, |this| {
                 this.rounded(padding_x)
                     .border_1()
-                    .border_color(cx.theme().border)
+                    .border_color(cx.theme().border_default)
             })
             .children(rows.into_iter().enumerate().map(|(ix, items)| {
                 let is_last = ix == rows_len - 1;
                 h_flex()
                     .when(self.bordered && !is_last, |this| {
-                        this.border_b_1().border_color(cx.theme().border)
+                        this.border_b_1().border_color(cx.theme().border_default)
                     })
                     .children({
                         items.into_iter().enumerate().map(|(item_ix, item)| {
@@ -328,7 +328,7 @@ impl RenderOnce for DescriptionList {
                                                     .when(self.layout.is_vertical(), |this| {
                                                         this.border_b_1()
                                                     })
-                                                    .border_color(cx.theme().border)
+                                                    .border_color(cx.theme().border_default)
                                                     .bg(cx.theme().description_list_label)
                                                 })
                                                 .map(|this| match label_width {

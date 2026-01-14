@@ -31,8 +31,10 @@
 //!   underlying content from intercepting clicks in the title bar region.
 
 mod blur_scope;
+mod reduced_motion_scope;
 
 pub use blur_scope::BlurEnabledScope;
+pub use reduced_motion_scope::ReducedMotionScope;
 
 use std::rc::Rc;
 
@@ -106,6 +108,7 @@ pub struct WindowShell {
     title_bar_height: Pixels,
     inset: Pixels,
     blur_enabled: bool,
+    reduced_motion: bool,
 
     // Safe area offsets
     safe_area_left: Pixels,
@@ -155,6 +158,7 @@ impl WindowShell {
     /// - `title_bar_height`: TITLE_BAR_HEIGHT (34px)
     /// - `inset`: 4.0px
     /// - `blur_enabled`: true
+    /// - `reduced_motion`: false
     /// - `safe_area_left`: 80px on macOS, 0 otherwise
     /// - `safe_area_right`: 138px on Windows, 0 otherwise
     pub fn new() -> Self {
@@ -163,6 +167,7 @@ impl WindowShell {
             title_bar_height: TITLE_BAR_HEIGHT,
             inset: px(4.0),
             blur_enabled: true,
+            reduced_motion: false,
             safe_area_left: DEFAULT_SAFE_AREA_LEFT,
             safe_area_right: DEFAULT_SAFE_AREA_RIGHT,
             sidebar_left: None,
@@ -208,6 +213,12 @@ impl WindowShell {
     /// Set whether blur effects are enabled.
     pub fn blur_enabled(mut self, enabled: bool) -> Self {
         self.blur_enabled = enabled;
+        self
+    }
+
+    /// Set whether reduced motion is enabled.
+    pub fn reduced_motion(mut self, reduced_motion: bool) -> Self {
+        self.reduced_motion = reduced_motion;
         self
     }
 
@@ -481,7 +492,7 @@ impl WindowShell {
         on_split_resize: Option<Rc<dyn Fn(Pixels, &mut Window, &mut App)>>,
         cx: &App,
     ) -> impl IntoElement {
-        let splitter_hover_bg = cx.theme().border;
+        let splitter_hover_bg = cx.theme().border_default;
 
         div()
             .id("window-shell-split-layout")
@@ -604,8 +615,9 @@ impl RenderOnce for WindowShell {
             .into_any_element(),
         };
 
-        // Wrap content layer with blur context so child components can inherit blur_enabled
+        // Wrap content layer with blur and reduced motion context so child components can inherit
         let content_layer = BlurEnabledScope::new(self.blur_enabled, content_layer);
+        let content_layer = ReducedMotionScope::new(self.reduced_motion, content_layer);
 
         // Clone handlers for use in closures
         let on_mouse_move = self.on_mouse_move.clone();

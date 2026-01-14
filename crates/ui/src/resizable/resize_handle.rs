@@ -108,7 +108,7 @@ impl<T: 'static, E: 'static + Render> Element for ResizeHandle<T, E> {
             let bg_color = if state.is_active() {
                 cx.theme().drag_border
             } else {
-                cx.theme().border
+                cx.theme().border_default
             };
 
             let mut el = div()

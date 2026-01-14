@@ -492,7 +492,7 @@ fn render_inspector(
         .size_full()
         .bg(cx.theme().background)
         .border_l_1()
-        .border_color(cx.theme().border)
+        .border_color(cx.theme().border_default)
         .text_color(cx.theme().foreground)
         .child(
             h_flex()

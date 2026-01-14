@@ -206,7 +206,7 @@ impl RenderOnce for Sheet {
                             .absolute()
                             .occlude()
                             .bg(cx.theme().background)
-                            .border_color(cx.theme().border)
+                            .border_color(cx.theme().border_default)
                             .elevation_xl(cx)
                             .refine_style(&self.style)
                             .map(|this| {

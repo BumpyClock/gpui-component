@@ -3,7 +3,10 @@ use gpui::{
     SharedString, StyleRefinement, Styled, Window, div, prelude::FluentBuilder, px,
 };
 
-use crate::{ActiveTheme, StyledExt, h_flex, kbd::Kbd, text::Text};
+use crate::{
+    ActiveTheme, StyledExt, SurfaceContext, SurfacePreset, global_state::GlobalState,
+    h_flex, kbd::Kbd, text::Text,
+};
 
 enum TooltipContext {
     Text(Text),
@@ -86,39 +89,49 @@ impl Render for Tooltip {
             }
         };
 
+        let window_size = window.bounds().size;
+        let ctx = SurfaceContext {
+            blur_enabled: GlobalState::global(cx).blur_enabled(),
+        };
+
+        let content = h_flex()
+            .font_family(cx.theme().font_family.clone())
+            .text_color(cx.theme().surface_elevated_foreground)
+            .justify_between()
+            .py_0p5()
+            .px_2()
+            .text_sm()
+            .gap_3()
+            .refine_style(&self.style)
+            .map(|this| {
+                this.child(div().map(|this| match self.content {
+                    TooltipContext::Text(ref text) => this.child(text.clone()),
+                    TooltipContext::Element(ref builder) => this.child(builder(window, cx)),
+                }))
+            })
+            .when_some(key_binding, |this, kbd| {
+                this.child(
+                    div()
+                        .text_xs()
+                        .flex_shrink_0()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(kbd.appearance(false)),
+                )
+            });
+
         div().child(
-            // Wrap in a child, to ensure the left margin is applied to the tooltip
-            h_flex()
-                .font_family(cx.theme().font_family.clone())
-                .m_3()
-                .bg(cx.theme().popover)
-                .text_color(cx.theme().popover_foreground)
-                .bg(cx.theme().popover)
-                .border_1()
-                .border_color(cx.theme().border)
-                .elevation_md(cx)
-                .rounded(px(6.))
-                .justify_between()
-                .py_0p5()
-                .px_2()
-                .text_sm()
-                .gap_3()
-                .refine_style(&self.style)
-                .map(|this| {
-                    this.child(div().map(|this| match self.content {
-                        TooltipContext::Text(ref text) => this.child(text.clone()),
-                        TooltipContext::Element(ref builder) => this.child(builder(window, cx)),
-                    }))
-                })
-                .when_some(key_binding, |this, kbd| {
-                    this.child(
-                        div()
-                            .text_xs()
-                            .flex_shrink_0()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(kbd.appearance(false)),
-                    )
-                }),
+            SurfacePreset::flyout()
+                .with_radius(px(6.))
+                .wrap_with_bounds(
+                    content,
+                    window_size.width,
+                    window_size.height,
+                    window,
+                    cx,
+                    ctx,
+                )
+                .bg(cx.theme().overlay_tooltip)
+                .m_3(),
         )
     }
 }

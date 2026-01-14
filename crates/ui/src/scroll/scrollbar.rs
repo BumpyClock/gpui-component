@@ -396,7 +396,7 @@ impl Scrollbar {
         (
             cx.theme().scrollbar_thumb_hover,
             cx.theme().scrollbar,
-            cx.theme().border,
+            cx.theme().border_default,
             THUMB_ACTIVE_WIDTH,
             THUMB_ACTIVE_INSET,
             THUMB_ACTIVE_RADIUS,
@@ -407,7 +407,7 @@ impl Scrollbar {
         (
             cx.theme().scrollbar_thumb_hover,
             cx.theme().scrollbar,
-            cx.theme().border,
+            cx.theme().border_default,
             THUMB_ACTIVE_WIDTH,
             THUMB_ACTIVE_INSET,
             THUMB_ACTIVE_RADIUS,

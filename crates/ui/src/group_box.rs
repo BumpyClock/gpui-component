@@ -132,7 +132,7 @@ impl RenderOnce for GroupBox {
         let (bg, border, has_paddings) = match self.variant {
             GroupBoxVariant::Normal => (None, None, false),
             GroupBoxVariant::Fill => (Some(cx.theme().group_box), None, true),
-            GroupBoxVariant::Outline => (None, Some(cx.theme().border), true),
+            GroupBoxVariant::Outline => (None, Some(cx.theme().border_default), true),
         };
 
         v_flex()

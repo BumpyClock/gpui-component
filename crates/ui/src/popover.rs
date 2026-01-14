@@ -1,14 +1,22 @@
 use gpui::{
-    AnyElement, App, Bounds, Context, Corner, DismissEvent, ElementId, EventEmitter, FocusHandle,
-    Focusable, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, ParentElement,
-    Pixels, Point, Render, RenderOnce, StyleRefinement, Styled, Subscription, Window, anchored,
-    deferred, div, prelude::FluentBuilder as _, px,
+    Animation, AnimationExt as _, AnyElement, App, Bounds, Context, Corner, DismissEvent, ElementId,
+    EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyBinding,
+    MouseButton, ParentElement, Pixels, Point, Render, RenderOnce, StyleRefinement, Styled,
+    Subscription, Window, anchored, deferred, div, prelude::FluentBuilder as _, px,
 };
+use smol::Timer;
+use std::time::Duration;
 use std::rc::Rc;
 
-use crate::{ElementExt, Selectable, StyledExt as _, actions::Cancel, v_flex};
+use crate::{
+    ActiveTheme as _, ElementExt, Selectable, StyledExt as _, SurfaceContext, SurfacePreset,
+    actions::Cancel, animation::cubic_bezier, global_state::GlobalState, v_flex,
+};
 
 const CONTEXT: &str = "Popover";
+const POPOVER_OPEN_DURATION: Duration = Duration::from_millis(180);
+const POPOVER_CLOSE_DURATION: Duration = Duration::from_millis(140);
+const POPOVER_MOTION_OFFSET: Pixels = px(6.);
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("escape", Cancel, Some(CONTEXT))])
 }
@@ -194,6 +202,8 @@ pub struct PopoverState {
     pub(crate) tracked_focus_handle: Option<FocusHandle>,
     trigger_bounds: Option<Bounds<Pixels>>,
     open: bool,
+    closing: bool,
+    closing_id: u64,
     on_open_change: Option<Rc<dyn Fn(&bool, &mut Window, &mut App)>>,
 
     _dismiss_subscription: Option<Subscription>,
@@ -206,6 +216,8 @@ impl PopoverState {
             tracked_focus_handle: None,
             trigger_bounds: None,
             open: default_open,
+            closing: false,
+            closing_id: 0,
             on_open_change: None,
             _dismiss_subscription: None,
         }
@@ -219,20 +231,30 @@ impl PopoverState {
     /// Dismiss the popover if it is open.
     pub fn dismiss(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.open {
-            self.toggle_open(window, cx);
+            self.set_open(false, window, cx);
         }
     }
 
     /// Open the popover if it is closed.
     pub fn show(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.open {
-            self.toggle_open(window, cx);
+            self.set_open(true, window, cx);
         }
     }
 
     fn toggle_open(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.open = !self.open;
-        if self.open {
+        self.set_open(!self.open, window, cx);
+    }
+
+    fn set_open(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if open {
+            if self.open && !self.closing {
+                return;
+            }
+            self.open = true;
+            self.closing = false;
+            self.closing_id = self.closing_id.wrapping_add(1);
+
             let state = cx.entity();
             let focus_handle = if let Some(tracked_focus_handle) = self.tracked_focus_handle.clone()
             {
@@ -252,7 +274,33 @@ impl PopoverState {
                     }),
                 );
         } else {
+            if !self.open && !self.closing {
+                return;
+            }
+            self.open = false;
             self._dismiss_subscription = None;
+
+            if GlobalState::global(cx).reduced_motion() {
+                self.closing = false;
+            } else {
+                self.closing = true;
+                self.closing_id = self.closing_id.wrapping_add(1);
+                let closing_id = self.closing_id;
+                cx.spawn(async move |view, cx| {
+                    Timer::after(POPOVER_CLOSE_DURATION).await;
+                    cx.update(|cx| {
+                        if let Some(view) = view.upgrade() {
+                            view.update(cx, |state, cx| {
+                                if state.closing && state.closing_id == closing_id {
+                                    state.closing = false;
+                                    cx.notify();
+                                }
+                            });
+                        }
+                    })
+                })
+                .detach();
+            }
         }
 
         if let Some(callback) = self.on_open_change.as_ref() {
@@ -300,6 +348,8 @@ impl RenderOnce for Popover {
         });
 
         let open = state.read(cx).open;
+        let closing = state.read(cx).closing;
+        let is_open = open || closing;
         let focus_handle = state.read(cx).focus_handle.clone();
         let trigger_bounds = state.read(cx).trigger_bounds;
 
@@ -311,7 +361,7 @@ impl RenderOnce for Popover {
 
         let el = div()
             .id(self.id)
-            .child((trigger)(open, window, cx))
+            .child((trigger)(is_open, window, cx))
             .on_mouse_up(self.mouse_button, {
                 let state = state.clone();
                 move |_, window, cx| {
@@ -334,9 +384,20 @@ impl RenderOnce for Popover {
                 }
             });
 
-        if !open {
+        if !is_open {
             return el;
         }
+
+        let window_size = window.bounds().size;
+        let ctx = SurfaceContext {
+            blur_enabled: GlobalState::global(cx).blur_enabled(),
+        };
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let is_closing = closing;
+        let motion_direction = match self.anchor {
+            Corner::TopLeft | Corner::TopRight => 1.0,
+            Corner::BottomLeft | Corner::BottomRight => -1.0,
+        };
 
         el.child(
             deferred(
@@ -346,8 +407,8 @@ impl RenderOnce for Popover {
                     .when_some(trigger_bounds, |this, trigger_bounds| {
                         this.position(Self::resolved_corner(self.anchor, trigger_bounds))
                     })
-                    .child(
-                        v_flex()
+                    .child({
+                        let content = v_flex()
                             .id("content")
                             .track_focus(&focus_handle)
                             .key_context(CONTEXT)
@@ -355,7 +416,6 @@ impl RenderOnce for Popover {
                             .size_full()
                             .occlude()
                             .tab_group()
-                            .when(self.appearance, |this| this.popover_style(cx).p_3())
                             .map(|this| match self.anchor {
                                 Corner::TopLeft | Corner::TopRight => this.top_1(),
                                 Corner::BottomLeft | Corner::BottomRight => this.bottom_1(),
@@ -377,8 +437,56 @@ impl RenderOnce for Popover {
                                     }
                                 })
                             })
-                            .refine_style(&self.style),
-                    ),
+                            .refine_style(&self.style);
+
+                        let mut container = if self.appearance {
+                            SurfacePreset::flyout()
+                                .with_radius(cx.theme().radius)
+                                .wrap_with_bounds(
+                                    content
+                                        .text_color(cx.theme().surface_raised_foreground)
+                                        .p_3(),
+                                    window_size.width,
+                                    window_size.height,
+                                    window,
+                                    cx,
+                                    ctx,
+                                )
+                                .into_any_element()
+                        } else {
+                            content.into_any_element()
+                        };
+
+                        if !reduced_motion {
+                            let duration = if is_closing {
+                                POPOVER_CLOSE_DURATION
+                            } else {
+                                POPOVER_OPEN_DURATION
+                            };
+                            let easing = cubic_bezier(0.25, 1.0, 0.5, 1.0);
+                            container = div()
+                                .relative()
+                                .child(container)
+                                .with_animation(
+                                    ElementId::NamedInteger(
+                                        "popover-motion".into(),
+                                        is_closing as u64,
+                                    ),
+                                    Animation::new(duration).with_easing(easing),
+                                    move |this, delta| {
+                                        let offset = POPOVER_MOTION_OFFSET * motion_direction;
+                                        if is_closing {
+                                            this.opacity(1.0 - delta).top(offset * delta)
+                                        } else {
+                                            this.opacity(delta).top(offset * (1.0 - delta))
+                                        }
+                                    },
+                                )
+                                .into_any_element();
+                        }
+
+                        container
+                    }),
             )
             .with_priority(1),
         )

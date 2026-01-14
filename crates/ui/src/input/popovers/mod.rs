@@ -16,7 +16,8 @@ use gpui::{
 };
 
 use crate::{
-    ActiveTheme, StyledExt as _,
+    ActiveTheme, ElevationToken, StyledExt as _, SurfaceContext, SurfacePreset,
+    global_state::GlobalState,
     text::{TextView, TextViewStyle},
 };
 
@@ -69,13 +70,28 @@ pub(super) fn render_markdown(
         .selectable(true)
 }
 
-pub(super) fn editor_popover(id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
-    div()
-        .id(id)
+pub(super) fn editor_popover(mut container: Stateful<Div>, window: &Window, cx: &App) -> Div {
+    let window_size = window.bounds().size;
+    let ctx = SurfaceContext {
+        blur_enabled: GlobalState::global(cx).blur_enabled(),
+    };
+
+    container = container
         .flex_none()
         .occlude()
-        .popover_style(cx)
-        .elevation_md(cx)
         .text_xs()
         .p_1()
+        .text_color(cx.theme().surface_raised_foreground);
+
+    SurfacePreset::flyout()
+        .with_radius(cx.theme().radius)
+        .with_elevation(ElevationToken::Md)
+        .wrap_with_bounds(
+            container,
+            window_size.width,
+            window_size.height,
+            window,
+            cx,
+            ctx,
+        )
 }

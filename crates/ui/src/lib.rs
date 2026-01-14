@@ -78,7 +78,7 @@ pub use crate::Disableable;
 pub use element_ext::ElementExt;
 pub use event::InteractiveElementExt;
 pub use geometry::*;
-pub use global_state::{BlurContext, GlobalState};
+pub use global_state::{BlurContext, GlobalState, ReducedMotionContext};
 pub use icon::*;
 pub use index_path::IndexPath;
 pub use input::{Rope, RopeExt, RopeLines};
@@ -94,7 +94,7 @@ pub use title_bar::*;
 pub use virtual_list::{VirtualList, VirtualListScrollHandle, h_virtual_list, v_virtual_list};
 pub use window_border::{WindowBorder, window_border, window_paddings};
 pub use window_ext::WindowExt;
-pub use window_shell::{BlurEnabledScope, WindowLayoutMode, WindowShell};
+pub use window_shell::{BlurEnabledScope, ReducedMotionScope, WindowLayoutMode, WindowShell};
 
 rust_i18n::i18n!("locales", fallback = "en");
 

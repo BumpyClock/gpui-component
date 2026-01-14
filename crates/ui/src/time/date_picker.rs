@@ -10,9 +10,10 @@ use gpui::{
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme, Disableable, Icon, IconName, Sizable, Size, StyleSized as _, StyledExt as _,
-    actions::{Cancel, Confirm},
+    ActiveTheme, Disableable, ElevationToken, Icon, IconName, Sizable, Size, StyleSized as _,
+    StyledExt as _, SurfaceContext, SurfacePreset, actions::{Cancel, Confirm},
     button::{Button, ButtonVariants as _},
+    global_state::GlobalState,
     h_flex,
     input::{Delete, clear_button},
     v_flex,
@@ -434,17 +435,17 @@ impl RenderOnce for DatePicker {
             .when(state.open, |this| {
                 this.child(
                     deferred(
-                        anchored().snap_to_window_with_margin(px(8.)).child(
-                            div()
+                        anchored().snap_to_window_with_margin(px(8.)).child({
+                            let window_size = window.bounds().size;
+                            let ctx = SurfaceContext {
+                                blur_enabled: GlobalState::global(cx).blur_enabled(),
+                            };
+                            let radius = (cx.theme().radius * 2.).min(px(8.));
+
+                            let content = div()
                                 .occlude()
-                                .mt_1p5()
                                 .p_3()
-                                .border_1()
-                                .border_color(cx.theme().border)
-                                .elevation_lg(cx)
-                                .rounded((cx.theme().radius * 2.).min(px(8.)))
-                                .bg(cx.theme().popover)
-                                .text_color(cx.theme().popover_foreground)
+                                .text_color(cx.theme().surface_raised_foreground)
                                 .on_mouse_up_out(
                                     MouseButton::Left,
                                     window.listener_for(&self.state, |view, _, window, cx| {
@@ -487,8 +488,22 @@ impl RenderOnce for DatePicker {
                                                 .p_0()
                                                 .with_size(self.size),
                                         ),
-                                ),
-                        ),
+                                );
+
+                            SurfacePreset::flyout()
+                                .with_radius(radius)
+                                .with_elevation(ElevationToken::Lg)
+                                .wrap_with_bounds(
+                                    content,
+                                    window_size.width,
+                                    window_size.height,
+                                    window,
+                                    cx,
+                                    ctx,
+                                )
+                                .bg(cx.theme().surface_raised)
+                                .mt_1p5()
+                        }),
                     )
                     .with_priority(2),
                 )

@@ -1037,7 +1037,7 @@ impl Tiles {
             .occlude()
             .bg(cx.theme().background)
             .border_1()
-            .border_color(cx.theme().border)
+            .border_color(cx.theme().border_default)
             .absolute()
             .left(item.bounds.origin.x)
             .top(item.bounds.origin.y)

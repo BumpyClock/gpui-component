@@ -127,7 +127,7 @@ where
             .when(bordered, |this| {
                 this.rounded(cx.theme().radius)
                     .border_1()
-                    .border_color(cx.theme().border)
+                    .border_color(cx.theme().border_default)
             })
             .child(self.state)
     }

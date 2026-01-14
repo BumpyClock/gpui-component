@@ -237,7 +237,7 @@ impl Render for DragColumn {
             .text_color(cx.theme().muted_foreground)
             .opacity(0.9)
             .border_1()
-            .border_color(cx.theme().border)
+            .border_color(cx.theme().border_default)
             .elevation_md(cx)
             .w(self.width)
             .min_w(px(100.))

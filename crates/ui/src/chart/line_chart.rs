@@ -142,13 +142,13 @@ where
         PlotAxis::new()
             .x(height)
             .x_label(x_label)
-            .stroke(cx.theme().border)
+            .stroke(cx.theme().border_default)
             .paint(&bounds, window, cx);
 
         // Draw grid
         Grid::new()
             .y((0..=3).map(|i| height * i as f32 / 4.0).collect())
-            .stroke(cx.theme().border)
+            .stroke(cx.theme().border_default)
             .dash_array(&[px(4.), px(2.)])
             .paint(&bounds, window);
 

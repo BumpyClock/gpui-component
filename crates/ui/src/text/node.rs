@@ -1060,7 +1060,7 @@ impl BlockNode {
                         .id(("table", options.ix))
                         .w_full()
                         .border_1()
-                        .border_color(cx.theme().border)
+                        .border_color(cx.theme().border_default)
                         .rounded(cx.theme().radius)
                         .children({
                             let mut rows = Vec::with_capacity(table.children.len());
@@ -1072,7 +1072,7 @@ impl BlockNode {
                                         .when(row_ix < table.children.len() - 1, |this| {
                                             this.border_b_1()
                                         })
-                                        .border_color(cx.theme().border)
+                                        .border_color(cx.theme().border_default)
                                         .flex()
                                         .flex_row()
                                         .children({
@@ -1103,7 +1103,7 @@ impl BlockNode {
                                                         .py_1()
                                                         .when(!is_last_col, |this| {
                                                             this.border_r_1()
-                                                                .border_color(cx.theme().border)
+                                                                .border_color(cx.theme().border_default)
                                                         })
                                                         .truncate()
                                                         .child(
@@ -1234,7 +1234,7 @@ impl BlockNode {
             }
             BlockNode::Divider { .. } => div()
                 .pb(mb)
-                .child(div().id("divider").bg(cx.theme().border).h(px(2.)))
+                .child(div().id("divider").bg(cx.theme().border_default).h(px(2.)))
                 .into_any_element(),
             BlockNode::Break { .. } => div().id("break").into_any_element(),
             BlockNode::Unknown { .. } | BlockNode::Definition { .. } => div().into_any_element(),

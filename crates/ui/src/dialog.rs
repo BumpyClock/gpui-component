@@ -9,7 +9,8 @@ use gpui::{
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme as _, IconName, Root, Sizable as _, StyledExt, TITLE_BAR_HEIGHT, WindowExt as _,
+    ActiveTheme as _, ElevationToken, IconName, Root, Sizable as _, StyledExt, SurfaceContext,
+    SurfacePreset, TITLE_BAR_HEIGHT, WindowExt as _, global_state::GlobalState,
     actions::{Cancel, Confirm},
     animation::cubic_bezier,
     button::{Button, ButtonVariant, ButtonVariants as _},
@@ -106,7 +107,7 @@ pub(crate) fn overlay_color(overlay: bool, cx: &App) -> Hsla {
         return hsla(0., 0., 0., 0.);
     }
 
-    cx.theme().overlay
+    cx.theme().overlay_scrim
 }
 
 impl Dialog {
@@ -370,6 +371,9 @@ impl RenderOnce for Dialog {
 
         let base_size = window.text_style().font_size;
         let rem_size = window.rem_size();
+        let ctx = SurfaceContext {
+            blur_enabled: GlobalState::global(cx).blur_enabled(),
+        };
 
         let mut paddings = Edges::all(px(24.));
         if let Some(pl) = self.style.padding.left {
@@ -429,13 +433,10 @@ impl RenderOnce for Dialog {
                                 }
                             })
                     })
-                    .child(
-                        v_flex()
+                    .child({
+                        let content = v_flex()
                             .id(layer_ix)
-                            .bg(cx.theme().popover)
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .rounded(cx.theme().radius_lg)
+                            .text_color(cx.theme().surface_elevated_foreground)
                             .min_h_24()
                             .pt(paddings.top)
                             .pb(paddings.bottom)
@@ -477,13 +478,7 @@ impl RenderOnce for Dialog {
                                 })
                             })
                             // There style is high priority, can't be overridden.
-                            .absolute()
-                            .occlude()
                             .relative()
-                            .left(x)
-                            .top(y)
-                            .w(self.width)
-                            .when_some(self.max_width, |this, w| this.max_w(w))
                             .when_some(self.title, |this, title| {
                                 this.child(
                                     div()
@@ -536,7 +531,27 @@ impl RenderOnce for Dialog {
                                         .justify_end()
                                         .children(footer(render_ok, render_cancel, window, cx)),
                                 )
-                            })
+                            });
+
+                        SurfacePreset::flyout()
+                            .with_radius(cx.theme().radius_lg)
+                            .with_elevation(ElevationToken::Md)
+                            .wrap_with_bounds(
+                                content,
+                                view_size.width,
+                                view_size.height,
+                                window,
+                                cx,
+                                ctx,
+                            )
+                            .bg(cx.theme().surface_elevated)
+                            .text_color(cx.theme().surface_elevated_foreground)
+                            .absolute()
+                            .occlude()
+                            .left(x)
+                            .top(y)
+                            .w(self.width)
+                            .when_some(self.max_width, |this, w| this.max_w(w))
                             .on_any_mouse_down({
                                 |_, _, cx| {
                                     cx.stop_propagation();
@@ -559,8 +574,8 @@ impl RenderOnce for Dialog {
                                     },
                                 ];
                                 this.top(y * delta).shadow(shadow)
-                            }),
-                    )
+                            })
+                    })
                     .with_animation("fade-in", animation, move |this, delta| this.opacity(delta)),
             )
     }

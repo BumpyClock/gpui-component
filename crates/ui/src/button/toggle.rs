@@ -139,7 +139,7 @@ impl RenderOnce for Toggle {
             .rounded(cx.theme().radius)
             .when(self.variant == ToggleVariant::Outline, |this| {
                 this.border_1()
-                    .border_color(cx.theme().border)
+                    .border_color(cx.theme().border_default)
                     .bg(cx.theme().background)
                     .when(cx.theme().shadow, |this| this.elevation_xs(cx))
             })

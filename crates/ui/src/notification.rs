@@ -16,7 +16,8 @@ use serde::{Deserialize, Serialize};
 use smol::Timer;
 
 use crate::{
-    ActiveTheme as _, Anchor, Edges, Icon, IconName, Sizable as _, StyledExt, TITLE_BAR_HEIGHT,
+    ActiveTheme as _, Anchor, Edges, ElevationToken, Icon, IconName, Sizable as _, StyledExt,
+    SurfaceContext, SurfacePreset, TITLE_BAR_HEIGHT, global_state::GlobalState,
     animation::cubic_bezier,
     button::{Button, ButtonVariants as _},
     h_flex, v_flex,
@@ -291,18 +292,17 @@ impl Render for Notification {
         };
         let has_icon = icon.is_some();
         let placement = cx.theme().notification.placement;
+        let window_size = window.bounds().size;
+        let ctx = SurfaceContext {
+            blur_enabled: GlobalState::global(cx).blur_enabled(),
+        };
 
-        h_flex()
+        let content = h_flex()
             .id("notification")
             .group("")
             .occlude()
             .relative()
             .w_112()
-            .border_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().popover)
-            .rounded(cx.theme().radius_lg)
-            .elevation_md(cx)
             .py_3p5()
             .px_4()
             .gap_3()
@@ -336,7 +336,9 @@ impl Render for Notification {
                             .icon(IconName::Close)
                             .ghost()
                             .xsmall()
-                            .on_click(cx.listener(|this, _, window, cx| this.dismiss(window, cx))),
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.dismiss(window, cx);
+                            })),
                     ),
             )
             .when_some(self.on_click.clone(), |this, on_click| {
@@ -344,7 +346,21 @@ impl Render for Notification {
                     view.dismiss(window, cx);
                     on_click(event, window, cx);
                 }))
-            })
+            });
+
+        SurfacePreset::flyout()
+            .with_radius(cx.theme().radius_lg)
+            .with_elevation(ElevationToken::Md)
+            .wrap_with_bounds(
+                content,
+                window_size.width,
+                window_size.height,
+                window,
+                cx,
+                ctx,
+            )
+            .bg(cx.theme().surface_raised)
+            .text_color(cx.theme().surface_raised_foreground)
             .with_animation(
                 ElementId::NamedInteger("slide-down".into(), closing as u64),
                 Animation::new(Duration::from_secs_f64(0.25))

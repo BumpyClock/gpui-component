@@ -3,7 +3,7 @@ use gpui::{
     StyleRefinement, Styled, Window, div, prelude::FluentBuilder, px,
 };
 
-use crate::{ActiveTheme, v_flex};
+use crate::{ActiveTheme, SurfaceContext, SurfacePreset, global_state::GlobalState, v_flex};
 
 #[derive(Default)]
 pub enum CrossLineAxis {
@@ -80,7 +80,7 @@ impl RenderOnce for CrossLine {
                     div()
                         .absolute()
                         .w(px(1.))
-                        .bg(cx.theme().border)
+                        .bg(cx.theme().border_default)
                         .top_0()
                         .left(self.point.x)
                         .map(|this| {
@@ -98,7 +98,7 @@ impl RenderOnce for CrossLine {
                         .absolute()
                         .w_full()
                         .h(px(1.))
-                        .bg(cx.theme().border)
+                        .bg(cx.theme().border_default)
                         .left_0()
                         .top(self.point.y),
                 )
@@ -259,7 +259,15 @@ impl ParentElement for Tooltip {
 }
 
 impl RenderOnce for Tooltip {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let window_size = window.bounds().size;
+        let ctx = SurfaceContext {
+            blur_enabled: GlobalState::global(cx).blur_enabled(),
+        };
+        let appearance = self.appearance;
+        let position = self.position;
+        let gap = self.gap;
+
         div()
             .size_full()
             .absolute()
@@ -268,19 +276,27 @@ impl RenderOnce for Tooltip {
             .when_some(self.cross_line, |this, cross_line| this.child(cross_line))
             .when_some(self.dots, |this, dots| this.children(dots))
             .child(self.base.map(|this| {
-                if self.appearance {
-                    this.absolute()
-                        .min_w(px(168.))
-                        .p_2()
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .rounded_sm()
-                        .bg(cx.theme().background.opacity(0.9))
-                        .when_some(self.position, |this, position| {
+                if appearance {
+                    SurfacePreset::flyout()
+                        .with_radius(cx.theme().radius)
+                        .wrap_with_bounds(
+                            this.min_w(px(168.))
+                                .p_2()
+                                .rounded_sm()
+                                .text_color(cx.theme().surface_elevated_foreground),
+                            window_size.width,
+                            window_size.height,
+                            window,
+                            cx,
+                            ctx,
+                        )
+                        .bg(cx.theme().overlay_tooltip)
+                        .absolute()
+                        .when_some(position, |this, position| {
                             if position == TooltipPosition::Left {
-                                this.left(self.gap)
+                                this.left(gap)
                             } else {
-                                this.right(self.gap)
+                                this.right(gap)
                             }
                         })
                 } else {

@@ -572,7 +572,7 @@ impl Calendar {
             cx,
         )
         .when(is_today && !is_active, |this| {
-            this.border_1().border_color(cx.theme().border)
+            this.border_1().border_color(cx.theme().border_default)
         }) // Add border for today
         .when(!disabled, |this| {
             this.on_click(window.listener_for(
@@ -951,7 +951,7 @@ impl RenderOnce for Calendar {
             .id(self.id.clone())
             .track_focus(&self.state.read(cx).focus_handle)
             .border_1()
-            .border_color(cx.theme().border)
+            .border_color(cx.theme().border_default)
             .rounded(cx.theme().radius_lg)
             .p_3()
             .gap_0p5()

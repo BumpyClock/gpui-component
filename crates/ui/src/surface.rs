@@ -118,10 +118,10 @@ impl SurfaceBackground {
     /// Resolves the background color based on theme mode and opacity settings.
     pub fn resolve(&self, cx: &App) -> Hsla {
         let base = match self.color_source {
-            SurfaceColorSource::Popover => cx.theme().popover,
+            SurfaceColorSource::Popover => cx.theme().surface_raised,
             SurfaceColorSource::White => gpui::white(),
-            SurfaceColorSource::Sidebar => cx.theme().sidebar,
-            SurfaceColorSource::Background => cx.theme().background,
+            SurfaceColorSource::Sidebar => cx.theme().surface_sunken,
+            SurfaceColorSource::Background => cx.theme().surface_base,
         };
         let opacity = if cx.theme().mode.is_dark() {
             self.dark_opacity
@@ -170,8 +170,8 @@ impl StrokeSpec {
     pub fn resolve_color(&self, cx: &App) -> Hsla {
         match self.color {
             StrokeColor::Subtle => cx.theme().border_subtle,
-            StrokeColor::Default => cx.theme().border,
-            StrokeColor::Strong => cx.theme().border,
+            StrokeColor::Default => cx.theme().border_default,
+            StrokeColor::Strong => cx.theme().border_strong,
             StrokeColor::SubtleWithOpacity(opacity) => cx.theme().border_subtle.opacity(opacity),
         }
     }
@@ -223,8 +223,8 @@ impl SurfacePreset {
     /// - 60px blur radius
     /// - Subtle noise
     /// - Popover background at 0.85/0.90 opacity
-    /// - Medium elevation with subtle stroke
-    /// - 8px border radius
+    /// - Small elevation with subtle stroke
+    /// - 12px border radius
     pub fn flyout() -> Self {
         Self {
             kind: SurfaceKind::Flyout,
@@ -235,7 +235,7 @@ impl SurfacePreset {
                 light_opacity: 0.85,
                 dark_opacity: 0.90,
             },
-            elevation: ElevationToken::None,
+            elevation: ElevationToken::Sm,
             stroke: Some(StrokeSpec::subtle()),
             transparency_factor: 1.0,
             radius: Some(px(12.0)),

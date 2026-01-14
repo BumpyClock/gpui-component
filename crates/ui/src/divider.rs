@@ -125,7 +125,7 @@ impl Styled for Divider {
 
 impl RenderOnce for Divider {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let color = self.color.unwrap_or(cx.theme().border);
+        let color = self.color.unwrap_or(cx.theme().border_default);
         let axis = self.axis;
         let line_style = self.line_style;
 

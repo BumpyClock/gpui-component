@@ -642,7 +642,7 @@ where
                             _ => this.px_2(),
                         })
                         .border_b_1()
-                        .border_color(cx.theme().border)
+                        .border_color(cx.theme().border_default)
                         .child(
                             Input::new(&input)
                                 .with_size(self.options.size)

@@ -1354,7 +1354,7 @@ impl Element for TextElement {
 
         // Paint indent guides
         if let Some(path) = prepaint.indent_guides_path.take() {
-            window.paint_path(path, cx.theme().border.opacity(0.85));
+            window.paint_path(path, cx.theme().border_default.opacity(0.85));
         }
 
         // Paint selections

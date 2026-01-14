@@ -130,7 +130,7 @@ impl SettingPage {
                     .p_4()
                     .gap_3()
                     .border_b_1()
-                    .border_color(cx.theme().border)
+                    .border_color(cx.theme().border_default)
                     .child(h_flex().justify_between().child(self.title.clone()).when(
                         self.is_resettable(cx),
                         |this| {

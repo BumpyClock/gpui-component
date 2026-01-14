@@ -46,7 +46,7 @@ impl TagVariant {
     fn border(&self, cx: &App) -> Hsla {
         match self {
             Self::Primary => cx.theme().primary,
-            Self::Secondary => cx.theme().border,
+            Self::Secondary => cx.theme().border_default,
             Self::Danger => cx.theme().danger,
             Self::Success => cx.theme().success,
             Self::Warning => cx.theme().warning,

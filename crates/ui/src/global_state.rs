@@ -17,6 +17,9 @@ pub struct GlobalState {
     /// Stack of blur_enabled values, allowing parent components to provide
     /// blur context that children can inherit.
     blur_enabled_stack: Vec<bool>,
+    /// Stack of reduced_motion values, allowing parent components to provide
+    /// motion preference context that children can inherit.
+    reduced_motion_stack: Vec<bool>,
 }
 
 impl GlobalState {
@@ -24,6 +27,7 @@ impl GlobalState {
         Self {
             text_view_state_stack: Vec::new(),
             blur_enabled_stack: Vec::new(),
+            reduced_motion_stack: Vec::new(),
         }
     }
 
@@ -50,6 +54,15 @@ impl GlobalState {
         self.blur_enabled_stack.last().copied().unwrap_or(true)
     }
 
+    /// Returns the current reduced_motion value from context.
+    ///
+    /// If no value has been pushed onto the stack, defaults to `false`.
+    /// Child components should use this to inherit motion preferences from
+    /// their parent `WindowShell` or other context providers.
+    pub fn reduced_motion(&self) -> bool {
+        self.reduced_motion_stack.last().copied().unwrap_or(false)
+    }
+
     /// Push a blur_enabled value onto the context stack.
     ///
     /// Called by `BlurEnabledScope` before rendering children.
@@ -62,6 +75,20 @@ impl GlobalState {
     /// Called by `BlurEnabledScope` after rendering children.
     pub(crate) fn pop_blur_enabled(&mut self) {
         self.blur_enabled_stack.pop();
+    }
+
+    /// Push a reduced_motion value onto the context stack.
+    ///
+    /// Called by `ReducedMotionScope` before rendering children.
+    pub(crate) fn push_reduced_motion(&mut self, reduced_motion: bool) {
+        self.reduced_motion_stack.push(reduced_motion);
+    }
+
+    /// Pop a reduced_motion value from the context stack.
+    ///
+    /// Called by `ReducedMotionScope` after rendering children.
+    pub(crate) fn pop_reduced_motion(&mut self) {
+        self.reduced_motion_stack.pop();
     }
 }
 
@@ -85,5 +112,17 @@ pub trait BlurContext {
 impl BlurContext for App {
     fn blur_enabled(&self) -> bool {
         GlobalState::global(self).blur_enabled()
+    }
+}
+
+/// Extension trait for easy access to reduced motion context from `App`.
+pub trait ReducedMotionContext {
+    /// Returns the current reduced_motion value from context, defaulting to `false`.
+    fn reduced_motion(&self) -> bool;
+}
+
+impl ReducedMotionContext for App {
+    fn reduced_motion(&self) -> bool {
+        GlobalState::global(self).reduced_motion()
     }
 }

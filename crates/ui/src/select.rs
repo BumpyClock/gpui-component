@@ -1,16 +1,19 @@
 use gpui::{
-    AbsoluteLength, AnyElement, App, AppContext, Bounds, ClickEvent, Context, DismissEvent, Edges,
-    ElementId, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    KeyBinding, Length, ParentElement, Pixels, Render, RenderOnce, SharedString,
-    StatefulInteractiveElement, StyleRefinement, Styled, Subscription, Task, WeakEntity, Window,
-    anchored, deferred, div, prelude::FluentBuilder, px, rems,
+    AbsoluteLength, Animation, AnimationExt as _, AnyElement, App, AppContext, Bounds, ClickEvent,
+    Context, DismissEvent, Edges, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, KeyBinding, Length, ParentElement, Pixels, Render, RenderOnce,
+    SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Subscription, Task,
+    WeakEntity, Window, anchored, deferred, div, prelude::FluentBuilder, px, radians, rems,
 };
 use rust_i18n::t;
+use smol::Timer;
+use std::time::Duration;
 
 use crate::{
     ActiveTheme, Disableable, ElementExt as _, Icon, IconName, IndexPath, Selectable, Sizable,
     Size, StyleSized, StyledExt,
     actions::{Cancel, Confirm, SelectDown, SelectUp},
+    animation::cubic_bezier,
     global_state::GlobalState,
     h_flex,
     input::clear_button,
@@ -20,6 +23,9 @@ use crate::{
 };
 
 const CONTEXT: &str = "Select";
+const SELECT_OPEN_DURATION: Duration = Duration::from_millis(180);
+const SELECT_CLOSE_DURATION: Duration = Duration::from_millis(140);
+const SELECT_MOTION_OFFSET: Pixels = px(6.);
 
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
@@ -355,6 +361,8 @@ pub struct SelectState<D: SelectDelegate + 'static> {
     /// Store the bounds of the input
     bounds: Bounds<Pixels>,
     open: bool,
+    closing: bool,
+    closing_id: u64,
     selected_value: Option<<D::Item as SelectItem>::Value>,
     final_selected_index: Option<IndexPath>,
     _subscriptions: Vec<Subscription>,
@@ -581,6 +589,8 @@ where
             list,
             selected_value: None,
             open: false,
+            closing: false,
+            closing_id: 0,
             bounds: Bounds::default(),
             empty: None,
             final_selected_index: None,
@@ -677,23 +687,18 @@ where
             });
         }
 
-        self.open = false;
-        cx.notify();
+        self.close_menu(cx);
     }
 
     fn up(&mut self, _: &SelectUp, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.open {
-            self.open = true;
-        }
+        self.open_menu(window, cx);
 
         self.list.focus_handle(cx).focus(window, cx);
         cx.propagate();
     }
 
     fn down(&mut self, _: &SelectDown, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.open {
-            self.open = true;
-        }
+        self.open_menu(window, cx);
 
         self.list.focus_handle(cx).focus(window, cx);
         cx.propagate();
@@ -703,10 +708,7 @@ where
         // Propagate the event to the parent view, for example to the Dialog to support ENTER to confirm.
         cx.propagate();
 
-        if !self.open {
-            self.open = true;
-            cx.notify();
-        }
+        self.open_menu(window, cx);
 
         self.list.focus_handle(cx).focus(window, cx);
     }
@@ -714,11 +716,11 @@ where
     fn toggle_menu(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
         cx.stop_propagation();
 
-        self.open = !self.open;
         if self.open {
-            self.list.focus_handle(cx).focus(window, cx);
+            self.close_menu(cx);
+        } else {
+            self.open_menu(window, cx);
         }
-        cx.notify();
     }
 
     fn escape(&mut self, _: &Cancel, _: &mut Window, cx: &mut Context<Self>) {
@@ -726,8 +728,7 @@ where
             cx.propagate();
         }
 
-        self.open = false;
-        cx.notify();
+        self.close_menu(cx);
     }
 
     fn clean(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
@@ -781,6 +782,49 @@ where
             })
             .child(title)
     }
+
+    fn open_menu(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.open && !self.closing {
+            return;
+        }
+        self.open = true;
+        self.closing = false;
+        self.closing_id = self.closing_id.wrapping_add(1);
+        self.list.focus_handle(cx).focus(window, cx);
+        cx.notify();
+    }
+
+    fn close_menu(&mut self, cx: &mut Context<Self>) {
+        if !self.open && !self.closing {
+            return;
+        }
+
+        self.open = false;
+        if GlobalState::global(cx).reduced_motion() {
+            self.closing = false;
+            cx.notify();
+            return;
+        }
+
+        self.closing = true;
+        self.closing_id = self.closing_id.wrapping_add(1);
+        let closing_id = self.closing_id;
+        cx.spawn(async move |view, cx| {
+            Timer::after(SELECT_CLOSE_DURATION).await;
+            cx.update(|cx| {
+                if let Some(view) = view.upgrade() {
+                    view.update(cx, |state, cx| {
+                        if state.closing && state.closing_id == closing_id {
+                            state.closing = false;
+                            cx.notify();
+                        }
+                    });
+                }
+            })
+        })
+        .detach();
+        cx.notify();
+    }
 }
 
 impl<D> Render for SelectState<D>
@@ -790,10 +834,11 @@ where
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let searchable = self.searchable;
         let is_focused = self.focus_handle.is_focused(window);
+        let is_open = self.open || self.closing;
         let show_clean = self.options.cleanable && self.selected_index(cx).is_some();
         let bounds = self.bounds;
         let allow_open = !(self.open || self.options.disabled);
-        let outline_visible = self.open || is_focused && !self.options.disabled;
+        let outline_visible = (is_open || is_focused) && !self.options.disabled;
         let popup_radius = cx.theme().radius.min(px(8.));
         let rem_size = window.rem_size();
         let menu_width = match self.options.menu_width {
@@ -803,6 +848,7 @@ where
             }
         };
         let menu_height = rems(20.).to_pixels(rem_size);
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
 
         self.list
             .update(cx, |list, cx| list.set_searchable(searchable, cx));
@@ -870,11 +916,38 @@ where
                                     Some(icon) => icon,
                                     None => Icon::new(IconName::ChevronDown),
                                 };
-
-                                this.child(icon.xsmall().text_color(match self.options.disabled {
+                                let icon = icon.xsmall().text_color(match self.options.disabled {
                                     true => cx.theme().muted_foreground.opacity(0.5),
                                     false => cx.theme().muted_foreground,
-                                }))
+                                });
+                                let icon = if reduced_motion {
+                                    if is_open {
+                                        icon.rotate(radians(std::f32::consts::PI))
+                                    } else {
+                                        icon
+                                    }
+                                    .into_any_element()
+                                } else {
+                                    icon.with_animation(
+                                        ElementId::NamedInteger(
+                                            "select-chevron".into(),
+                                            is_open as u64,
+                                        ),
+                                        Animation::new(SELECT_OPEN_DURATION)
+                                            .with_easing(cubic_bezier(0.25, 1.0, 0.5, 1.0)),
+                                        move |this, delta| {
+                                            let angle = if is_open {
+                                                delta * std::f32::consts::PI
+                                            } else {
+                                                (1.0 - delta) * std::f32::consts::PI
+                                            };
+                                            this.rotate(radians(angle))
+                                        },
+                                    )
+                                    .into_any_element()
+                                };
+
+                                this.child(icon)
                             }),
                     )
                     .on_prepaint({
@@ -882,7 +955,7 @@ where
                         move |bounds, _, cx| state.update(cx, |r, _| r.bounds = bounds)
                     }),
             )
-            .when(self.open, |this| {
+            .when(is_open, |this| {
                 this.child(
                     deferred(
                         anchored().snap_to_window_with_margin(px(8.)).child(
@@ -900,7 +973,7 @@ where
                                         .unwrap_or_else(|| GlobalState::global(cx).blur_enabled());
                                     let ctx = SurfaceContext { blur_enabled };
 
-                                    SurfacePreset::flyout()
+                                    let menu = SurfacePreset::flyout()
                                         .with_radius(popup_radius)
                                         .wrap_with_bounds(
                                             v_flex().occlude().mt_1p5().child(
@@ -920,7 +993,37 @@ where
                                             window,
                                             cx,
                                             ctx,
+                                        );
+
+                                    if reduced_motion {
+                                        menu.into_any_element()
+                                    } else {
+                                        let is_closing = self.closing;
+                                        let duration = if is_closing {
+                                            SELECT_CLOSE_DURATION
+                                        } else {
+                                            SELECT_OPEN_DURATION
+                                        };
+                                        let easing = cubic_bezier(0.25, 1.0, 0.5, 1.0);
+                                        menu.with_animation(
+                                            ElementId::NamedInteger(
+                                                "select-menu".into(),
+                                                is_closing as u64,
+                                            ),
+                                            Animation::new(duration).with_easing(easing),
+                                            move |this, delta| {
+                                                if is_closing {
+                                                    this.opacity(1.0 - delta)
+                                                        .top(SELECT_MOTION_OFFSET * delta)
+                                                } else {
+                                                    this.opacity(delta).top(
+                                                        SELECT_MOTION_OFFSET * (1.0 - delta),
+                                                    )
+                                                }
+                                            },
                                         )
+                                        .into_any_element()
+                                    }
                                 })
                                 .on_mouse_down_out(cx.listener(|this, _, window, cx| {
                                     this.escape(&Cancel, window, cx);

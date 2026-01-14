@@ -234,7 +234,7 @@ impl RenderOnce for AccordionItem {
                 .when(self.bordered, |this| {
                     this.border_1()
                         .rounded(cx.theme().radius)
-                        .border_color(cx.theme().border)
+                        .border_color(cx.theme().border_default)
                 })
                 .text_size(text_size)
                 .child(
@@ -252,11 +252,11 @@ impl RenderOnce for AccordionItem {
                             this.when(self.bordered, |this| {
                                 this.text_color(cx.theme().foreground)
                                     .border_b_1()
-                                    .border_color(cx.theme().border)
+                                    .border_color(cx.theme().border_default)
                             })
                         })
                         .when(!self.bordered, |this| {
-                            this.border_b_1().border_color(cx.theme().border)
+                            this.border_b_1().border_color(cx.theme().border_default)
                         })
                         .child(
                             h_flex()

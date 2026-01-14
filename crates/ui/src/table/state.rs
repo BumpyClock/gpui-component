@@ -684,7 +684,7 @@ where
                     .h_full()
                     .justify_center()
                     .bg(cx.theme().table_row_border)
-                    .group_hover(&group_id, |this| this.bg(cx.theme().border).h_full())
+                    .group_hover(&group_id, |this| this.bg(cx.theme().border_default).h_full())
                     .w(px(1.)),
             )
             .on_drag_move(
@@ -884,7 +884,7 @@ where
             .h(self.options.size.table_row_height())
             .flex_shrink_0()
             .border_b_1()
-            .border_color(cx.theme().border)
+            .border_color(cx.theme().border_default)
             .text_color(cx.theme().table_head_foreground)
             .refine_style(&style)
             .when(left_columns_count > 0, |this| {
@@ -913,7 +913,7 @@ where
                                 .w_0()
                                 .flex_shrink_0()
                                 .border_r_1()
-                                .border_color(cx.theme().border),
+                                .border_color(cx.theme().border_default),
                         )
                         .on_prepaint(move |bounds, _, cx| {
                             view.update(cx, |r, _| r.fixed_head_cols_bounds = bounds)
@@ -1016,7 +1016,7 @@ where
                                     .w_0()
                                     .flex_shrink_0()
                                     .border_r_1()
-                                    .border_color(cx.theme().border),
+                                    .border_color(cx.theme().border_default),
                             ),
                     )
                 })

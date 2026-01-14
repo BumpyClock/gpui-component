@@ -1084,7 +1084,7 @@ impl PopupMenu {
                 .my_0p5()
                 .mx_neg_1()
                 .h(px(1.))
-                .bg(cx.theme().border)
+                .bg(cx.theme().border_default)
                 .disabled(true),
             PopupMenuItem::Label(label) => this.disabled(true).cursor_default().child(
                 h_flex()
@@ -1316,7 +1316,7 @@ impl Render for PopupMenu {
                 )
                 // Note: Don't use .popover_style(cx) here - SurfacePreset::flyout() handles
                 // background, border, radius, and elevation. Only set text color.
-                .text_color(cx.theme().popover_foreground)
+                .text_color(cx.theme().surface_raised_foreground)
                 .child(
                     v_flex()
                         .id("items")

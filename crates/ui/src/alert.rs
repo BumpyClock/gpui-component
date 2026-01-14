@@ -45,7 +45,7 @@ impl AlertVariant {
 
     fn border_color(&self, cx: &App) -> Hsla {
         match self {
-            AlertVariant::Secondary => cx.theme().border,
+            AlertVariant::Secondary => cx.theme().border_default,
             AlertVariant::Info => cx.theme().info,
             AlertVariant::Success => cx.theme().success,
             AlertVariant::Warning => cx.theme().warning,
