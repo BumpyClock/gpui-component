@@ -60,6 +60,7 @@ collapsed: false
 
 - [Calendar](calendar) - Calendar display and navigation
 - [Chart](chart) - Data visualization charts (Line, Bar, Area, Pie, Candlestick)
+- [CommandPalette](command-palette) - Modal command palette with fuzzy search
 - [List](list) - List display with items
 - [Menu](menu) - Menu and context menu and dropdown menu.
 - [Settings](settings) - Settings UI

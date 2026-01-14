@@ -13,6 +13,7 @@ mod checkbox_story;
 mod clipboard_story;
 mod collapsible_story;
 mod color_picker_story;
+mod command_palette_story;
 mod date_picker_story;
 mod description_list_story;
 mod dialog_story;
@@ -68,6 +69,7 @@ pub use checkbox_story::CheckboxStory;
 pub use clipboard_story::ClipboardStory;
 pub use collapsible_story::CollapsibleStory;
 pub use color_picker_story::ColorPickerStory;
+pub use command_palette_story::CommandPaletteStory;
 pub use date_picker_story::DatePickerStory;
 pub use description_list_story::DescriptionListStory;
 pub use dialog_story::DialogStory;
@@ -123,6 +125,7 @@ pub(crate) fn init(cx: &mut App) {
     tooltip_story::init(cx);
     otp_input_story::init(cx);
     tree_story::init(cx);
+    command_palette_story::init(cx);
 }
 
 pub trait Story: Render + Sized {
