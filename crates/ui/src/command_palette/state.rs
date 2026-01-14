@@ -32,6 +32,8 @@ pub struct CommandPaletteState {
     pub query: String,
     /// The list of matched items (sorted by score).
     pub matched_items: Vec<MatchedItem>,
+    /// The number of matched items from the static provider.
+    pub matched_static_len: usize,
     /// The currently selected index.
     pub selected_index: Option<usize>,
     /// The matcher implementation.
@@ -74,6 +76,7 @@ impl CommandPaletteState {
             provider,
             query: String::new(),
             matched_items: Vec::new(),
+            matched_static_len: 0,
             selected_index: None,
             matcher,
             query_id: Arc::new(AtomicU64::new(0)),
@@ -138,25 +141,23 @@ impl CommandPaletteState {
 
     /// Update the matched items based on the current query.
     fn update_matches(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let mut all_items: Vec<CommandPaletteItem> = self.static_items.clone();
+        let mut static_items: Vec<CommandPaletteItem> = self.static_items.clone();
+        let mut async_only_items: Vec<CommandPaletteItem> = Vec::new();
 
-        // Merge async items (override static items with same id)
         let static_ids: std::collections::HashSet<_> =
-            all_items.iter().map(|i| i.id.to_string()).collect();
+            static_items.iter().map(|i| i.id.to_string()).collect();
 
         for (id, item) in &self.async_items {
             if static_ids.contains(id) {
-                // Replace static item with async item
-                if let Some(pos) = all_items.iter().position(|i| i.id.as_ref() == id.as_str()) {
-                    all_items[pos] = item.clone();
+                if let Some(pos) = static_items.iter().position(|i| i.id.as_ref() == id.as_str()) {
+                    static_items[pos] = item.clone();
                 }
             } else {
-                all_items.push(item.clone());
+                async_only_items.push(item.clone());
             }
         }
 
-        // Match and score all items
-        let mut matched: Vec<MatchedItem> = all_items
+        let mut matched_static: Vec<MatchedItem> = static_items
             .into_iter()
             .filter_map(|item| {
                 self.matcher
@@ -165,18 +166,43 @@ impl CommandPaletteState {
             })
             .collect();
 
-        // Sort by score (descending), then by title (ascending) for stable ordering
-        matched.sort_by(|a, b| {
-            b.match_info
-                .score
-                .cmp(&a.match_info.score)
-                .then_with(|| a.item.title.cmp(&b.item.title))
-        });
+        let mut matched_async: Vec<MatchedItem> = async_only_items
+            .into_iter()
+            .filter_map(|item| {
+                self.matcher
+                    .match_item(&self.query, &item)
+                    .map(|match_info| MatchedItem::new(item, match_info))
+            })
+            .collect();
 
-        // Limit results
-        matched.truncate(self.config.max_results);
+        if !self.query.is_empty() {
+            matched_static.sort_by(|a, b| {
+                b.match_info
+                    .score
+                    .cmp(&a.match_info.score)
+                    .then_with(|| a.item.title.cmp(&b.item.title))
+            });
+            matched_async.sort_by(|a, b| {
+                b.match_info
+                    .score
+                    .cmp(&a.match_info.score)
+                    .then_with(|| a.item.title.cmp(&b.item.title))
+            });
+        }
 
-        self.matched_items = matched;
+        let max_results = self.config.max_results;
+        let total_len = matched_static.len() + matched_async.len();
+        let total_limit = total_len.min(max_results);
+        let static_limit = matched_static.len().min(total_limit);
+        let async_limit = total_limit.saturating_sub(static_limit);
+
+        matched_static.truncate(static_limit);
+        matched_async.truncate(async_limit);
+
+        self.matched_static_len = matched_static.len();
+        self.matched_items.clear();
+        self.matched_items.extend(matched_static);
+        self.matched_items.extend(matched_async);
 
         // Reset selection to first item if available
         self.selected_index = if self.matched_items.is_empty() {

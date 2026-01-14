@@ -24,6 +24,14 @@ const CONTEXT: &str = "CommandPalette";
 // Height constants for layout calculations
 const HEADER_HEIGHT: f32 = 52.0;
 const FOOTER_HEIGHT: f32 = 36.0;
+const SECTION_HEADER_HEIGHT: f32 = 28.0;
+
+/// A render row for the command palette list.
+#[derive(Clone)]
+enum CommandPaletteRow {
+    Header(SharedString),
+    Item(usize),
+}
 
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
@@ -152,16 +160,18 @@ impl CommandPaletteView {
     }
 
     fn scroll_to_selected(&mut self, cx: &App) {
-        if let Some(index) = self.state.read(cx).selected_index {
+        let state = self.state.read(cx);
+        if let Some(index) = state.selected_index {
+            let row_index = self.row_index_for_item(&state, index);
             self.scroll_handle
-                .scroll_to_item(index, ScrollStrategy::Top);
+                .scroll_to_item(row_index, ScrollStrategy::Top);
         }
     }
 
     fn render_item(
         &self,
         item: &MatchedItem,
-        index: usize,
+        item_index: usize,
         selected: bool,
         show_category: bool,
         _window: &mut Window,
@@ -177,7 +187,7 @@ impl CommandPaletteView {
             .and_then(|s| gpui::Keystroke::parse(s).ok().map(|k| Kbd::new(k)));
 
         h_flex()
-            .id(SharedString::from(format!("cmd-item-{}", index)))
+            .id(SharedString::from(format!("cmd-item-{}", item_index)))
             .w_full()
             .h(self.item_height)
             .px_3()
@@ -195,7 +205,7 @@ impl CommandPaletteView {
                 this.hover(|this| this.bg(cx.theme().list_hover))
             })
             .when(!disabled, |this| {
-                let index = index;
+                let index = item_index;
                 this.on_mouse_down(
                     gpui::MouseButton::Left,
                     cx.listener(move |view, _, _, cx| {
@@ -262,6 +272,17 @@ impl CommandPaletteView {
             })
     }
 
+    fn render_section_header(&self, title: SharedString, cx: &App) -> impl IntoElement {
+        div()
+            .w_full()
+            .px_3()
+            .py_1()
+            .text_xs()
+            .font_weight(gpui::FontWeight::SEMIBOLD)
+            .text_color(cx.theme().muted_foreground)
+            .child(title)
+    }
+
     fn render_highlighted_text(
         &self,
         text: &str,
@@ -306,7 +327,11 @@ impl CommandPaletteView {
         h_flex().truncate().children(elements).into_any_element()
     }
 
-    fn render_footer(&self, cx: &App) -> impl IntoElement {
+    fn render_footer(
+        &self,
+        status_text: Option<SharedString>,
+        cx: &App,
+    ) -> impl IntoElement {
         h_flex()
             .w_full()
             .px_3()
@@ -349,6 +374,16 @@ impl CommandPaletteView {
                             .child("to close"),
                     ),
             )
+            .when_some(status_text, |this, status| {
+                this.child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(Icon::new(IconName::LoaderCircle).size_4())
+                        .child(status),
+                )
+            })
     }
 
     fn render_empty(&self, cx: &App) -> impl IntoElement {
@@ -361,6 +396,57 @@ impl CommandPaletteView {
             .text_color(cx.theme().muted_foreground)
             .child(Icon::new(IconName::Search).size_8().opacity(0.5))
             .child("No results found")
+    }
+
+    fn build_rows(
+        &self,
+        state: &CommandPaletteState,
+        matched_items: &[MatchedItem],
+    ) -> Vec<CommandPaletteRow> {
+        let static_len = state.matched_static_len.min(matched_items.len());
+        let async_len = matched_items.len().saturating_sub(static_len);
+        let query_empty = state.query.is_empty();
+
+        let mut rows = Vec::new();
+        if query_empty {
+            rows.extend((0..static_len).map(CommandPaletteRow::Item));
+            return rows;
+        }
+
+        if static_len > 0 {
+            if let Some(title) = state.config.commands_section_title.clone() {
+                rows.push(CommandPaletteRow::Header(title));
+            }
+            rows.extend((0..static_len).map(CommandPaletteRow::Item));
+        }
+
+        if async_len > 0 {
+            if let Some(title) = state.config.results_section_title.clone() {
+                rows.push(CommandPaletteRow::Header(title));
+            }
+            rows.extend((static_len..matched_items.len()).map(CommandPaletteRow::Item));
+        }
+
+        rows
+    }
+
+    fn row_index_for_item(&self, state: &CommandPaletteState, item_index: usize) -> usize {
+        let static_len = state.matched_static_len.min(state.matched_items.len());
+        let async_len = state.matched_items.len().saturating_sub(static_len);
+        let query_empty = state.query.is_empty();
+
+        if query_empty {
+            return item_index;
+        }
+
+        let commands_header =
+            static_len > 0 && state.config.commands_section_title.is_some();
+        let results_header = async_len > 0 && state.config.results_section_title.is_some();
+        let mut row_index = item_index + usize::from(commands_header);
+        if item_index >= static_len && results_header {
+            row_index += 1;
+        }
+        row_index
     }
 }
 
@@ -378,20 +464,28 @@ impl Render for CommandPaletteView {
         let config = state.config.clone();
         let matched_items = state.matched_items.clone();
         let selected_index = state.selected_index;
-        let items_count = matched_items.len();
+        let rows = Rc::new(self.build_rows(&state, &matched_items));
+        let row_count = rows.len();
 
         // Prepare item sizes for virtual list
         let item_sizes: Rc<Vec<GpuiSize<Pixels>>> = Rc::new(
-            (0..items_count)
-                .map(|_| GpuiSize {
+            rows.iter()
+                .map(|row| GpuiSize {
                     width: px(0.),
-                    height: self.item_height,
+                    height: match row {
+                        CommandPaletteRow::Header(_) => px(SECTION_HEADER_HEIGHT),
+                        CommandPaletteRow::Item(_) => self.item_height,
+                    },
                 })
                 .collect(),
         );
 
         let show_categories = config.show_categories_inline;
         let show_footer = config.show_footer;
+        let footer_status = config
+            .status_provider
+            .as_ref()
+            .and_then(|provider| provider(&state.query));
         let max_height = px(config.max_height);
 
         // Focus input once after opening to avoid render jitter
@@ -403,8 +497,17 @@ impl Render for CommandPaletteView {
         }
 
         // Compute height for surface bounds
-        let list_height =
-            max_height.min(px(items_count.max(1) as f32 * (self.item_height / px(1.0))));
+        let list_content_height = if row_count == 0 {
+            self.item_height
+        } else {
+            rows.iter().fold(px(0.0), |sum, row| {
+                sum + match row {
+                    CommandPaletteRow::Header(_) => px(SECTION_HEADER_HEIGHT),
+                    CommandPaletteRow::Item(_) => self.item_height,
+                }
+            })
+        };
+        let list_height = max_height.min(list_content_height);
         let content_height = px(HEADER_HEIGHT)
             + list_height
             + if show_footer {
@@ -453,25 +556,35 @@ impl Render for CommandPaletteView {
                     .w_full()
                     .h(list_height)
                     .overflow_hidden()
-                    .when(items_count == 0, |this| this.child(self.render_empty(cx)))
-                    .when(items_count > 0, |this| {
+                    .when(row_count == 0, |this| this.child(self.render_empty(cx)))
+                    .when(row_count > 0, |this| {
                         this.child(
                             v_virtual_list(cx.entity(), "command-palette-list", item_sizes, {
                                 let matched_items = matched_items.clone();
+                                let rows = rows.clone();
                                 move |view, visible_range, window, cx| {
                                     visible_range
                                         .filter_map(|ix| {
-                                            matched_items.get(ix).map(|item| {
-                                                view.render_item(
-                                                    item,
-                                                    ix,
-                                                    selected_index == Some(ix),
-                                                    show_categories,
-                                                    window,
-                                                    cx,
-                                                )
-                                                .into_any_element()
-                                            })
+                                            let row = rows.get(ix)?;
+                                            match row {
+                                                CommandPaletteRow::Header(title) => Some(
+                                                    view.render_section_header(title.clone(), cx)
+                                                        .into_any_element(),
+                                                ),
+                                                CommandPaletteRow::Item(item_index) => matched_items
+                                                    .get(*item_index)
+                                                    .map(|item| {
+                                                        view.render_item(
+                                                            item,
+                                                            *item_index,
+                                                            selected_index == Some(*item_index),
+                                                            show_categories,
+                                                            window,
+                                                            cx,
+                                                        )
+                                                        .into_any_element()
+                                                    }),
+                                            }
                                         })
                                         .collect()
                                 }
@@ -482,7 +595,7 @@ impl Render for CommandPaletteView {
                     }),
             )
             // Footer
-            .when(show_footer, |this| this.child(self.render_footer(cx)));
+            .when(show_footer, |this| this.child(self.render_footer(footer_status.clone(), cx)));
 
         // Wrap in glassmorphic surface
         SurfacePreset::flyout()

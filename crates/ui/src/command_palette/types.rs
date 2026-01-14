@@ -24,6 +24,12 @@ pub struct CommandPaletteConfig {
     pub show_footer: bool,
     /// Whether to show category inline with item. Default: true.
     pub show_categories_inline: bool,
+    /// Optional title for the commands section when a query is present. Default: "Commands".
+    pub commands_section_title: Option<SharedString>,
+    /// Optional title for the results section when a query is present. Default: "Search Results".
+    pub results_section_title: Option<SharedString>,
+    /// Optional status provider for footer text (e.g. indexing status).
+    pub status_provider: Option<Arc<dyn Fn(&str) -> Option<SharedString> + Send + Sync>>,
 }
 
 impl Default for CommandPaletteConfig {
@@ -42,6 +48,9 @@ impl Default for CommandPaletteConfig {
             max_height: 400.0,
             show_footer: true,
             show_categories_inline: true,
+            commands_section_title: Some("Commands".into()),
+            results_section_title: Some("Search Results".into()),
+            status_provider: None,
         }
     }
 }
