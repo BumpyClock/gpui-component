@@ -149,7 +149,10 @@ impl CommandPaletteState {
 
         for (id, item) in &self.async_items {
             if static_ids.contains(id) {
-                if let Some(pos) = static_items.iter().position(|i| i.id.as_ref() == id.as_str()) {
+                if let Some(pos) = static_items
+                    .iter()
+                    .position(|i| i.id.as_ref() == id.as_str())
+                {
                     static_items[pos] = item.clone();
                 }
             } else {

@@ -12,11 +12,11 @@ pub(crate) use hover_popover::*;
 
 use gpui::{
     App, Div, ElementId, Entity, InteractiveElement as _, IntoElement, SharedString, Stateful,
-    StyleRefinement, Styled as _, Window, div, px, rems,
+    StyleRefinement, Styled as _, Window, px, rems,
 };
 
 use crate::{
-    ActiveTheme, ElevationToken, StyledExt as _, SurfaceContext, SurfacePreset,
+    ActiveTheme, ElevationToken, SurfaceContext, SurfacePreset,
     global_state::GlobalState,
     text::{TextView, TextViewStyle},
 };

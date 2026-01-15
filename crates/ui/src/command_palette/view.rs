@@ -327,11 +327,7 @@ impl CommandPaletteView {
         h_flex().truncate().children(elements).into_any_element()
     }
 
-    fn render_footer(
-        &self,
-        status_text: Option<SharedString>,
-        cx: &App,
-    ) -> impl IntoElement {
+    fn render_footer(&self, status_text: Option<SharedString>, cx: &App) -> impl IntoElement {
         h_flex()
             .w_full()
             .px_3()
@@ -439,8 +435,7 @@ impl CommandPaletteView {
             return item_index;
         }
 
-        let commands_header =
-            static_len > 0 && state.config.commands_section_title.is_some();
+        let commands_header = static_len > 0 && state.config.commands_section_title.is_some();
         let results_header = async_len > 0 && state.config.results_section_title.is_some();
         let mut row_index = item_index + usize::from(commands_header);
         if item_index >= static_len && results_header {
@@ -571,9 +566,8 @@ impl Render for CommandPaletteView {
                                                     view.render_section_header(title.clone(), cx)
                                                         .into_any_element(),
                                                 ),
-                                                CommandPaletteRow::Item(item_index) => matched_items
-                                                    .get(*item_index)
-                                                    .map(|item| {
+                                                CommandPaletteRow::Item(item_index) => {
+                                                    matched_items.get(*item_index).map(|item| {
                                                         view.render_item(
                                                             item,
                                                             *item_index,
@@ -583,7 +577,8 @@ impl Render for CommandPaletteView {
                                                             cx,
                                                         )
                                                         .into_any_element()
-                                                    }),
+                                                    })
+                                                }
                                             }
                                         })
                                         .collect()
@@ -595,7 +590,9 @@ impl Render for CommandPaletteView {
                     }),
             )
             // Footer
-            .when(show_footer, |this| this.child(self.render_footer(footer_status.clone(), cx)));
+            .when(show_footer, |this| {
+                this.child(self.render_footer(footer_status.clone(), cx))
+            });
 
         // Wrap in glassmorphic surface
         SurfacePreset::flyout()
