@@ -1,20 +1,20 @@
 use gpui::{
-    AnyElement, App, AppContext, Bounds, ClickEvent, Context, DismissEvent, Edges, ElementId,
+    anchored, deferred, div, prelude::FluentBuilder, px, rems, AbsoluteLength, AnyElement, App,
+    AppContext, Bounds, ClickEvent, Context, DefiniteLength, DismissEvent, Edges, ElementId,
     Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
     Length, ParentElement, Pixels, Render, RenderOnce, SharedString, StatefulInteractiveElement,
-    StyleRefinement, Styled, Subscription, Task, WeakEntity, Window, anchored, deferred, div,
-    prelude::FluentBuilder, px, rems,
+    StyleRefinement, Styled, Subscription, Task, WeakEntity, Window,
 };
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme, Disableable, ElementExt as _, Icon, IconName, IndexPath, Selectable, Sizable,
-    Size, StyleSized, StyledExt,
     actions::{Cancel, Confirm, SelectDown, SelectUp},
+    global_state::GlobalState,
     h_flex,
     input::clear_button,
     list::{List, ListDelegate, ListState},
-    v_flex,
+    v_flex, ActiveTheme, Disableable, ElementExt as _, Icon, IconName, IndexPath, Selectable,
+    Sizable, Size, StyleSized, StyledExt, SurfaceContext, SurfacePreset,
 };
 
 const CONTEXT: &str = "Select";
@@ -788,6 +788,18 @@ where
         let allow_open = !(self.open || self.options.disabled);
         let outline_visible = self.open || is_focused && !self.options.disabled;
         let popup_radius = cx.theme().radius.min(px(8.));
+        let surface_ctx = SurfaceContext {
+            blur_enabled: GlobalState::global(cx).blur_enabled(),
+        };
+        let base_width = bounds.size.width.into();
+        let base_height = bounds.size.height.into();
+        let rem_size = window.rem_size();
+        let menu_width = match self.options.menu_width {
+            Length::Auto => bounds.size.width + px(2.),
+            Length::Definite(width) => width.to_pixels(base_width, rem_size),
+        };
+        let menu_height = DefiniteLength::Absolute(AbsoluteLength::Rems(rems(20.)))
+            .to_pixels(base_height, rem_size);
 
         self.list
             .update(cx, |list, cx| list.set_searchable(searchable, cx));
@@ -873,31 +885,30 @@ where
                         anchored().snap_to_window_with_margin(px(8.)).child(
                             div()
                                 .occlude()
-                                .map(|this| match self.options.menu_width {
-                                    Length::Auto => this.w(bounds.size.width + px(2.)),
-                                    Length::Definite(w) => this.w(w),
-                                })
+                                .w(menu_width)
                                 .child(
-                                    v_flex()
-                                        .occlude()
-                                        .mt_1p5()
-                                        .bg(cx.theme().background)
-                                        .border_1()
-                                        .border_color(cx.theme().border)
-                                        .rounded(popup_radius)
-                                        .shadow_md()
-                                        .child(
-                                            List::new(&self.list)
-                                                .when_some(
-                                                    self.options.search_placeholder.clone(),
-                                                    |this, placeholder| {
-                                                        this.search_placeholder(placeholder)
-                                                    },
-                                                )
-                                                .with_size(self.options.size)
-                                                .max_h(rems(20.))
-                                                .paddings(Edges::all(px(4.))),
-                                        ),
+                                    SurfacePreset::flyout()
+                                        .with_radius(popup_radius)
+                                        .wrap_with_bounds(
+                                            v_flex().occlude().child(
+                                                List::new(&self.list)
+                                                    .when_some(
+                                                        self.options.search_placeholder.clone(),
+                                                        |this, placeholder| {
+                                                            this.search_placeholder(placeholder)
+                                                        },
+                                                    )
+                                                    .with_size(self.options.size)
+                                                    .max_h(rems(20.))
+                                                    .paddings(Edges::all(px(4.))),
+                                            ),
+                                            menu_width,
+                                            menu_height,
+                                            window,
+                                            cx,
+                                            surface_ctx,
+                                        )
+                                        .mt_1p5(),
                                 )
                                 .on_mouse_down_out(cx.listener(|this, _, window, cx| {
                                     this.escape(&Cancel, window, cx);

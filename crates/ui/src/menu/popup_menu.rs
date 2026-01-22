@@ -1,14 +1,15 @@
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::actions::{SelectLeft, SelectRight};
+use crate::global_state::GlobalState;
 use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::ScrollableElement;
-use crate::{ActiveTheme, ElementExt, Icon, IconName, Sizable as _, h_flex, v_flex};
-use crate::{Side, Size, StyledExt, kbd::Kbd};
+use crate::{h_flex, kbd::Kbd, v_flex, Side, Size, SurfacePreset};
+use crate::{ActiveTheme, ElementExt, Icon, IconName, Sizable as _, SurfaceContext};
 use gpui::{
-    Action, AnyElement, App, AppContext, Bounds, Context, Corner, DismissEvent, Edges, Entity,
-    EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
-    ParentElement, Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled,
-    WeakEntity, Window, anchored, div, prelude::FluentBuilder, px, rems,
+    anchored, div, prelude::FluentBuilder, px, rems, Action, AnyElement, App, AppContext, Bounds,
+    Context, Corner, DismissEvent, Edges, Entity, EventEmitter, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, KeyBinding, ParentElement, Pixels, Render, ScrollHandle,
+    SharedString, StatefulInteractiveElement, Styled, WeakEntity, Window,
 };
 use gpui::{ClickEvent, Half, MouseDownEvent, OwnedMenuItem, Point, Subscription};
 use std::rc::Rc;
@@ -1283,7 +1284,21 @@ impl Render for PopupMenu {
             radius: cx.theme().radius.min(px(8.)),
         };
 
-        v_flex()
+        let surface_ctx = SurfaceContext {
+            blur_enabled: GlobalState::global(cx).blur_enabled(),
+        };
+        let surface_width = if self.bounds.size.width > px(0.) {
+            self.bounds.size.width
+        } else {
+            max_width
+        };
+        let surface_height = if self.bounds.size.height > px(0.) {
+            self.bounds.size.height
+        } else {
+            max_height
+        };
+
+        let content = v_flex()
             .id("popup-menu")
             .key_context(CONTEXT)
             .track_focus(&self.focus_handle)
@@ -1294,7 +1309,6 @@ impl Render for PopupMenu {
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::dismiss))
             .on_mouse_down_out(cx.listener(Self::on_mouse_down_out))
-            .popover_style(cx)
             .text_color(cx.theme().popover_foreground)
             .relative()
             .occlude()
@@ -1324,6 +1338,17 @@ impl Render for PopupMenu {
             .when(self.scrollable, |this| {
                 // TODO: When the menu is limited by `overflow_y_scroll`, the sub-menu will cannot be displayed.
                 this.vertical_scrollbar(&self.scroll_handle)
-            })
+            });
+
+        SurfacePreset::flyout()
+            .with_radius(cx.theme().radius)
+            .wrap_with_bounds(
+                content,
+                surface_width,
+                surface_height,
+                window,
+                cx,
+                surface_ctx,
+            )
     }
 }

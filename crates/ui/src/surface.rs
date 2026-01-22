@@ -14,8 +14,8 @@
 //! ```
 
 use gpui::{
-    App, Div, Hsla, IntoElement, ObjectFit, ParentElement, Pixels, Styled, StyledImage, Window,
-    div, img, px,
+    div, img, px, App, Div, Hsla, ImageSource, IntoElement, ObjectFit, ParentElement, Pixels,
+    Resource, Styled, StyledImage, Window,
 };
 
 use crate::{ActiveTheme, StyledExt};
@@ -359,10 +359,11 @@ impl SurfacePreset {
             surface = surface.bg(bg_color);
         }
 
-        // Note: backdrop_blur is not available in this GPUI version.
-        // The blur_radius configuration is preserved for future compatibility.
-        let _ = ctx.blur_enabled;
-        let _ = self.blur_radius;
+        if ctx.blur_enabled {
+            if let Some(blur_radius) = self.blur_radius {
+                surface = surface.backdrop_blur(blur_radius);
+            }
+        }
 
         if let Some(ref stroke) = self.stroke {
             surface = surface
@@ -423,12 +424,14 @@ pub fn render_noise_overlay(
                 .items_start()
                 .justify_start()
                 .children((0..tiles).map(move |_| {
-                    img(GLASS_NOISE_ASSET_PATH)
-                        .w(tile_size)
-                        .h(tile_size)
-                        .flex_none()
-                        .object_fit(ObjectFit::Cover)
-                        .opacity(opacity)
+                    img(ImageSource::Resource(Resource::Embedded(
+                        GLASS_NOISE_ASSET_PATH.into(),
+                    )))
+                    .w(tile_size)
+                    .h(tile_size)
+                    .flex_none()
+                    .object_fit(ObjectFit::Cover)
+                    .opacity(opacity)
                 })),
         )
 }

@@ -15,7 +15,6 @@ use std::borrow::Cow;
 /// ```
 #[derive(RustEmbed)]
 #[folder = "assets"]
-#[include = "icons/**/*.svg"]
 pub struct Assets;
 
 impl AssetSource for Assets {
