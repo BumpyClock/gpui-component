@@ -51,10 +51,15 @@ jobs:
         run: |
           cargo install typos-cli || echo "typos-cli already installed"
           typos
-      - name: Lint
+      - name: Lint (macOS)
         if: ${{ matrix.run_on == 'macos-latest' }}
-        run: |
-          cargo clippy -- --deny warnings
+        run: ./script/clippy
+      - name: Lint (Linux)
+        if: ${{ matrix.run_on == 'ubuntu-latest' }}
+        run: ./script/clippy
+      - name: Lint (Windows)
+        if: ${{ matrix.run_on == 'windows-latest' }}
+        run: ./script/clippy.ps1
       - name: Test Linux
         if: ${{ matrix.run_on == 'ubuntu-latest' }}
         run: |
