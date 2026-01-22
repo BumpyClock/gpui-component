@@ -36,6 +36,8 @@ mod state;
 mod types;
 mod view;
 
+use std::time::Duration;
+
 pub use matcher::{FuzzyMatcherWrapper, NucleoMatcher};
 pub use provider::{CommandPaletteProvider, StaticProvider};
 pub use state::{CommandPaletteEvent, CommandPaletteState};
@@ -43,6 +45,14 @@ pub use types::{
     CommandMatcher, CommandMatcherKind, CommandPaletteConfig, CommandPaletteItem,
     CommandPaletteMatch, MatchedItem,
 };
+
+const REVEAL_DELAY_MS: u64 = 100;
+const REVEAL_ANIMATION_DURATION_MS: u64 = 180;
+pub(crate) const REVEAL_DELAY: Duration = Duration::from_millis(REVEAL_DELAY_MS);
+pub(crate) const REVEAL_ANIMATION_DURATION: Duration =
+    Duration::from_millis(REVEAL_ANIMATION_DURATION_MS);
+pub(crate) const REVEAL_QUERY_DELAY: Duration =
+    Duration::from_millis(REVEAL_DELAY_MS + REVEAL_ANIMATION_DURATION_MS);
 
 use gpui::{App, AppContext as _, Entity, KeyBinding, ParentElement as _, Styled, Window, actions};
 use std::sync::Arc;

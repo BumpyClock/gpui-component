@@ -3,18 +3,21 @@
 use super::provider::CommandPaletteProvider;
 use super::state::{CommandPaletteEvent, CommandPaletteState};
 use super::types::{CommandPaletteConfig, MatchedItem};
+use super::{REVEAL_ANIMATION_DURATION, REVEAL_DELAY};
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
+use crate::animation::cubic_bezier;
 use crate::global_state::GlobalState;
 use crate::input::{Input, InputEvent, InputState};
 use crate::kbd::Kbd;
 use crate::{
-    ActiveTheme, Icon, IconName, Sizable, Size, SurfaceContext, SurfacePreset,
-    VirtualListScrollHandle, WindowExt as _, h_flex, v_flex, v_virtual_list,
+    h_flex, v_flex, v_virtual_list, ActiveTheme, Icon, IconName, Sizable, Size, SurfaceContext,
+    SurfacePreset, VirtualListScrollHandle, WindowExt as _,
 };
 use gpui::{
-    App, AppContext as _, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    KeyBinding, ParentElement, Pixels, Render, ScrollStrategy, SharedString, Size as GpuiSize,
-    Styled, Subscription, Window, div, prelude::FluentBuilder, px,
+    div, prelude::FluentBuilder, px, Animation, AnimationExt, App, AppContext as _, Context,
+    ElementId, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
+    ParentElement, Pixels, Render, ScrollStrategy, SharedString, Size as GpuiSize, Styled,
+    Subscription, Task, Window,
 };
 use std::rc::Rc;
 use std::sync::Arc;
@@ -56,6 +59,10 @@ pub struct CommandPaletteView {
     item_height: Pixels,
     /// Tracks whether we've focused the input once after open.
     did_focus: bool,
+    /// Whether the results list has been revealed.
+    list_revealed: bool,
+    /// Task for delayed reveal.
+    _reveal_task: Option<Task<()>>,
     /// Subscriptions.
     _subscriptions: Vec<Subscription>,
 }
@@ -89,8 +96,30 @@ impl CommandPaletteView {
             scroll_handle: VirtualListScrollHandle::new(),
             item_height: px(48.),
             did_focus: false,
+            list_revealed: false,
+            _reveal_task: None,
             _subscriptions: vec![input_subscription, state_subscription],
         }
+    }
+
+    fn schedule_reveal(&mut self, cx: &mut Context<Self>) {
+        if self.list_revealed || self._reveal_task.is_some() {
+            return;
+        }
+
+        self._reveal_task = Some(cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(REVEAL_DELAY).await;
+
+            if let Some(this) = this.upgrade() {
+                this.update(cx, |this, cx| {
+                    if !this.list_revealed {
+                        this.list_revealed = true;
+                        this._reveal_task = None;
+                        cx.notify();
+                    }
+                });
+            }
+        }));
     }
 
     fn on_input_event(
@@ -482,6 +511,7 @@ impl Render for CommandPaletteView {
             .as_ref()
             .and_then(|provider| provider(&state.query));
         let max_height = px(config.max_height);
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
 
         // Focus input once after opening to avoid render jitter
         if !self.did_focus {
@@ -489,6 +519,14 @@ impl Render for CommandPaletteView {
                 input.focus(window, cx);
             });
             self.did_focus = true;
+
+            if !self.list_revealed {
+                if reduced_motion {
+                    self.list_revealed = true;
+                } else {
+                    self.schedule_reveal(cx);
+                }
+            }
         }
 
         // Compute height for surface bounds
@@ -503,13 +541,14 @@ impl Render for CommandPaletteView {
             })
         };
         let list_height = max_height.min(list_content_height);
-        let content_height = px(HEADER_HEIGHT)
+        let expanded_height = px(HEADER_HEIGHT)
             + list_height
             + if show_footer {
                 px(FOOTER_HEIGHT)
             } else {
                 px(0.0)
             };
+        let collapsed_height = px(HEADER_HEIGHT);
 
         let surface_ctx = SurfaceContext {
             blur_enabled: GlobalState::global(cx).blur_enabled(),
@@ -522,7 +561,7 @@ impl Render for CommandPaletteView {
             .on_action(cx.listener(Self::on_action_confirm))
             .on_action(cx.listener(Self::on_action_select_up))
             .on_action(cx.listener(Self::on_action_select_down))
-            .h(content_height)
+            .h(expanded_height)
             .w_full()
             .overflow_hidden()
             // Search input
@@ -595,16 +634,37 @@ impl Render for CommandPaletteView {
             });
 
         // Wrap in glassmorphic surface
-        SurfacePreset::flyout()
+        let surface = SurfacePreset::flyout()
             .wrap_with_bounds(
                 content,
                 px(config.width),
-                content_height,
+                expanded_height,
                 window,
                 cx,
                 surface_ctx,
             )
-            .h(content_height)
-            .w(px(config.width))
+            .h(if self.list_revealed {
+                expanded_height
+            } else {
+                collapsed_height
+            })
+            .w(px(config.width));
+
+        if self.list_revealed && !reduced_motion {
+            surface
+                .with_animation(
+                    ElementId::NamedInteger("command-palette-expand".into(), 1),
+                    Animation::new(REVEAL_ANIMATION_DURATION)
+                        .with_easing(cubic_bezier(0.2, 0.0, 0.0, 1.0)),
+                    move |this, delta| {
+                        let height =
+                            collapsed_height + (expanded_height - collapsed_height) * delta;
+                        this.h(height)
+                    },
+                )
+                .into_any_element()
+        } else {
+            surface.into_any_element()
+        }
     }
 }
