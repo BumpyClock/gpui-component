@@ -2,13 +2,17 @@
 
 use super::matcher::{FuzzyMatcherWrapper, NucleoMatcher};
 use super::provider::CommandPaletteProvider;
+use super::REVEAL_QUERY_DELAY;
 use super::types::{
     CommandMatcher, CommandMatcherKind, CommandPaletteConfig, CommandPaletteItem, MatchedItem,
 };
+use crate::global_state::GlobalState;
 use gpui::{Context, EventEmitter, Task, Window};
+use smol::Timer;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 /// Events emitted by the Command Palette.
 #[derive(Clone)]
@@ -40,6 +44,8 @@ pub struct CommandPaletteState {
     matcher: Box<dyn CommandMatcher + Send + Sync>,
     /// Query ID for tracking stale results.
     query_id: Arc<AtomicU64>,
+    /// Timestamp after which async results can load.
+    reveal_deadline: Option<Instant>,
     /// Static items from the provider.
     static_items: Vec<CommandPaletteItem>,
     /// Async items from the provider (keyed by id).
@@ -71,6 +77,12 @@ impl CommandPaletteState {
         // Get static items
         let static_items = provider.items(cx);
 
+        let reveal_deadline = if GlobalState::global(cx).reduced_motion() {
+            None
+        } else {
+            Some(Instant::now() + REVEAL_QUERY_DELAY)
+        };
+
         let mut state = Self {
             config,
             provider,
@@ -80,6 +92,7 @@ impl CommandPaletteState {
             selected_index: None,
             matcher,
             query_id: Arc::new(AtomicU64::new(0)),
+            reveal_deadline,
             static_items,
             async_items: HashMap::new(),
             _query_task: Task::ready(()),
@@ -108,11 +121,29 @@ impl CommandPaletteState {
         // Update matches immediately with static items
         self.update_matches(window, cx);
 
+        if self.query.len() < 2 {
+            self._query_task = Task::ready(());
+            return;
+        }
+
+        let query_delay = self
+            .reveal_deadline
+            .and_then(|deadline| deadline.checked_duration_since(Instant::now()))
+            .unwrap_or(Duration::ZERO);
+
         // Start async query
         let provider = self.provider.clone();
         let query_id = self.query_id.clone();
 
         self._query_task = cx.spawn_in(window, async move |this, window| {
+            if !query_delay.is_zero() {
+                Timer::after(query_delay).await;
+            }
+
+            if query_id.load(Ordering::SeqCst) != current_query_id {
+                return;
+            }
+
             let task = this.update_in(window, |this, _, cx| provider.query(&this.query, cx));
 
             let Ok(task) = task else {
@@ -141,6 +172,13 @@ impl CommandPaletteState {
 
     /// Update the matched items based on the current query.
     fn update_matches(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.query.len() == 1 {
+            self.matched_static_len = 0;
+            self.matched_items.clear();
+            self.selected_index = None;
+            cx.notify();
+            return;
+        }
         let mut static_items: Vec<CommandPaletteItem> = self.static_items.clone();
         let mut async_only_items: Vec<CommandPaletteItem> = Vec::new();
 
