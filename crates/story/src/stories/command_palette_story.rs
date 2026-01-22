@@ -1,14 +1,14 @@
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement as _, IntoElement,
-    ParentElement, Render, SharedString, Styled, Task, Window, div, px,
+    ParentElement, Render, SharedString, Styled, Task, Window, div,
 };
 use smol::Timer;
 use std::sync::Arc;
 use std::time::Duration;
 
 use gpui_component::{
-    ActiveTheme, Icon, IconName, WindowExt as _,
-    button::{Button, ButtonVariants as _},
+    ActiveTheme, IconName,
+    button::Button,
     command_palette::{
         CommandPalette, CommandPaletteConfig, CommandPaletteEvent, CommandPaletteItem,
         CommandPaletteProvider, StaticProvider,
@@ -53,7 +53,7 @@ impl CommandPaletteStory {
         let items = vec![
             CommandPaletteItem::new("file.new", "New File")
                 .category("File")
-                .icon(IconName::FilePlus)
+                .icon(IconName::Plus)
                 .shortcut("cmd-n")
                 .keyword("create"),
             CommandPaletteItem::new("file.open", "Open File")
@@ -63,11 +63,11 @@ impl CommandPaletteStory {
                 .keyword("browse"),
             CommandPaletteItem::new("file.save", "Save File")
                 .category("File")
-                .icon(IconName::Save)
+                .icon(IconName::File)
                 .shortcut("cmd-s"),
             CommandPaletteItem::new("file.save-all", "Save All")
                 .category("File")
-                .icon(IconName::Save)
+                .icon(IconName::File)
                 .shortcut("cmd-shift-s"),
             CommandPaletteItem::new("edit.undo", "Undo")
                 .category("Edit")
@@ -77,18 +77,10 @@ impl CommandPaletteStory {
                 .category("Edit")
                 .icon(IconName::Redo)
                 .shortcut("cmd-shift-z"),
-            CommandPaletteItem::new("edit.cut", "Cut")
-                .category("Edit")
-                .icon(IconName::Scissors)
-                .shortcut("cmd-x"),
             CommandPaletteItem::new("edit.copy", "Copy")
                 .category("Edit")
                 .icon(IconName::Copy)
                 .shortcut("cmd-c"),
-            CommandPaletteItem::new("edit.paste", "Paste")
-                .category("Edit")
-                .icon(IconName::Clipboard)
-                .shortcut("cmd-v"),
             CommandPaletteItem::new("search.find", "Find")
                 .category("Search")
                 .icon(IconName::Search)
@@ -98,53 +90,26 @@ impl CommandPaletteStory {
                 .category("Search")
                 .icon(IconName::Replace)
                 .shortcut("cmd-r"),
-            CommandPaletteItem::new("search.files", "Search Files")
-                .category("Search")
-                .icon(IconName::FileSearch)
-                .shortcut("cmd-p"),
             CommandPaletteItem::new("view.terminal", "Toggle Terminal")
                 .category("View")
-                .icon(IconName::Terminal)
+                .icon(IconName::SquareTerminal)
                 .shortcut("cmd-`"),
             CommandPaletteItem::new("view.sidebar", "Toggle Sidebar")
                 .category("View")
                 .icon(IconName::PanelLeft)
                 .shortcut("cmd-b"),
-            CommandPaletteItem::new("git.commit", "Commit Changes")
-                .category("Git")
-                .icon(IconName::GitCommit)
-                .shortcut("cmd-shift-c")
-                .keyword("vcs"),
-            CommandPaletteItem::new("git.push", "Push to Remote")
-                .category("Git")
-                .icon(IconName::Upload)
-                .shortcut("cmd-shift-p"),
-            CommandPaletteItem::new("git.pull", "Pull from Remote")
-                .category("Git")
-                .icon(IconName::Download)
-                .keyword("fetch"),
-            CommandPaletteItem::new("git.status", "Git Status")
-                .category("Git")
-                .icon(IconName::GitBranch),
         ];
 
         let provider = Arc::new(StaticProvider::new(items));
         let handle = CommandPalette::open(window, cx, provider);
 
-        let view = cx.entity().clone();
-        cx.subscribe(&handle.state(), move |_, event, window, cx| match event {
-            CommandPaletteEvent::Selected { item } => {
+        let view = cx.entity();
+        cx.subscribe(&handle.state(), move |_, _state, event, cx| {
+            if let CommandPaletteEvent::Selected { item } = event {
                 view.update(cx, |view, cx| {
                     view.last_selected = Some(item.title.clone());
                     cx.notify();
                 });
-                window.push_notification(
-                    format!("Selected: {} ({})", item.title, item.id),
-                    cx,
-                );
-            }
-            CommandPaletteEvent::Dismissed => {
-                window.push_notification("Command palette dismissed", cx);
             }
         })
         .detach();
@@ -154,20 +119,13 @@ impl CommandPaletteStory {
         let provider = Arc::new(AsyncDemoProvider::new());
         let handle = CommandPalette::open(window, cx, provider);
 
-        let view = cx.entity().clone();
-        cx.subscribe(&handle.state(), move |_, event, window, cx| match event {
-            CommandPaletteEvent::Selected { item } => {
+        let view = cx.entity();
+        cx.subscribe(&handle.state(), move |_, _state, event, cx| {
+            if let CommandPaletteEvent::Selected { item } = event {
                 view.update(cx, |view, cx| {
                     view.last_selected = Some(item.title.clone());
                     cx.notify();
                 });
-                window.push_notification(
-                    format!("Selected: {} ({})", item.title, item.id),
-                    cx,
-                );
-            }
-            CommandPaletteEvent::Dismissed => {
-                window.push_notification("Command palette dismissed", cx);
             }
         })
         .detach();
@@ -177,13 +135,13 @@ impl CommandPaletteStory {
         let items = vec![
             CommandPaletteItem::new("action-1", "Action One")
                 .category("Actions")
-                .icon(IconName::Zap),
+                .icon(IconName::Star),
             CommandPaletteItem::new("action-2", "Action Two")
                 .category("Actions")
-                .icon(IconName::Zap),
+                .icon(IconName::Star),
             CommandPaletteItem::new("action-3", "Action Three")
                 .category("Actions")
-                .icon(IconName::Zap),
+                .icon(IconName::Star),
         ];
 
         let provider = Arc::new(StaticProvider::new(items));
@@ -200,16 +158,14 @@ impl CommandPaletteStory {
 
         let handle = CommandPalette::open_with_config(window, cx, provider, custom_config);
 
-        let view = cx.entity().clone();
-        cx.subscribe(&handle.state(), move |_, event, window, cx| match event {
-            CommandPaletteEvent::Selected { item } => {
+        let view = cx.entity();
+        cx.subscribe(&handle.state(), move |_, _state, event, cx| {
+            if let CommandPaletteEvent::Selected { item } = event {
                 view.update(cx, |view, cx| {
                     view.last_selected = Some(item.title.clone());
                     cx.notify();
                 });
-                window.push_notification(format!("Selected: {}", item.title), cx);
             }
-            CommandPaletteEvent::Dismissed => {}
         })
         .detach();
     }
@@ -226,7 +182,7 @@ impl AsyncDemoProvider {
             static_items: vec![
                 CommandPaletteItem::new("static.help", "Help")
                     .category("Static")
-                    .icon(IconName::HelpCircle)
+                    .icon(IconName::Info)
                     .shortcut("F1"),
                 CommandPaletteItem::new("static.settings", "Settings")
                     .category("Static")
@@ -264,37 +220,22 @@ impl CommandPaletteProvider for AsyncDemoProvider {
                     CommandPaletteItem::new("async.file1", "document.txt")
                         .category("Files")
                         .subtitle("~/Documents/")
-                        .icon(IconName::FileText),
+                        .icon(IconName::File),
                 );
                 results.push(
                     CommandPaletteItem::new("async.file2", "notes.md")
                         .category("Files")
                         .subtitle("~/Documents/")
-                        .icon(IconName::FileText),
+                        .icon(IconName::File),
                 );
             }
 
-            if query.contains("code") || query.contains("src") {
+            if query.contains("folder") || query.contains("src") {
                 results.push(
-                    CommandPaletteItem::new("async.code1", "main.rs")
-                        .category("Source")
-                        .subtitle("src/")
-                        .icon(IconName::Code),
-                );
-                results.push(
-                    CommandPaletteItem::new("async.code2", "lib.rs")
-                        .category("Source")
-                        .subtitle("src/")
-                        .icon(IconName::Code),
-                );
-            }
-
-            if query.contains("test") {
-                results.push(
-                    CommandPaletteItem::new("async.test1", "test_utils.rs")
-                        .category("Tests")
-                        .subtitle("tests/")
-                        .icon(IconName::TestTube),
+                    CommandPaletteItem::new("async.folder1", "src/")
+                        .category("Folders")
+                        .subtitle("Project folder")
+                        .icon(IconName::Folder),
                 );
             }
 
@@ -345,7 +286,7 @@ impl Render for CommandPaletteStory {
                         section("Async Provider")
                             .child(
                                 "Command palette with static items plus async search. \
-                                Try typing 'file', 'code', or 'test' to see async results.",
+                                Try typing 'file', 'folder', or 'src' to see async results.",
                             )
                             .child(
                                 Button::new("show-async")
@@ -392,13 +333,12 @@ impl Render for CommandPaletteStory {
                             .child(
                                 v_flex()
                                     .gap_2()
-                                    .child("• Fuzzy search with highlighted matches")
-                                    .child("• Keyboard navigation (↑/↓, Enter, Escape)")
-                                    .child("• Categories and icons")
-                                    .child("• Keyboard shortcuts display")
-                                    .child("• Static and async item providers")
-                                    .child("• Customizable appearance")
-                                    .child("• Glassmorphic surface design"),
+                                    .child("Fuzzy search with highlighted matches")
+                                    .child("Keyboard navigation (Up/Down, Enter, Escape)")
+                                    .child("Categories and icons")
+                                    .child("Keyboard shortcuts display")
+                                    .child("Static and async item providers")
+                                    .child("Customizable appearance"),
                             )
                     )
                     .child(
@@ -406,17 +346,11 @@ impl Render for CommandPaletteStory {
                             .child(
                                 v_flex()
                                     .gap_2()
-                                    .child("• ↑/↓: Navigate items")
-                                    .child("• Enter: Select item")
-                                    .child("• Escape: Close palette")
-                                    .child("• cmd-k (or ctrl-k): Open palette (if initialized with default config)"),
+                                    .child("Up/Down: Navigate items")
+                                    .child("Enter: Select item")
+                                    .child("Escape: Close palette"),
                             )
                     ),
             )
     }
-}
-
-pub fn init(cx: &mut App) {
-    // Initialize the command palette with default config
-    CommandPalette::init(cx, CommandPaletteConfig::default());
 }

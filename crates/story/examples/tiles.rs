@@ -130,7 +130,7 @@ impl Focusable for ContainerPanel {
 
 impl Render for ContainerPanel {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        self.panel.view().clone()
+        self.panel.view()
     }
 }
 

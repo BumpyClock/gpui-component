@@ -3,6 +3,7 @@ use gpui_component::dock::PanelControl;
 
 mod accordion_story;
 mod alert_story;
+mod command_palette_story;
 mod avatar_story;
 mod badge_story;
 mod breadcrumb_story;
@@ -69,6 +70,7 @@ pub use checkbox_story::CheckboxStory;
 pub use clipboard_story::ClipboardStory;
 pub use collapsible_story::CollapsibleStory;
 pub use color_picker_story::ColorPickerStory;
+pub use command_palette_story::CommandPaletteStory;
 pub use date_picker_story::DatePickerStory;
 pub use description_list_story::DescriptionListStory;
 pub use dialog_story::DialogStory;

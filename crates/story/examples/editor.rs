@@ -556,7 +556,7 @@ impl CodeActionProvider for TextConvertor {
             edit: Some(WorkspaceEdit {
                 changes: Some(
                     std::iter::once((
-                        document_uri.clone(),
+                        document_uri,
                         vec![TextEdit {
                             range,
                             new_text: old_text
@@ -707,7 +707,7 @@ impl Example {
             editor.lsp.code_action_providers = vec![lsp_store.clone(), Rc::new(TextConvertor)];
             editor.lsp.hover_provider = Some(lsp_store.clone());
             editor.lsp.definition_provider = Some(lsp_store.clone());
-            editor.lsp.document_color_provider = Some(lsp_store.clone());
+            editor.lsp.document_color_provider = Some(lsp_store);
 
             editor
         });

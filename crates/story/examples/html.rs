@@ -64,7 +64,7 @@ impl Render for Example {
                     .into_any(),
             )
             .child(
-                html(self.input_state.read(cx).value().clone())
+                html(self.input_state.read(cx).value())
                     .p_5()
                     .scrollable(true)
                     .selectable(true)

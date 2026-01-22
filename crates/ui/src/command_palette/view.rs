@@ -333,7 +333,7 @@ impl CommandPaletteView {
             .px_3()
             .py_2()
             .border_t_1()
-            .border_color(cx.theme().border_default)
+            .border_color(cx.theme().border)
             .justify_between()
             .text_xs()
             .text_color(cx.theme().muted_foreground)
@@ -532,7 +532,7 @@ impl Render for CommandPaletteView {
                     .px_3()
                     .py_2()
                     .border_b_1()
-                    .border_color(cx.theme().border_default)
+                    .border_color(cx.theme().border)
                     .child(
                         Input::new(&self.input_state)
                             .with_size(Size::Medium)

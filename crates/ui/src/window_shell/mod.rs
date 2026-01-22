@@ -482,6 +482,7 @@ impl WindowShell {
             })
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn render_split_layout(
         sidebar_left: Option<AnyElement>,
         sidebar_right: Option<AnyElement>,
@@ -492,7 +493,7 @@ impl WindowShell {
         on_split_resize: Option<Rc<dyn Fn(Pixels, &mut Window, &mut App)>>,
         cx: &App,
     ) -> impl IntoElement {
-        let splitter_hover_bg = cx.theme().border_default;
+        let splitter_hover_bg = cx.theme().border;
 
         div()
             .id("window-shell-split-layout")

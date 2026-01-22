@@ -97,7 +97,7 @@ impl CommandPaletteState {
             return;
         }
 
-        self.query = query.clone();
+        self.query = query;
 
         // Increment query ID to invalidate stale results
         let current_query_id = self.query_id.fetch_add(1, Ordering::SeqCst) + 1;

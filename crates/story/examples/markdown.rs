@@ -100,7 +100,7 @@ impl Render for Example {
                     )
                     .child(
                         resizable_panel().child(
-                            markdown(self.input_state.read(cx).value().clone())
+                            markdown(self.input_state.read(cx).value())
                                 .code_block_actions(|code_block, _window, _cx| {
                                     let code = code_block.code();
                                     let lang = code_block.lang();

@@ -74,14 +74,14 @@ pub enum ElevationToken {
 
 impl ElevationToken {
     /// Applies the elevation shadow to the given element.
-    pub fn apply<E: Styled + StyledExt>(&self, element: E, cx: &App) -> E {
+    pub fn apply<E: Styled + StyledExt>(&self, element: E, _cx: &App) -> E {
         match self {
             ElevationToken::None => element,
-            ElevationToken::Xs => element.elevation_xs(cx),
-            ElevationToken::Sm => element.elevation_sm(cx),
-            ElevationToken::Md => element.elevation_md(cx),
-            ElevationToken::Lg => element.elevation_lg(cx),
-            ElevationToken::Xl => element.elevation_xl(cx),
+            ElevationToken::Xs => element.shadow_sm(),
+            ElevationToken::Sm => element.shadow_sm(),
+            ElevationToken::Md => element.shadow_md(),
+            ElevationToken::Lg => element.shadow_lg(),
+            ElevationToken::Xl => element.shadow_xl(),
         }
     }
 }
@@ -118,10 +118,10 @@ impl SurfaceBackground {
     /// Resolves the background color based on theme mode and opacity settings.
     pub fn resolve(&self, cx: &App) -> Hsla {
         let base = match self.color_source {
-            SurfaceColorSource::Popover => cx.theme().surface_raised,
+            SurfaceColorSource::Popover => cx.theme().popover,
             SurfaceColorSource::White => gpui::white(),
-            SurfaceColorSource::Sidebar => cx.theme().surface_sunken,
-            SurfaceColorSource::Background => cx.theme().surface_base,
+            SurfaceColorSource::Sidebar => cx.theme().sidebar,
+            SurfaceColorSource::Background => cx.theme().background,
         };
         let opacity = if cx.theme().mode.is_dark() {
             self.dark_opacity
@@ -169,10 +169,10 @@ impl StrokeSpec {
     /// Resolves the stroke color based on the current theme.
     pub fn resolve_color(&self, cx: &App) -> Hsla {
         match self.color {
-            StrokeColor::Subtle => cx.theme().border_subtle,
-            StrokeColor::Default => cx.theme().border_default,
-            StrokeColor::Strong => cx.theme().border_strong,
-            StrokeColor::SubtleWithOpacity(opacity) => cx.theme().border_subtle.opacity(opacity),
+            StrokeColor::Subtle => cx.theme().border.opacity(0.5),
+            StrokeColor::Default => cx.theme().border,
+            StrokeColor::Strong => cx.theme().border,
+            StrokeColor::SubtleWithOpacity(opacity) => cx.theme().border.opacity(opacity),
         }
     }
 }
@@ -359,13 +359,10 @@ impl SurfacePreset {
             surface = surface.bg(bg_color);
         }
 
-        if ctx.blur_enabled {
-            if let Some(blur_radius) = self.blur_radius {
-                if (blur_radius / px(1.0)) > 0.0 {
-                    surface = surface.backdrop_blur(blur_radius);
-                }
-            }
-        }
+        // Note: backdrop_blur is not available in this GPUI version.
+        // The blur_radius configuration is preserved for future compatibility.
+        let _ = ctx.blur_enabled;
+        let _ = self.blur_radius;
 
         if let Some(ref stroke) = self.stroke {
             surface = surface

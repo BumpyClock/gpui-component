@@ -56,20 +56,15 @@ impl Default for CommandPaletteConfig {
 }
 
 /// The type of matcher to use for fuzzy matching.
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub enum CommandMatcherKind {
     /// Use nucleo for async-friendly fuzzy matching (default).
+    #[default]
     Nucleo,
     /// Use fuzzy-matcher (SkimMatcherV2) for matching.
     FuzzyMatcher,
     /// Use a custom matcher implementation.
     Custom(Arc<dyn CommandMatcher + Send + Sync>),
-}
-
-impl Default for CommandMatcherKind {
-    fn default() -> Self {
-        Self::Nucleo
-    }
 }
 
 /// An item that can be displayed in the command palette.
