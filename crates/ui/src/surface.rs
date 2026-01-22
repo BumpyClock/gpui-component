@@ -222,7 +222,7 @@ impl SurfacePreset {
     ///
     /// - 60px blur radius
     /// - Subtle noise
-    /// - Popover background at 0.85/0.90 opacity
+    /// - Popover background at 0.75/0.85 opacity
     /// - Small elevation with subtle stroke
     /// - 12px border radius
     pub fn flyout() -> Self {
@@ -232,8 +232,8 @@ impl SurfacePreset {
             noise_intensity: NoiseIntensity::Subtle,
             background: SurfaceBackground {
                 color_source: SurfaceColorSource::Popover,
-                light_opacity: 0.85,
-                dark_opacity: 0.90,
+                light_opacity: 0.75,
+                dark_opacity: 0.85,
             },
             elevation: ElevationToken::Sm,
             stroke: Some(StrokeSpec::subtle()),
