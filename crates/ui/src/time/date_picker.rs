@@ -366,7 +366,7 @@ impl RenderOnce for DatePicker {
         let display_title = state
             .date
             .format(&state.date_format)
-            .unwrap_or(placeholder.clone());
+            .unwrap_or(placeholder);
 
         div()
             .id(self.id.clone())

@@ -562,7 +562,7 @@ impl Calendar {
         let date_id: SharedString = format!("{}_{}", date.format("%Y-%m-%d"), offset_month).into();
 
         self.item_button(
-            date_id.clone(),
+            date_id,
             day.to_string(),
             is_active,
             is_in_range,

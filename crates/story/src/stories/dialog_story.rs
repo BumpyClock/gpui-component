@@ -142,7 +142,7 @@ impl DialogStory {
         let input1 = self.input1.clone();
         let date = self.date.clone();
         let select = self.select.clone();
-        let view = cx.entity().clone();
+        let view = cx.entity();
         let keyboard = self.keyboard;
 
         window.open_dialog(cx, move |dialog, _, _| {

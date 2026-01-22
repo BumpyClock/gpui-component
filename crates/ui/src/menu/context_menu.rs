@@ -189,7 +189,7 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                                         menu.focus_handle(cx).focus(window, cx);
                                                     }
 
-                                                    this.child(menu.clone())
+                                                    this.child(menu)
                                                 }),
                                         ),
                                 ),

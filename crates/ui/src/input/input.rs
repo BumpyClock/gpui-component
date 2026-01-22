@@ -154,7 +154,6 @@ impl Input {
                 }
             })
             .on_mouse_up(MouseButton::Left, {
-                let state = state.clone();
                 move |_, window, cx| {
                     state.update(cx, |state, cx| {
                         state.set_masked(true, window, cx);

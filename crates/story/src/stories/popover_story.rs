@@ -262,7 +262,7 @@ impl Render for PopoverStory {
                             this.form_popover_open = *open;
                             cx.notify();
                         }))
-                        .child(form.clone()),
+                        .child(form),
                 ),
             )
             .child(

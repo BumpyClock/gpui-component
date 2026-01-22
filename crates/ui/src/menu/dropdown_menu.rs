@@ -132,7 +132,7 @@ where
                     }
                 };
 
-                menu.clone()
+                menu
             })
     }
 }

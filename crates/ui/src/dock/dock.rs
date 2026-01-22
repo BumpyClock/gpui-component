@@ -94,7 +94,7 @@ impl Dock {
             size: None,
             items: Vec::new(),
             active_ix: 0,
-            view: panel.clone(),
+            view: panel,
         };
 
         Self::subscribe_panel_events(dock_area.clone(), &panel, window, cx);
@@ -294,7 +294,7 @@ impl Dock {
 
     fn render_resize_handle(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let axis = self.placement.axis();
-        let view = cx.entity().clone();
+        let view = cx.entity();
 
         resize_handle("resize-handle", axis)
             .placement(self.placement)
@@ -399,7 +399,7 @@ impl Render for Dock {
             })
             .child(self.render_resize_handle(window, cx))
             .child(DockElement {
-                view: cx.entity().clone(),
+                view: cx.entity(),
             })
     }
 }

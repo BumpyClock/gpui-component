@@ -53,7 +53,7 @@ pub trait TableDelegate: Sized + 'static {
     ) -> impl IntoElement {
         div()
             .size_full()
-            .child(self.column(col_ix, cx).name.clone())
+            .child(self.column(col_ix, cx).name)
     }
 
     /// Render the row at the given row and column.

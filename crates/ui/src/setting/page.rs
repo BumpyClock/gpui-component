@@ -165,7 +165,6 @@ impl SettingPage {
                     .w_full()
                     .child(
                         list(list_state.clone(), {
-                            let query = query.clone();
                             let options = *options;
                             move |group_ix, window, cx| {
                                 let group = groups[group_ix].clone();

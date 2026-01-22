@@ -342,7 +342,7 @@ impl DockItem {
         window: &mut Window,
         cx: &mut App,
     ) -> Self {
-        Self::new_tabs(vec![Arc::new(item.clone())], None, dock_area, window, cx)
+        Self::new_tabs(vec![Arc::new(item)], None, dock_area, window, cx)
     }
 
     fn new_tabs(
@@ -1115,7 +1115,7 @@ impl DockArea {
 impl EventEmitter<DockEvent> for DockArea {}
 impl Render for DockArea {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().clone();
+        let view = cx.entity();
 
         div()
             .id("dock-area")

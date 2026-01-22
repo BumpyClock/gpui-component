@@ -220,7 +220,7 @@ impl StackPanel {
             return;
         }
 
-        let view = cx.entity().clone();
+        let view = cx.entity();
         window.defer(cx, {
             let panel = panel.clone();
 
@@ -299,7 +299,7 @@ impl StackPanel {
         cx: &mut Context<Self>,
     ) {
         if let Some(ix) = self.index_of_panel(old_panel.clone()) {
-            self.panels[ix] = Arc::new(new_panel.clone());
+            self.panels[ix] = Arc::new(new_panel);
 
             let panel_state = ResizablePanelState::default();
             self.state.update(cx, |state, cx| {
@@ -319,7 +319,7 @@ impl StackPanel {
             return;
         }
 
-        let view = cx.entity().clone();
+        let view = cx.entity();
         if let Some(parent) = self.parent.as_ref() {
             _ = parent.update(cx, |parent, cx| {
                 parent.remove_panel(Arc::new(view.clone()), window, cx);

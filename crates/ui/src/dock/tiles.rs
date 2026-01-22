@@ -1159,7 +1159,7 @@ impl EventEmitter<PanelEvent> for Tiles {}
 impl EventEmitter<DismissEvent> for Tiles {}
 impl Render for Tiles {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let view = cx.entity().clone();
+        let view = cx.entity();
         let panels = self.sorted_panels();
         let scroll_bounds =
             self.panels

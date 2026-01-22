@@ -1065,7 +1065,7 @@ impl Element for TextElement {
                 },
                 TextRun {
                     len: display_text.len() - ime_marked_range.end,
-                    ..run.clone()
+                    ..run
                 },
             ]
             .into_iter()
@@ -1680,7 +1680,7 @@ mod tests {
             // this-is-test
             TextRun {
                 len: 12,
-                ..run.clone()
+                ..run
             },
         ];
 
@@ -1724,7 +1724,7 @@ mod tests {
             },
             TextRun {
                 len: 24,
-                ..run.clone()
+                ..run
             },
         ];
 

@@ -31,7 +31,7 @@ impl<T: 'static, E: 'static + Render> ResizeHandle<T, E> {
     fn new(id: impl Into<ElementId>, axis: Axis) -> Self {
         let id = id.into();
         Self {
-            id: id.clone(),
+            id,
             on_drag: None,
             drag_value: None,
             placement: None,

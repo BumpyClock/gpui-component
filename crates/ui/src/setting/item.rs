@@ -186,8 +186,8 @@ impl SettingItem {
                                 }
                             })
                             .gap_1()
-                            .child(Label::new(title.clone()).text_sm())
-                            .when_some(description.clone(), |this, description| {
+                            .child(Label::new(title).text_sm())
+                            .when_some(description, |this, description| {
                                 this.child(
                                     div()
                                         .size_full()

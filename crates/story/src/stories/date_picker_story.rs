@@ -204,7 +204,7 @@ impl Render for DatePickerStory {
                     DatePicker::new(&self.default_range_mode_picker)
                         .placeholder("Range mode picker")
                         .cleanable(true)
-                        .presets(range_presets.clone()),
+                        .presets(range_presets),
                 ),
             )
             .child(

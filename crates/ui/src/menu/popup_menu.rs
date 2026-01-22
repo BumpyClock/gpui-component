@@ -1008,7 +1008,7 @@ impl PopupMenu {
         }
 
         let icon = if let Some(icon) = icon {
-            icon.clone()
+            icon
         } else if checked {
             Icon::new(IconName::Check)
         } else {
@@ -1263,7 +1263,7 @@ impl Render for PopupMenu {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.update_submenu_menu_anchor(window);
 
-        let view = cx.entity().clone();
+        let view = cx.entity();
         let items_count = self.menu_items.len();
 
         let max_height = self.max_height.unwrap_or_else(|| {

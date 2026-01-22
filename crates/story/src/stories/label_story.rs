@@ -206,7 +206,7 @@ impl Render for LabelStory {
                             Label::new("500 USD")
                                 .text_xl()
                                 .masked(self.masked)
-                                .highlights(ht.clone()),
+                                .highlights(ht),
                         ),
                 ),
             )

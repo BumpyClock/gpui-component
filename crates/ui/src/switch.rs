@@ -27,7 +27,7 @@ impl Switch {
     pub fn new(id: impl Into<ElementId>) -> Self {
         let id: ElementId = id.into();
         Self {
-            id: id.clone(),
+            id,
             style: StyleRefinement::default(),
             checked: false,
             disabled: false,

@@ -101,7 +101,7 @@ impl RenderOnce for Clipboard {
                         .detach();
 
                         if let Some(on_copied) = &on_copied {
-                            on_copied(value.clone(), window, cx);
+                            on_copied(value, window, cx);
                         }
                     }
                 })

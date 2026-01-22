@@ -382,7 +382,7 @@ impl RenderOnce for ColorPicker {
                         Button::new("trigger")
                             .with_size(self.size)
                             .text()
-                            .when_some(self.icon.clone(), |this, icon| this.icon(icon.clone()))
+                            .when_some(self.icon.clone(), |this, icon| this.icon(icon))
                             .when_none(&self.icon, |this| {
                                 this.p_0().child(
                                     div()

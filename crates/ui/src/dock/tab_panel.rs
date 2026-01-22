@@ -359,7 +359,7 @@ impl TabPanel {
             return;
         }
 
-        let tab_view = cx.entity().clone();
+        let tab_view = cx.entity();
         if let Some(stack_panel) = self.stack_panel.as_ref() {
             _ = stack_panel.update(cx, |view, cx| {
                 view.remove_panel(Arc::new(tab_view), window, cx);
@@ -445,7 +445,7 @@ impl TabPanel {
         }
 
         let zoomed = self.zoomed;
-        let view = cx.entity().clone();
+        let view = cx.entity();
         let zoomable_toolbar_visible = state.zoomable.map_or(false, |v| v.toolbar_visible());
 
         h_flex()
@@ -610,7 +610,7 @@ impl TabPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let view = cx.entity().clone();
+        let view = cx.entity();
 
         let Some(dock_area) = self.dock_area.upgrade() else {
             return div().into_any_element();
@@ -997,7 +997,7 @@ impl TabPanel {
 
         let ix = stack_panel
             .read(cx)
-            .index_of_panel(Arc::new(cx.entity().clone()))
+            .index_of_panel(Arc::new(cx.entity()))
             .unwrap_or_default();
 
         if parent_axis.is_vertical() && placement.is_vertical() {
@@ -1029,7 +1029,7 @@ impl TabPanel {
             // 2. Move cx.entity() from parent StackPanel to the new StackPanel
             // 3. Add the new TabPanel to the new StackPanel at the correct index
             // 4. Add new StackPanel to the parent StackPanel at the correct index
-            let tab_panel = cx.entity().clone();
+            let tab_panel = cx.entity();
 
             // Try to use the old stack panel, not just create a new one, to avoid too many nested stack panels
             let new_stack_panel = if stack_panel.read(cx).panels_len() <= 1 {
