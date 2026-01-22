@@ -1,3 +1,5 @@
+This is a fork of the original gpui-component by longbridge. Goal is to maintain compatibility with gpui while adding custom components as needed.
+
 # GPUI Component
 
 [![Build Status](https://github.com/longbridge/gpui-component/actions/workflows/ci.yml/badge.svg)](https://github.com/longbridge/gpui-component/actions/workflows/ci.yml) [![Docs](https://docs.rs/gpui-component/badge.svg)](https://docs.rs/gpui-component/) [![Crates.io](https://img.shields.io/crates/v/gpui-component.svg)](https://crates.io/crates/gpui-component)
@@ -18,11 +20,6 @@ UI components for building fantastic desktop applications using [GPUI](https://g
 - **Editor**: High performance code editor (support up to 200K lines) with LSP (diagnostics, completion, hover, etc).
 - **Syntax Highlighting**: Syntax highlighting for editor and markdown components using Tree Sitter.
 
-## Showcase
-
-Here is the first application: [Longbridge Pro](https://longbridge.com/desktop), built using GPUI Component.
-
-<img width="1763" alt="Image" src="https://github.com/user-attachments/assets/e1ecb9c3-2dd3-431e-bd97-5a819c30e551" />
 
 ## Usage
 

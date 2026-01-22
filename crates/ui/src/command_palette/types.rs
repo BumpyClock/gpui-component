@@ -7,7 +7,7 @@ use std::sync::Arc;
 /// Configuration for the Command Palette.
 #[derive(Clone)]
 pub struct CommandPaletteConfig {
-    /// The keyboard shortcut to open the palette. Default: "cmd-b" on macOS, "ctrl-b" elsewhere.
+    /// The keyboard shortcut to open the palette. Default: "cmd-p" on macOS, "ctrl-p" elsewhere.
     /// Set to None to disable the default keybinding.
     pub shortcut: Option<SharedString>,
     /// The matcher implementation to use. Default: Nucleo.
@@ -35,9 +35,9 @@ pub struct CommandPaletteConfig {
 impl Default for CommandPaletteConfig {
     fn default() -> Self {
         #[cfg(target_os = "macos")]
-        let shortcut = Some("cmd-b".into());
+        let shortcut = Some("cmd-p".into());
         #[cfg(not(target_os = "macos"))]
-        let shortcut = Some("ctrl-b".into());
+        let shortcut = Some("ctrl-p".into());
 
         Self {
             shortcut,
