@@ -8,12 +8,15 @@ use gpui::{
     prelude::FluentBuilder as _, px,
 };
 #[cfg(target_os = "windows")]
-use raw_window_handle::{HasWindowHandle as _, RawWindowHandle};
+use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use smallvec::SmallVec;
 #[cfg(target_os = "windows")]
 use windows::Win32::{
     Foundation::{HWND, LPARAM, WPARAM},
-    UI::WindowsAndMessaging::{HTCAPTION, ReleaseCapture, SendMessageW, WM_NCLBUTTONDOWN},
+    UI::{
+        Input::KeyboardAndMouse::ReleaseCapture,
+        WindowsAndMessaging::{HTCAPTION, SendMessageW, WM_NCLBUTTONDOWN},
+    },
 };
 
 pub const TITLE_BAR_HEIGHT: Pixels = px(34.);
@@ -156,20 +159,31 @@ impl ControlIcon {
 fn start_windows_titlebar_drag(_window: &Window) {
     #[cfg(target_os = "windows")]
     {
-        let Ok(handle) = _window.window_handle() else {
-            return;
+        let raw_handle = match <Window as HasWindowHandle>::window_handle(_window) {
+            Ok(handle) => handle,
+            Err(error) => {
+                tracing::warn!(?error, "window_handle unavailable");
+                return;
+            }
         };
 
-        let RawWindowHandle::Win32(handle) = handle.as_raw() else {
+        let RawWindowHandle::Win32(handle) = raw_handle.as_raw() else {
             return;
         };
 
         let hwnd = HWND(handle.hwnd.get() as _);
         unsafe {
-            ReleaseCapture().ok();
+            if let Err(error) = ReleaseCapture() {
+                tracing::warn!(?error, "ReleaseCapture failed");
+            }
             // Ask Windows to begin a standard non-client titlebar drag.
             // This is more reliable than relying on WM_NCHITTEST state when using client-side decorations.
-            let _ = SendMessageW(hwnd, WM_NCLBUTTONDOWN, WPARAM(HTCAPTION as _), LPARAM(0));
+            let _ = SendMessageW(
+                hwnd,
+                WM_NCLBUTTONDOWN,
+                Some(WPARAM(HTCAPTION as _)),
+                Some(LPARAM(0)),
+            );
         }
     }
 }
