@@ -38,3 +38,17 @@ bd sync               # Sync with git
 - NEVER say "ready to push when you are" - YOU must push
 - If push fails, resolve and retry until it succeeds
 
+## Animation Guardrails (GPUI)
+
+- Failure mode: open animation flashes (open -> collapse -> open).
+- Root cause: using `bounce(...)` easing for reveal/size/opacity. `bounce` is forward-then-reverse; at `delta=1` it returns ~0, so the end frame collapses.
+- Rule: only use monotonic easings (fast_invoke/point_to_point/soft_dismiss) for reveal/size/opacity.
+- If you want “spring” feel: simulate with a snappier monotonic curve or staged animations; avoid `bounce` unless you want ping-pong.
+- Required pattern for open/close motion:
+  1. Keep `target_state` (source-of-truth open/closed).
+  2. Keep `visual_state` (mounted/visible during exit animation).
+  3. Compute `transition_active = target_changed || (visual_state != target_state)`.
+  4. Run `with_animation(...)` **only** when `transition_active`.
+  5. On close, delay `visual_state=false` until close duration elapses; guard timer with latest `target_state`.
+- For dialogs/surfaces: do not unmount on close request if animation enabled; mark as closing, remove after timer.
+- Reduced motion / `animate(false)`: bypass delay + animation, apply final state immediately.

@@ -183,6 +183,70 @@ pub trait StyledExt: Styled + Sized {
             .rounded(cx.theme().radius)
     }
 
+    /// Apply Fluent caption typography (12/16 Regular).
+    fn fluent_caption(self, cx: &App) -> Self {
+        let t = &cx.theme().typography.caption;
+        self.text_size(t.size)
+            .line_height(t.line_height)
+            .font_weight(t.weight)
+    }
+
+    /// Apply Fluent body typography (14/20 Regular).
+    fn fluent_body(self, cx: &App) -> Self {
+        let t = &cx.theme().typography.body;
+        self.text_size(t.size)
+            .line_height(t.line_height)
+            .font_weight(t.weight)
+    }
+
+    /// Apply Fluent body strong typography (14/20 Semibold).
+    fn fluent_body_strong(self, cx: &App) -> Self {
+        let t = &cx.theme().typography.body_strong;
+        self.text_size(t.size)
+            .line_height(t.line_height)
+            .font_weight(t.weight)
+    }
+
+    /// Apply Fluent body large typography (18/24 Regular).
+    fn fluent_body_large(self, cx: &App) -> Self {
+        let t = &cx.theme().typography.body_large;
+        self.text_size(t.size)
+            .line_height(t.line_height)
+            .font_weight(t.weight)
+    }
+
+    /// Apply Fluent subtitle typography (20/28 Semibold).
+    fn fluent_subtitle(self, cx: &App) -> Self {
+        let t = &cx.theme().typography.subtitle;
+        self.text_size(t.size)
+            .line_height(t.line_height)
+            .font_weight(t.weight)
+    }
+
+    /// Apply Fluent title typography (28/36 Semibold).
+    fn fluent_title(self, cx: &App) -> Self {
+        let t = &cx.theme().typography.title;
+        self.text_size(t.size)
+            .line_height(t.line_height)
+            .font_weight(t.weight)
+    }
+
+    /// Apply Fluent title large typography (40/52 Semibold).
+    fn fluent_title_large(self, cx: &App) -> Self {
+        let t = &cx.theme().typography.title_large;
+        self.text_size(t.size)
+            .line_height(t.line_height)
+            .font_weight(t.weight)
+    }
+
+    /// Apply Fluent display typography (68/92 Semibold).
+    fn fluent_display(self, cx: &App) -> Self {
+        let t = &cx.theme().typography.display;
+        self.text_size(t.size)
+            .line_height(t.line_height)
+            .font_weight(t.weight)
+    }
+
     /// Set corner radii for the element.
     fn corner_radii(self, radius: Corners<Pixels>) -> Self {
         self.rounded_tl(radius.top_left)

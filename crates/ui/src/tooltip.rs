@@ -1,9 +1,13 @@
 use gpui::{
-    Action, AnyElement, AnyView, App, AppContext, Context, IntoElement, ParentElement, Render,
-    SharedString, StyleRefinement, Styled, Window, div, prelude::FluentBuilder, px,
+    Action, AnimationExt as _, AnyElement, AnyView, App, AppContext, Context, IntoElement,
+    ParentElement, Render, SharedString, StyleRefinement, Styled, Window, div,
+    prelude::FluentBuilder, px,
 };
 
-use crate::{ActiveTheme, StyledExt, h_flex, kbd::Kbd, text::Text};
+use crate::{
+    ActiveTheme, StyledExt, animation::fade_animation, global_state::GlobalState, h_flex, kbd::Kbd,
+    text::Text,
+};
 
 enum TooltipContext {
     Text(Text),
@@ -86,39 +90,52 @@ impl Render for Tooltip {
             }
         };
 
-        div().child(
-            // Wrap in a child, to ensure the left margin is applied to the tooltip
-            h_flex()
-                .font_family(cx.theme().font_family.clone())
-                .m_3()
-                .bg(cx.theme().popover)
-                .text_color(cx.theme().popover_foreground)
-                .bg(cx.theme().popover)
-                .border_1()
-                .border_color(cx.theme().border)
-                .shadow_md()
-                .rounded(px(6.))
-                .justify_between()
-                .py_0p5()
-                .px_2()
-                .text_sm()
-                .gap_3()
-                .refine_style(&self.style)
-                .map(|this| {
-                    this.child(div().map(|this| match self.content {
-                        TooltipContext::Text(ref text) => this.child(text.clone()),
-                        TooltipContext::Element(ref builder) => this.child(builder(window, cx)),
-                    }))
-                })
-                .when_some(key_binding, |this, kbd| {
-                    this.child(
-                        div()
-                            .text_xs()
-                            .flex_shrink_0()
-                            .text_color(cx.theme().muted_foreground)
-                            .child(kbd.appearance(false)),
-                    )
-                }),
-        )
+        let motion = &cx.theme().motion;
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let anim = fade_animation(motion, reduced_motion);
+
+        div()
+            .child(
+                // Wrap in a child, to ensure the left margin is applied to the tooltip
+                h_flex()
+                    .font_family(cx.theme().font_family.clone())
+                    .m_3()
+                    .bg(cx.theme().popover)
+                    .text_color(cx.theme().popover_foreground)
+                    .bg(cx.theme().popover)
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .shadow_md()
+                    .rounded(px(6.))
+                    .justify_between()
+                    .py_0p5()
+                    .px_2()
+                    .text_sm()
+                    .gap_3()
+                    .refine_style(&self.style)
+                    .map(|this| {
+                        this.child(div().map(|this| match self.content {
+                            TooltipContext::Text(ref text) => this.child(text.clone()),
+                            TooltipContext::Element(ref builder) => this.child(builder(window, cx)),
+                        }))
+                    })
+                    .when_some(key_binding, |this, kbd| {
+                        this.child(
+                            div()
+                                .text_xs()
+                                .flex_shrink_0()
+                                .text_color(cx.theme().muted_foreground)
+                                .child(kbd.appearance(false)),
+                        )
+                    }),
+            )
+            .map(|el| {
+                if let Some(anim) = anim {
+                    el.with_animation("tooltip-fade", anim, |el, delta| el.opacity(delta))
+                        .into_any_element()
+                } else {
+                    el.into_any_element()
+                }
+            })
     }
 }

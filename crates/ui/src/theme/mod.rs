@@ -12,15 +12,18 @@ use std::{
 };
 
 mod color;
+mod elevation;
 mod fluent_tokens;
 mod registry;
 mod schema;
 mod theme_color;
+mod typography;
 
 pub use color::*;
 pub use registry::*;
 pub use schema::*;
 pub use theme_color::*;
+pub use typography::*;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -136,6 +139,7 @@ pub struct Theme {
     pub motion: ThemeMotion,
     pub elevation: ThemeElevation,
     pub material: ThemeMaterial,
+    pub typography: ThemeTypography,
     pub highlight_theme: Arc<HighlightTheme>,
     pub light_theme: Rc<ThemeConfig>,
     pub dark_theme: Rc<ThemeConfig>,
@@ -310,6 +314,7 @@ impl From<&ThemeColor> for Theme {
             motion: ThemeMotion::default(),
             elevation: ThemeElevation::default(),
             material: ThemeMaterial::default(),
+            typography: ThemeTypography::default(),
             light_theme: Rc::new(ThemeConfig::default()),
             dark_theme: Rc::new(ThemeConfig::default()),
             highlight_theme: HighlightTheme::default_light(),

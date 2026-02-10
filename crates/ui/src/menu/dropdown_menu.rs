@@ -5,7 +5,7 @@ use gpui::{
     RenderOnce, SharedString, StyleRefinement, Styled, Window,
 };
 
-use crate::{Selectable, button::Button, menu::PopupMenu, popover::Popover};
+use crate::{ActiveTheme, Selectable, button::Button, menu::PopupMenu, popover::Popover};
 
 /// A dropdown menu trait for buttons and other interactive elements
 pub trait DropdownMenu: Styled + Selectable + InteractiveElement + IntoElement + 'static {
@@ -120,9 +120,19 @@ where
                                 move |_, _: &DismissEvent, window, cx| {
                                     popover_state.update(cx, |state, cx| {
                                         state.dismiss(window, cx);
-                                    });
-                                    menu_state.update(cx, |state, _| {
-                                        state.menu = None;
+                                        let dismiss_duration = std::time::Duration::from_millis(
+                                            u64::from(cx.theme().motion.fade_duration_ms),
+                                        );
+                                        cx.spawn({
+                                            let menu_state = menu_state.clone();
+                                            async move |_, cx| {
+                                                cx.background_executor().timer(dismiss_duration).await;
+                                                _ = menu_state.update(cx, |state, _| {
+                                                    state.menu = None;
+                                                });
+                                            }
+                                        })
+                                        .detach();
                                     });
                                 }
                             })

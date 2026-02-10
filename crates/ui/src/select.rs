@@ -1,20 +1,22 @@
 use gpui::{
-    anchored, deferred, div, prelude::FluentBuilder, px, rems, AbsoluteLength, AnyElement, App,
-    AppContext, Bounds, ClickEvent, Context, DefiniteLength, DismissEvent, Edges, ElementId,
-    Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
-    Length, ParentElement, Pixels, Render, RenderOnce, SharedString, StatefulInteractiveElement,
-    StyleRefinement, Styled, Subscription, Task, WeakEntity, Window,
+    AbsoluteLength, AnimationExt as _, AnyElement, App, AppContext, Bounds, ClickEvent, Context,
+    DefiniteLength, DismissEvent, Edges, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, KeyBinding, Length, ParentElement, Pixels, Render, RenderOnce,
+    SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Subscription, Task,
+    WeakEntity, Window, anchored, deferred, div, prelude::FluentBuilder, px, rems,
 };
 use rust_i18n::t;
 
 use crate::{
+    ActiveTheme, Disableable, ElementExt as _, Icon, IconName, IndexPath, Selectable, Sizable,
+    Size, StyleSized, StyledExt, SurfaceContext, SurfacePreset,
     actions::{Cancel, Confirm, SelectDown, SelectUp},
+    animation::fast_invoke_animation,
     global_state::GlobalState,
     h_flex,
     input::clear_button,
     list::{List, ListDelegate, ListState},
-    v_flex, ActiveTheme, Disableable, ElementExt as _, Icon, IconName, IndexPath, Selectable,
-    Sizable, Size, StyleSized, StyledExt, SurfaceContext, SurfacePreset,
+    v_flex,
 };
 
 const CONTEXT: &str = "Select";
@@ -428,7 +430,7 @@ impl<I: SelectItem> SelectDelegate for SearchableVec<I> {
         self.matched_items = self
             .items
             .iter()
-            .filter(|item| item.title().to_lowercase().contains(&query.to_lowercase()))
+            .filter(|item| item.matches(query))
             .cloned()
             .collect();
 
@@ -731,17 +733,12 @@ where
 
     /// Returns the title element for the select input.
     fn display_title(&mut self, _: &Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let default_title = div()
-            .text_color(cx.theme().accent_foreground)
-            .child(
-                self.options
-                    .placeholder
-                    .clone()
-                    .unwrap_or_else(|| t!("Select.placeholder").into()),
-            )
-            .when(self.options.disabled, |this| {
-                this.text_color(cx.theme().muted_foreground)
-            });
+        let default_title = div().text_color(cx.theme().muted_foreground).child(
+            self.options
+                .placeholder
+                .clone()
+                .unwrap_or_else(|| t!("Select.placeholder").into()),
+        );
 
         let Some(selected_index) = &self.selected_index(cx) else {
             return default_title;
@@ -880,6 +877,10 @@ where
                     }),
             )
             .when(self.open, |this| {
+                let motion = &cx.theme().motion;
+                let reduced_motion = GlobalState::global(cx).reduced_motion();
+                let anim = fast_invoke_animation(motion, reduced_motion);
+
                 this.child(
                     deferred(
                         anchored().snap_to_window_with_margin(px(8.)).child(
@@ -912,7 +913,17 @@ where
                                 )
                                 .on_mouse_down_out(cx.listener(|this, _, window, cx| {
                                     this.escape(&Cancel, window, cx);
-                                })),
+                                }))
+                                .map(|el| {
+                                    if let Some(anim) = anim {
+                                        el.with_animation("select-enter", anim, |el, delta| {
+                                            el.opacity(delta)
+                                        })
+                                        .into_any_element()
+                                    } else {
+                                        el.into_any_element()
+                                    }
+                                }),
                         ),
                     )
                     .with_priority(1),

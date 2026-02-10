@@ -25,7 +25,7 @@ UI components for building fantastic desktop applications using [GPUI](https://g
 
 ```toml
 gpui = "0.2.2"
-gpui-component = "0.5.0"
+gpui-component = "0.5.1"
 ```
 
 ### Basic Example

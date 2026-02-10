@@ -12,7 +12,7 @@ pub(crate) fn theme_motion_defaults() -> ThemeMotion {
         soft_dismiss_duration_ms: 167,
         fade_duration_ms: 83,
         fast_invoke_easing: "cubic-bezier(0, 0, 0, 1)".into(),
-        strong_invoke_easing: "cubic-bezier(0.13, 1, 0, 0.92)".into(),
+        strong_invoke_easing: "cubic-bezier(0.13, 1.62, 0, 0.92)".into(),
         fast_dismiss_easing: "cubic-bezier(0, 0, 0, 1)".into(),
         soft_dismiss_easing: "cubic-bezier(1, 0, 1, 1)".into(),
         point_to_point_easing: "cubic-bezier(0.55, 0.55, 0, 1)".into(),

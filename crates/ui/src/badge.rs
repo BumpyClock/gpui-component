@@ -1,9 +1,13 @@
 use gpui::{
-    AnyElement, App, Hsla, IntoElement, ParentElement, RenderOnce, StyleRefinement, Styled, Window,
-    div, prelude::FluentBuilder, px, relative,
+    AnimationExt as _, AnyElement, App, ElementId, Hsla, InteractiveElement as _, IntoElement,
+    ParentElement, RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder, px,
+    relative,
 };
 
-use crate::{ActiveTheme, Icon, Sizable, Size, StyledExt, h_flex, white};
+use crate::{
+    ActiveTheme, Icon, Sizable, Size, StyledExt, animation::strong_invoke_animation,
+    global_state::GlobalState, h_flex, white,
+};
 
 #[derive(Default, Clone)]
 enum BadgeVariant {
@@ -29,6 +33,7 @@ impl BadgeVariant {
 /// A badge for displaying a count, dot, or icon on an element.
 #[derive(IntoElement)]
 pub struct Badge {
+    id: Option<ElementId>,
     style: StyleRefinement,
     count: usize,
     max: usize,
@@ -42,6 +47,7 @@ impl Badge {
     /// Create a new badge.
     pub fn new() -> Self {
         Self {
+            id: None,
             style: StyleRefinement::default(),
             count: 0,
             max: 99,
@@ -50,6 +56,12 @@ impl Badge {
             children: Vec::new(),
             size: Size::default(),
         }
+    }
+
+    /// Set an element ID to enable entry animation on the badge indicator.
+    pub fn id(mut self, id: impl Into<ElementId>) -> Self {
+        self.id = Some(id.into());
+        self
     }
 
     /// Set to use [`BadgeVariant::Dot`] to show a dot.
@@ -111,6 +123,12 @@ impl RenderOnce for Badge {
             Size::Small | Size::XSmall => (px(10.), px(8.)),
         };
 
+        let animation = self.id.as_ref().and_then(|_| {
+            let motion = &cx.theme().motion;
+            let reduced_motion = GlobalState::global(cx).reduced_motion();
+            strong_invoke_animation(motion, reduced_motion)
+        });
+
         div()
             .relative()
             .refine_style(&self.style)
@@ -158,6 +176,15 @@ impl RenderOnce for Badge {
                                 .border_1()
                                 .border_color(cx.theme().background)
                                 .child(*icon),
+                        })
+                        .map(|this| match (self.id, animation) {
+                            (Some(id), Some(anim)) => this
+                                .id(id)
+                                .with_animation("badge-pulse", anim, |this, delta| {
+                                    this.opacity(delta)
+                                })
+                                .into_any_element(),
+                            _ => this.into_any_element(),
                         }),
                 )
             })

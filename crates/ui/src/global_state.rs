@@ -20,7 +20,7 @@ impl GlobalState {
     pub(crate) fn new() -> Self {
         Self {
             text_view_state_stack: Vec::new(),
-            blur_enabled_stack: vec![true], // Default to enabled
+            blur_enabled_stack: vec![true],    // Default to enabled
             reduced_motion_stack: vec![false], // Default to not reduced
         }
     }

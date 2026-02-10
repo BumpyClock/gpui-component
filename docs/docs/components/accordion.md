@@ -1,11 +1,19 @@
 ---
 title: Accordion
-description: The accordion uses collapse internally to make it collapsible.
+description: Collapsible content panels with animated expand/collapse transitions.
 ---
 
 # Accordion
 
-An accordion component that allows users to show and hide sections of content. It uses collapse functionality internally to create collapsible panels.
+An accordion component that allows users to show and hide sections of content.
+
+## Motion
+
+- Expanding and collapsing are both animated.
+- Content stays mounted during collapse so height animates to zero smoothly.
+- Adjacent accordion items reflow during the same animation.
+- Expand uses a subtle spring easing; collapse stays snappy.
+- Motion tokens come from `theme.motion` (Fluent-aligned defaults).
 
 ## Import
 

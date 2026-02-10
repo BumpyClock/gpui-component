@@ -1,18 +1,19 @@
 use gpui::{
-    AnyElement, App, IntoElement, ParentElement, RenderOnce, StyleRefinement, Styled, Window,
+    AnimationExt as _, AnyElement, App, IntoElement, ParentElement, RenderOnce, StyleRefinement,
+    Styled, Window, prelude::FluentBuilder as _,
 };
 
-use crate::{StyledExt, v_flex};
+use crate::{
+    ActiveTheme, StyledExt, animation::fast_invoke_animation, global_state::GlobalState, v_flex,
+};
+
+/// Generous max for animated height reveal. Content fully visible
+/// well before delta=1 due to decelerating easing.
+const COLLAPSIBLE_CONTENT_MAX_H: f32 = 1500.0;
 
 enum CollapsibleChild {
     Element(AnyElement),
     Content(AnyElement),
-}
-
-impl CollapsibleChild {
-    fn is_content(&self) -> bool {
-        matches!(self, CollapsibleChild::Content(_))
-    }
 }
 
 /// An interactive element which expands/collapses.
@@ -63,18 +64,42 @@ impl ParentElement for Collapsible {
 }
 
 impl RenderOnce for Collapsible {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        v_flex()
-            .refine_style(&self.style)
-            .children(self.children.into_iter().filter_map(|child| {
-                if child.is_content() && !self.open {
-                    None
-                } else {
-                    match child {
-                        CollapsibleChild::Element(el) => Some(el),
-                        CollapsibleChild::Content(el) => Some(el),
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let motion = &cx.theme().motion;
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let anim = fast_invoke_animation(motion, reduced_motion);
+
+        let mut non_content = Vec::new();
+        let mut content_elements = Vec::new();
+
+        for child in self.children {
+            match child {
+                CollapsibleChild::Element(el) => non_content.push(el),
+                CollapsibleChild::Content(el) => {
+                    if self.open {
+                        content_elements.push(el);
                     }
                 }
-            }))
+            }
+        }
+
+        v_flex()
+            .refine_style(&self.style)
+            .children(non_content)
+            .when(self.open && !content_elements.is_empty(), |this| {
+                let content_wrapper = gpui::div()
+                    .overflow_hidden()
+                    .child(gpui::div().children(content_elements));
+                this.child(if let Some(anim) = anim {
+                    content_wrapper
+                        .with_animation("collapsible-expand", anim, |el, delta| {
+                            el.max_h(gpui::px(COLLAPSIBLE_CONTENT_MAX_H * delta))
+                                .opacity(delta)
+                        })
+                        .into_any_element()
+                } else {
+                    content_wrapper.into_any_element()
+                })
+            })
     }
 }

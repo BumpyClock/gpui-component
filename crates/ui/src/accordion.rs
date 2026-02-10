@@ -1,12 +1,25 @@
-use std::{cell::RefCell, collections::HashSet, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashSet, rc::Rc, sync::Arc, time::Duration};
 
 use gpui::{
-    AnyElement, App, ElementId, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
-    SharedString, StatefulInteractiveElement as _, Styled, Window, div,
-    prelude::FluentBuilder as _, rems,
+    AnimationExt as _, AnyElement, App, ElementId, InteractiveElement as _, IntoElement,
+    ParentElement, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled, Window, div,
+    prelude::FluentBuilder as _, px, rems,
 };
 
-use crate::{ActiveTheme as _, Icon, IconName, Sizable, Size, h_flex, v_flex};
+use crate::{
+    ActiveTheme as _, Icon, IconName, Sizable, Size,
+    animation::{PresenceOptions, PresencePhase, fast_invoke_animation, keyed_presence, point_to_point_animation},
+    global_state::GlobalState, h_flex, v_flex,
+};
+
+/// Generous max for animated height reveal. Content fully visible
+/// well before delta=1 due to decelerating easing.
+const ACCORDION_CONTENT_MAX_H: f32 = 1500.0;
+
+/// Shape height progress so sibling reflow lasts longer when max-height cap is large.
+fn accordion_height_progress(progress: f32) -> f32 {
+    progress.clamp(0.0, 1.0).powf(3.0)
+}
 
 /// Accordion element.
 #[derive(IntoElement)]
@@ -85,6 +98,7 @@ impl RenderOnce for Accordion {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let open_ixs = Rc::new(RefCell::new(HashSet::new()));
         let is_multiple = self.multiple;
+        let accordion_id_prefix = SharedString::from(format!("{}", self.id));
 
         v_flex()
             .id(self.id)
@@ -101,6 +115,10 @@ impl RenderOnce for Accordion {
 
                         accordion
                             .index(ix)
+                            .key_prefix(SharedString::from(format!(
+                                "{}-{}",
+                                accordion_id_prefix, ix
+                            )))
                             .with_size(self.size)
                             .bordered(self.bordered)
                             .disabled(self.disabled)
@@ -138,6 +156,7 @@ impl RenderOnce for Accordion {
 #[derive(IntoElement)]
 pub struct AccordionItem {
     index: usize,
+    key_prefix: SharedString,
     icon: Option<Icon>,
     title: AnyElement,
     children: Vec<AnyElement>,
@@ -153,6 +172,7 @@ impl AccordionItem {
     pub fn new() -> Self {
         Self {
             index: 0,
+            key_prefix: "accordion".into(),
             icon: None,
             title: SharedString::default().into_any_element(),
             children: Vec::new(),
@@ -196,6 +216,11 @@ impl AccordionItem {
         self
     }
 
+    fn key_prefix(mut self, key_prefix: impl Into<SharedString>) -> Self {
+        self.key_prefix = key_prefix.into();
+        self
+    }
+
     fn on_toggle_click(
         mut self,
         on_toggle_click: impl Fn(&bool, &mut Window, &mut App) + 'static,
@@ -219,7 +244,26 @@ impl Sizable for AccordionItem {
 }
 
 impl RenderOnce for AccordionItem {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let motion = cx.theme().motion.clone();
+        let close_anim = point_to_point_animation(&motion, reduced_motion);
+        let open_anim = fast_invoke_animation(&motion, reduced_motion);
+        let presence_key = SharedString::from(format!("accordion-presence-{}", self.key_prefix));
+        let open_duration = Duration::from_millis(u64::from(motion.fast_duration_ms));
+        let close_duration = Duration::from_millis(u64::from(motion.fast_duration_ms));
+        let presence = keyed_presence(
+            presence_key,
+            self.open,
+            !reduced_motion,
+            open_duration,
+            close_duration,
+            PresenceOptions::default(),
+            window,
+            cx,
+        );
+        let expanded_visible = presence.should_render();
+
         let text_size = match self.size {
             Size::XSmall => rems(0.875),
             Size::Small => rems(0.875),
@@ -248,7 +292,7 @@ impl RenderOnce for AccordionItem {
                             Size::Large => this.py_1p5().px_4(),
                             _ => this.py_1().px_3(),
                         })
-                        .when(self.open, |this| {
+                        .when(expanded_visible, |this| {
                             this.when(self.bordered, |this| {
                                 this.text_color(cx.theme().foreground)
                                     .border_b_1()
@@ -287,23 +331,62 @@ impl RenderOnce for AccordionItem {
                                 )
                                 .when_some(self.on_toggle_click, |this, on_toggle_click| {
                                     this.on_click({
+                                        let open = self.open;
                                         move |_, window, cx| {
-                                            on_toggle_click(&!self.open, window, cx);
+                                            on_toggle_click(&!open, window, cx);
                                         }
                                     })
                                 })
                         }),
                 )
-                .when(self.open, |this| {
+                .when(expanded_visible, |this| {
                     this.child(
                         div()
-                            .map(|this| match self.size {
-                                Size::XSmall => this.p_1p5(),
-                                Size::Small => this.p_2(),
-                                Size::Large => this.p_4(),
-                                _ => this.p_3(),
-                            })
-                            .children(self.children),
+                            .overflow_hidden()
+                            .child(
+                                div()
+                                    .map(|this| match self.size {
+                                        Size::XSmall => this.p_1p5(),
+                                        Size::Small => this.p_2(),
+                                        Size::Large => this.p_4(),
+                                        _ => this.p_3(),
+                                    })
+                                    .children(self.children),
+                            )
+                            .map(|el| {
+                                let anim = if presence.transition_active() {
+                                    if matches!(presence.phase, PresencePhase::Entering) {
+                                        open_anim
+                                    } else {
+                                        close_anim
+                                    }
+                                } else {
+                                    None
+                                };
+                                if let Some(anim) = anim {
+                                    let animation_id = ElementId::NamedInteger(
+                                        SharedString::from(format!(
+                                            "accordion-expand-{}",
+                                            self.key_prefix
+                                        )),
+                                        (self.index as u64) << 1
+                                            | u64::from(matches!(
+                                                presence.phase,
+                                                PresencePhase::Entering
+                                            )),
+                                    );
+
+                                    el.with_animation(animation_id, anim, move |el, delta| {
+                                        let progress = presence.progress(delta);
+                                        let height_progress = accordion_height_progress(progress);
+                                        el.max_h(px(ACCORDION_CONTENT_MAX_H * height_progress))
+                                            .opacity(progress)
+                                    })
+                                    .into_any_element()
+                                } else {
+                                    el.into_any_element()
+                                }
+                            }),
                     )
                 }),
         )

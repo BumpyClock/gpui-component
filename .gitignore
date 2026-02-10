@@ -6,3 +6,4 @@ target/
 index.scip
 *.log
 node_modules/
+.ai_agents/

@@ -10,9 +10,10 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ActiveTheme, IconName, Placement, Sizable, StyledExt as _, WindowExt as _,
+    ActiveTheme, FocusTrapElement as _, IconName, Placement, Sizable, StyledExt as _,
+    WindowExt as _,
     actions::Cancel,
-    animation::cubic_bezier,
+    animation::animation_with_theme_easing,
     button::{Button, ButtonVariants as _},
     dialog::overlay_color,
     global_state::GlobalState,
@@ -25,33 +26,6 @@ use crate::{
 const CONTEXT: &str = "Sheet";
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("escape", Cancel, Some(CONTEXT))])
-}
-
-fn parse_cubic_bezier_easing(value: &str) -> Option<(f32, f32, f32, f32)> {
-    let trimmed = value.trim();
-    let body = trimmed
-        .strip_prefix("cubic-bezier(")?
-        .strip_suffix(')')?
-        .trim();
-    let mut parts = body.split(',').map(str::trim);
-    let x1 = parts.next()?.parse::<f32>().ok()?;
-    let y1 = parts.next()?.parse::<f32>().ok()?;
-    let x2 = parts.next()?.parse::<f32>().ok()?;
-    let y2 = parts.next()?.parse::<f32>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    Some((x1, y1, x2, y2))
-}
-
-fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animation {
-    if easing.trim().eq_ignore_ascii_case("linear") {
-        return animation.with_easing(|delta: f32| delta);
-    }
-    if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
-        return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
-    }
-    animation
 }
 
 /// The settings for sheets.
@@ -225,9 +199,10 @@ impl RenderOnce for Sheet {
                     })
                     .child(
                         v_flex()
-                            .tab_group()
+                            .id("sheet")
                             .key_context(CONTEXT)
                             .track_focus(&self.focus_handle)
+                            .focus_trap("sheet", &self.focus_handle)
                             .on_action({
                                 let on_close = self.on_close.clone();
                                 move |_: &Cancel, window, cx| {
@@ -311,15 +286,19 @@ impl RenderOnce for Sheet {
                                 if reduced_motion {
                                     this.into_any_element()
                                 } else {
-                                    this.with_animation("slide", slide_animation, move |this, delta| {
-                                        let y = px(-100.) + delta * px(100.);
-                                        this.map(|this| match placement {
-                                            Placement::Top => this.top(top + y),
-                                            Placement::Right => this.right(y),
-                                            Placement::Bottom => this.bottom(y),
-                                            Placement::Left => this.left(y),
-                                        })
-                                    })
+                                    this.with_animation(
+                                        "slide",
+                                        slide_animation,
+                                        move |this, delta| {
+                                            let y = px(-100.) + delta * px(100.);
+                                            this.map(|this| match placement {
+                                                Placement::Top => this.top(top + y),
+                                                Placement::Right => this.right(y),
+                                                Placement::Bottom => this.bottom(y),
+                                                Placement::Left => this.left(y),
+                                            })
+                                        },
+                                    )
                                     .into_any_element()
                                 }
                             }),

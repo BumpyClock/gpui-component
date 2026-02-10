@@ -1,13 +1,80 @@
 # Learnings
 
 ## 2026-01-22
-Context: restore glass styling for popup menus and selects.
-What I tried: wrapped menu content with SurfacePreset::flyout and used blur_enabled from GlobalState.
-Outcome: popover surfaces now handle opacity, border, elevation, and noise consistently.
-Next time: prefer SurfacePreset::flyout for popover containers and keep content styling separate.
+Context: popup/select glass surface styling and noise overlay consistency.
+What worked:
+- Use `SurfacePreset::flyout` on popover containers; keep content styling separate.
+- Read noise texture via `ImageSource::Resource(Resource::Embedded(...))`, not `img("...")`.
+Outcome: consistent opacity, border, elevation, and noise; no URI-loading failures.
+Next time: default to flyout preset + embedded resource images for non-URI assets.
 
-## 2026-01-22
-Context: noise asset failing to load for surface overlays.
-What I tried: used `img("NoiseAsset_256.png")` with gpui assets.
-Outcome: gpui treated the path as a URI; loading failed until using `ImageSource::Resource(Resource::Embedded(...))`.
-Next time: use explicit embedded resource sources for non-URI image assets.
+## 2026-02-10
+Context: command palette animation stability and quality.
+What worked:
+- Clamp/sanitize custom easing output to `[0, 1]` to avoid `delta should always be between 0 and 1`.
+- Stage motion: shell instant (`animate(false)`), then list/content reveal.
+- Keep container expand and child reveal aligned; avoid conflicting opacity/height phases on translucent surfaces.
+Outcome: no animation assert panic and cleaner open sequence without white flash.
+Next time: add regression test for overshoot cubic-bezier curves; keep dismiss curves simpler than entrance curves.
+
+## 2026-02-10
+Context: collapsible/accordion motion felt abrupt.
+What worked:
+- Keep content mounted during close (delayed commit), animate both open and close.
+- Use spring-style easing on open (`bounce(ease_in_out)`) and simpler close easing.
+Outcome: smoother sibling reflow and playful open without heavy dismiss.
+Next time: avoid conditional unmount when exit/layout animation is required.
+
+## 2026-02-10
+Context: command palette selection crash (`cannot update ... while it is already being updated`).
+What worked: in `cx.subscribe(...)` callbacks, update `this` directly; remove nested `view.update(...)` on the same entity.
+Outcome: no re-entrant lease panic; selection updates render normally.
+Next time: treat subscribe callbacks as the update scope; avoid nested entity updates.
+
+## 2026-02-10
+Context: command palette empty state clipping/blankness during expand.
+What worked:
+- Use dedicated `EMPTY_STATE_HEIGHT` instead of row `item_height`.
+- Top-align empty-state content (`pt_6`) instead of vertical centering.
+Outcome: icon/text render fully and appear earlier during expansion.
+Next time: design empty-state layout independently from row metrics when height is animated.
+
+## 2026-02-10
+Context: command palette still showed a blank strip under search before results reveal.
+What worked:
+- Make header row explicitly match `HEADER_HEIGHT` (`h + flex + items_center`) instead of relying on padding-only sizing.
+Outcome: collapsed shell height and header layout now match; removed mismatch strip.
+Next time: when using fixed layout constants, size the corresponding section explicitly to that constant.
+
+## 2026-02-10
+Context: blank strip persisted even after palette view-level fixes.
+What worked: override dialog default minimum height for command palette (`.min_h(px(0.))`), because `Dialog` enforces `.min_h_24()` by default.
+Outcome: command palette collapsed height now respects its own shell height during pre-reveal.
+Next time: when embedding compact overlays inside `Dialog`, explicitly set min-height if default dialog floor is too large.
+
+## 2026-02-10
+Context: sidebar and nested menu sections had snap-open/snap-close behavior.
+What worked:
+- animate sidebar width from a dedicated expanded width source (`Sidebar::width(...)`) instead of style-only width overrides.
+- keep a delayed visual-collapsed state so compact paddings/icon-only layout applies after close width animation.
+- keep submenu mounted during close and unmount after animation duration.
+Outcome: sidebar collapse/expand and submenu section open/close now animate as continuous layout motion; reduced-motion path remains instant.
+Next time: if caret icon rotation should animate, avoid coupling icon transform to `Button::icon(...)` and render a custom caret container with direct animation hook.
+
+## 2026-02-10
+Context: recurring motion regressions (snap-back, reopen-on-close, no-exit) across dialog/sidebar/accordion/popover.
+What worked:
+- Introduce shared keyed presence state machine in `animation::keyed_presence` (Entering/Entered/Exiting/Exited).
+- Use generation-guarded timers to ignore stale async transitions.
+- Drive render + animation from presence phase (`should_render`, `transition_active`, `progress`) instead of ad-hoc booleans.
+- For dropdown menus, delay menu entity reset until popover exit completes.
+Outcome: motion lifecycle is centralized; avoids per-component timer drift and repeated transition bugs.
+Next time: default new animated components to keyed presence first; avoid custom target/visible timer code.
+
+## 2026-02-10
+Context: open animations flashed (open -> collapse -> open) on Accordion/Sidebar/Dialog.
+What worked:
+- Remove `bounce(...)` easing from reveal/size/opacity transitions.
+- Use monotonic easings (fast_invoke/point_to_point) for open/close.
+Outcome: no end-frame collapse; open state stays stable.
+Next time: avoid `bounce` for reveal/size/opacity; it is forward-then-reverse.

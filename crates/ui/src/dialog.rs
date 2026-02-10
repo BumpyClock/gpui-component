@@ -1,17 +1,20 @@
 use std::{rc::Rc, time::Duration};
 
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent, Edges,
-    ElementId, FocusHandle, Hsla, InteractiveElement, IntoElement, KeyBinding, MouseButton,
-    ParentElement, Pixels, Point, RenderOnce, SharedString, StyleRefinement, Styled, Window,
-    WindowControlArea, anchored, div, hsla, point, prelude::FluentBuilder, px, relative,
+    Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent, Edges, ElementId,
+    FocusHandle, Hsla, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement,
+    Pixels, Point, RenderOnce, SharedString, StyleRefinement, Styled, Window, WindowControlArea,
+    anchored, div, hsla, point, prelude::FluentBuilder, px, relative,
 };
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme as _, IconName, Root, Sizable as _, StyledExt, TITLE_BAR_HEIGHT, WindowExt as _,
+    ActiveTheme as _, FocusTrapElement as _, IconName, Root, Sizable as _, StyledExt,
+    TITLE_BAR_HEIGHT, WindowExt as _,
     actions::{Cancel, Confirm},
-    animation::cubic_bezier,
+    animation::{
+        PresenceOptions, PresencePhase, animation_with_theme_easing, keyed_presence,
+    },
     button::{Button, ButtonVariant, ButtonVariants as _},
     global_state::GlobalState,
     h_flex,
@@ -20,38 +23,13 @@ use crate::{
 };
 
 const CONTEXT: &str = "Dialog";
+const OPEN_Y_OFFSET: f32 = 10.0;
+const CLOSE_Y_OFFSET: f32 = 8.0;
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("escape", Cancel, Some(CONTEXT)),
         KeyBinding::new("enter", Confirm { secondary: false }, Some(CONTEXT)),
     ]);
-}
-
-fn parse_cubic_bezier_easing(value: &str) -> Option<(f32, f32, f32, f32)> {
-    let trimmed = value.trim();
-    let body = trimmed
-        .strip_prefix("cubic-bezier(")?
-        .strip_suffix(')')?
-        .trim();
-    let mut parts = body.split(',').map(str::trim);
-    let x1 = parts.next()?.parse::<f32>().ok()?;
-    let y1 = parts.next()?.parse::<f32>().ok()?;
-    let x2 = parts.next()?.parse::<f32>().ok()?;
-    let y2 = parts.next()?.parse::<f32>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    Some((x1, y1, x2, y2))
-}
-
-fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animation {
-    if easing.trim().eq_ignore_ascii_case("linear") {
-        return animation.with_easing(|delta: f32| delta);
-    }
-    if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
-        return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
-    }
-    animation
 }
 
 fn dialog_shadow(delta: f32) -> Vec<BoxShadow> {
@@ -69,6 +47,18 @@ fn dialog_shadow(delta: f32) -> Vec<BoxShadow> {
             spread_radius: px(-6.),
         },
     ]
+}
+
+pub(crate) fn close_animation_duration(cx: &App) -> Duration {
+    let motion = &cx.theme().motion;
+    Duration::from_millis(
+        u64::from(
+            motion
+                .fast_duration_ms
+                .max(motion.soft_dismiss_duration_ms)
+                .max(motion.fade_duration_ms),
+        ),
+    )
 }
 
 type RenderButtonFn = Box<dyn FnOnce(&mut Window, &mut App) -> AnyElement>;
@@ -139,11 +129,14 @@ pub struct Dialog {
     overlay: bool,
     overlay_closable: bool,
     keyboard: bool,
+    animate: bool,
 
     /// This will be change when open the dialog, the focus handle is create when open the dialog.
     pub(crate) focus_handle: FocusHandle,
+    pub(crate) id: u64,
     pub(crate) layer_ix: usize,
     pub(crate) overlay_visible: bool,
+    pub(crate) closing: bool,
 }
 
 pub(crate) fn overlay_color(overlay: bool, cx: &App) -> Hsla {
@@ -168,8 +161,11 @@ impl Dialog {
             max_width: None,
             overlay: true,
             keyboard: true,
+            animate: true,
+            id: 0,
             layer_ix: 0,
             overlay_visible: false,
+            closing: false,
             on_close: Rc::new(|_, _, _| {}),
             on_ok: None,
             on_cancel: Rc::new(|_, _, _| true),
@@ -177,6 +173,10 @@ impl Dialog {
             close_button: true,
             overlay_closable: true,
         }
+    }
+
+    pub(crate) fn should_animate(&self, cx: &App) -> bool {
+        self.animate && !GlobalState::global(cx).reduced_motion()
     }
 
     /// Sets the title of the dialog.
@@ -316,8 +316,20 @@ impl Dialog {
         self
     }
 
+    /// Set whether to play enter animations, defaults to `true`.
+    pub fn animate(mut self, animate: bool) -> Self {
+        self.animate = animate;
+        self
+    }
+
     pub(crate) fn has_overlay(&self) -> bool {
         self.overlay
+    }
+
+    fn defer_close_dialog(window: &mut Window, cx: &mut App) {
+        Root::update(window, cx, |root, window, cx| {
+            root.defer_close_dialog(window, cx);
+        });
     }
 }
 
@@ -336,10 +348,13 @@ impl Styled for Dialog {
 impl RenderOnce for Dialog {
     fn render(self, window: &mut Window, cx: &mut App) -> impl gpui::IntoElement {
         let layer_ix = self.layer_ix;
+        let dialog_id = self.id;
         let on_close = self.on_close.clone();
         let on_ok = self.on_ok.clone();
         let on_cancel = self.on_cancel.clone();
         let has_title = self.title.is_some();
+        let should_animate = self.should_animate(cx);
+        let target_open = !self.closing;
 
         let render_ok: RenderButtonFn = Box::new({
             let on_ok = on_ok.clone();
@@ -435,14 +450,37 @@ impl RenderOnce for Dialog {
             paddings.top -= px(6.);
         }
 
-        let reduced_motion = GlobalState::global(cx).reduced_motion();
-        let motion = &cx.theme().motion;
-        let slide_animation = animation_with_theme_easing(
-            Animation::new(Duration::from_millis(u64::from(motion.normal_duration_ms))),
-            motion.strong_invoke_easing.as_ref(),
+        let open_duration = Duration::from_millis(u64::from(cx.theme().motion.fast_duration_ms));
+        let close_duration = close_animation_duration(cx);
+        let presence = keyed_presence(
+            SharedString::from(format!("dialog-{}-presence", dialog_id)),
+            target_open,
+            should_animate,
+            open_duration,
+            close_duration,
+            PresenceOptions {
+                animate_on_mount: true,
+            },
+            window,
+            cx,
         );
-        let fade_animation = animation_with_theme_easing(
-            Animation::new(Duration::from_millis(u64::from(motion.normal_duration_ms))),
+        let transition_active = presence.transition_active();
+
+        let motion = &cx.theme().motion;
+        let open_panel_animation = animation_with_theme_easing(
+            Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms))),
+            motion.fast_invoke_easing.as_ref(),
+        );
+        let close_panel_animation = animation_with_theme_easing(
+            Animation::new(Duration::from_millis(u64::from(motion.soft_dismiss_duration_ms))),
+            motion.soft_dismiss_easing.as_ref(),
+        );
+        let fade_in_animation = animation_with_theme_easing(
+            Animation::new(Duration::from_millis(u64::from(motion.fade_duration_ms))),
+            motion.fade_easing.as_ref(),
+        );
+        let fade_out_animation = animation_with_theme_easing(
+            Animation::new(Duration::from_millis(u64::from(motion.fade_duration_ms))),
             motion.fade_easing.as_ref(),
         );
 
@@ -485,6 +523,8 @@ impl RenderOnce for Dialog {
                     .child(
                         v_flex()
                             .id(layer_ix)
+                            .track_focus(&self.focus_handle)
+                            .focus_trap(format!("dialog-{}", layer_ix), &self.focus_handle)
                             .bg(cx.theme().popover)
                             .border_1()
                             .border_color(cx.theme().border)
@@ -496,8 +536,6 @@ impl RenderOnce for Dialog {
                             .refine_style(&self.style)
                             .px_0()
                             .key_context(CONTEXT)
-                            .track_focus(&self.focus_handle)
-                            .tab_group()
                             .when(self.keyboard, |this| {
                                 this.on_action({
                                     let on_cancel = on_cancel.clone();
@@ -519,11 +557,11 @@ impl RenderOnce for Dialog {
                                     move |_: &Confirm, window, cx| {
                                         if let Some(on_ok) = &on_ok {
                                             if on_ok(&ClickEvent::default(), window, cx) {
-                                                window.close_dialog(cx);
+                                                Self::defer_close_dialog(window, cx);
                                                 on_close(&ClickEvent::default(), window, cx);
                                             }
                                         } else if has_footer {
-                                            window.close_dialog(cx);
+                                            Self::defer_close_dialog(window, cx);
                                             on_close(&ClickEvent::default(), window, cx);
                                         }
                                     }
@@ -596,23 +634,69 @@ impl RenderOnce for Dialog {
                                 }
                             })
                             .map(move |this| {
-                                if reduced_motion {
-                                    this.shadow(dialog_shadow(1.)).into_any_element()
+                                if !should_animate || !transition_active {
+                                    let progress = presence.progress(1.0);
+                                    this.shadow(dialog_shadow(progress))
+                                        .opacity(progress)
+                                        .into_any_element()
                                 } else {
-                                    this.with_animation("slide-down", slide_animation, move |this, delta| {
-                                    this.top(y * delta).shadow(dialog_shadow(delta))
-                                    })
+                                    let panel_animation = if matches!(
+                                        presence.phase,
+                                        PresencePhase::Entering
+                                    ) {
+                                        open_panel_animation
+                                    } else {
+                                        close_panel_animation
+                                    };
+                                    this.with_animation(
+                                        SharedString::from(format!(
+                                            "dialog-panel-motion-{}",
+                                            u8::from(matches!(
+                                                presence.phase,
+                                                PresencePhase::Entering
+                                            ))
+                                        )),
+                                        panel_animation,
+                                        move |this, delta| {
+                                            let progress = presence.progress(delta).clamp(0.0, 1.0);
+                                            let top = if matches!(
+                                                presence.phase,
+                                                PresencePhase::Entering
+                                            ) {
+                                                y + px(OPEN_Y_OFFSET * (progress - 1.0))
+                                            } else {
+                                                y + px(CLOSE_Y_OFFSET * (1.0 - progress))
+                                            };
+                                            this.top(top)
+                                                .opacity(progress)
+                                                .shadow(dialog_shadow(progress))
+                                        },
+                                    )
                                     .into_any_element()
                                 }
                             }),
                     )
                     .map(move |this| {
-                        if reduced_motion {
-                            this.into_any_element()
+                        if !should_animate || !transition_active {
+                            this.opacity(presence.progress(1.0)).into_any_element()
                         } else {
-                            this.with_animation("fade-in", fade_animation, move |this, delta| {
-                            this.opacity(delta)
-                        })
+                            let fade_animation = if matches!(presence.phase, PresencePhase::Entering)
+                            {
+                                fade_in_animation
+                            } else {
+                                fade_out_animation
+                            };
+                            this.with_animation(
+                                SharedString::from(format!(
+                                    "dialog-fade-motion-{}",
+                                    u8::from(matches!(presence.phase, PresencePhase::Entering))
+                                )),
+                                fade_animation,
+                                move |this, delta| {
+                                    let opacity = presence.progress(delta);
+                                    this.opacity(opacity.clamp(0.0, 1.0))
+                                },
+                            )
                             .into_any_element()
                         }
                     }),

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     Colorize, Theme, ThemeColor, ThemeElevation, ThemeMaterial, ThemeMode, ThemeMotion,
-    ThemeShadowToken,
+    ThemeShadowToken, ThemeTypographyConfig,
     highlighter::{HighlightTheme, HighlightThemeStyle},
     try_parse_color,
 };
@@ -67,6 +67,8 @@ pub struct ThemeConfig {
     pub elevation: Option<ThemeElevationConfig>,
     /// Material and layering token overrides sourced from Fluent material tokens.
     pub material: Option<ThemeMaterialConfig>,
+    /// Typography ramp overrides sourced from Fluent type ramp tokens.
+    pub typography: Option<ThemeTypographyConfig>,
 
     /// The colors of the theme.
     pub colors: ThemeConfigColors,
@@ -658,6 +660,22 @@ pub struct ThemeConfigColors {
     #[serde(rename = "window.border")]
     pub window_border: Option<SharedString>,
 
+    /// Fluent disabled text color.
+    #[serde(rename = "disabled.foreground")]
+    pub disabled_foreground: Option<SharedString>,
+    /// Fluent control stroke color.
+    #[serde(rename = "control.stroke")]
+    pub control_stroke: Option<SharedString>,
+    /// Card background color.
+    #[serde(rename = "card.background")]
+    pub card: Option<SharedString>,
+    /// Card text color.
+    #[serde(rename = "card.foreground")]
+    pub card_foreground: Option<SharedString>,
+    /// Solid background color.
+    #[serde(rename = "solid.background")]
+    pub solid_background: Option<SharedString>,
+
     /// Base blue color.
     #[serde(rename = "base.blue")]
     blue: Option<String>,
@@ -919,6 +937,12 @@ impl ThemeColor {
         apply_color!(overlay);
         apply_color!(window_border, fallback = self.border);
 
+        apply_color!(disabled_foreground, fallback = self.muted_foreground);
+        apply_color!(control_stroke, fallback = self.border);
+        apply_color!(card, fallback = self.background);
+        apply_color!(card_foreground, fallback = self.foreground);
+        apply_color!(solid_background, fallback = self.background);
+
         // TODO: Apply default fallback colors to highlight.
 
         // Ensure opacity for list_active, table_active
@@ -992,6 +1016,7 @@ impl Theme {
             .apply_config(config.elevation.as_ref(), &default_theme.elevation);
         self.material
             .apply_config(config.material.as_ref(), &default_theme.material);
+        self.typography.apply_config(config.typography.as_ref());
 
         self.colors.apply_config(&config, &default_theme.colors);
         self.mode = config.mode;

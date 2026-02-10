@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme, PixelsExt, Sizable, Size, StyledExt, animation::cubic_bezier,
+    ActiveTheme, PixelsExt, Sizable, Size, StyledExt, animation::animation_with_theme_easing,
     global_state::GlobalState,
 };
 use gpui::prelude::FluentBuilder as _;
@@ -14,33 +14,6 @@ use std::time::Duration;
 
 use super::ProgressState;
 use crate::plot::shape::{Arc, ArcData};
-
-fn parse_cubic_bezier_easing(value: &str) -> Option<(f32, f32, f32, f32)> {
-    let trimmed = value.trim();
-    let body = trimmed
-        .strip_prefix("cubic-bezier(")?
-        .strip_suffix(')')?
-        .trim();
-    let mut parts = body.split(',').map(str::trim);
-    let x1 = parts.next()?.parse::<f32>().ok()?;
-    let y1 = parts.next()?.parse::<f32>().ok()?;
-    let x2 = parts.next()?.parse::<f32>().ok()?;
-    let y2 = parts.next()?.parse::<f32>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    Some((x1, y1, x2, y2))
-}
-
-fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animation {
-    if easing.trim().eq_ignore_ascii_case("linear") {
-        return animation.with_easing(|delta: f32| delta);
-    }
-    if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
-        return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
-    }
-    animation
-}
 
 /// A circular progress indicator element.
 #[derive(IntoElement)]
@@ -213,7 +186,9 @@ impl RenderOnce for ProgressCircle {
                 if has_changed {
                     if reduced_motion {
                         state.update(cx, |state, _| state.value = value);
-                        return this.child(Self::render_circle(value, color)).into_any_element();
+                        return this
+                            .child(Self::render_circle(value, color))
+                            .into_any_element();
                     }
 
                     let duration =

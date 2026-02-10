@@ -321,6 +321,23 @@ cx.theme().sidebar_primary           // Primary elements
 cx.theme().sidebar_primary_foreground // Primary text
 ```
 
+## Motion
+
+Sidebar motion follows theme motion tokens and respects reduced-motion mode:
+
+- Sidebar collapse/expand animates panel width.
+- Submenu sections animate both open and close (not open-only).
+- Reduced motion falls back to immediate state changes.
+
+Default sidebar motion profile:
+
+- Sidebar expand: `point_to_point_easing` (`fast_duration_ms`)
+- Sidebar collapse: `soft_dismiss_easing` (`soft_dismiss_duration_ms`)
+- Submenu expand: subtle spring (`bounce(ease_in_out)`, `fast_duration_ms`)
+- Submenu collapse: `point_to_point_easing` (`fast_duration_ms`)
+
+Use `Sidebar::width(...)` to define the expanded width used by width interpolation.
+
 ## Examples
 
 ### File Explorer Sidebar

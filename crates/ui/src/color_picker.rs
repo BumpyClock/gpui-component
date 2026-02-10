@@ -2,8 +2,9 @@ use gpui::{
     App, AppContext, Context, Corner, Div, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
     Hsla, InteractiveElement as _, IntoElement, KeyBinding, ParentElement, Render, RenderOnce,
     SharedString, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Subscription,
-    Window, div, prelude::FluentBuilder as _,
+    TextAlign, Window, div, hsla, linear_color_stop, linear_gradient, prelude::FluentBuilder as _,
 };
+use rust_i18n::t;
 
 use crate::{
     ActiveTheme as _, Colorize as _, Icon, Sizable, Size, StyleSized,
@@ -13,6 +14,8 @@ use crate::{
     h_flex,
     input::{Input, InputEvent, InputState},
     popover::Popover,
+    slider::{Slider, SliderEvent, SliderState},
+    tab::{Tab, TabBar},
     tooltip::Tooltip,
     v_flex,
 };
@@ -60,12 +63,83 @@ fn color_palettes() -> Vec<Vec<Hsla>> {
     ]
 }
 
+#[derive(Clone)]
+struct HslaSliders {
+    hue: Entity<SliderState>,
+    saturation: Entity<SliderState>,
+    lightness: Entity<SliderState>,
+    alpha: Entity<SliderState>,
+}
+
+impl HslaSliders {
+    fn new(cx: &mut App) -> Self {
+        Self {
+            hue: cx.new(|_| {
+                SliderState::new()
+                    .min(0.)
+                    .max(1.)
+                    .step(0.01)
+                    .default_value(0.)
+            }),
+            saturation: cx.new(|_| {
+                SliderState::new()
+                    .min(0.)
+                    .max(1.)
+                    .step(0.01)
+                    .default_value(0.)
+            }),
+            lightness: cx.new(|_| {
+                SliderState::new()
+                    .min(0.)
+                    .max(1.)
+                    .step(0.01)
+                    .default_value(0.)
+            }),
+            alpha: cx.new(|_| {
+                SliderState::new()
+                    .min(0.)
+                    .max(1.)
+                    .step(0.01)
+                    .default_value(0.)
+            }),
+        }
+    }
+
+    fn read(&self, cx: &App) -> Hsla {
+        hsla(
+            self.hue.read(cx).value().start(),
+            self.saturation.read(cx).value().start(),
+            self.lightness.read(cx).value().start(),
+            self.alpha.read(cx).value().start(),
+        )
+    }
+
+    fn update(&self, new_color: Hsla, window: &mut Window, cx: &mut App) {
+        self.hue.update(cx, |slider, cx| {
+            slider.set_value(new_color.h, window, cx);
+        });
+        self.saturation.update(cx, |slider, cx| {
+            slider.set_value(new_color.s, window, cx);
+        });
+        self.lightness.update(cx, |slider, cx| {
+            slider.set_value(new_color.l, window, cx);
+        });
+        self.alpha.update(cx, |slider, cx| {
+            slider.set_value(new_color.a, window, cx);
+        });
+    }
+}
+
 /// State of the [`ColorPicker`].
 pub struct ColorPickerState {
     focus_handle: FocusHandle,
     value: Option<Hsla>,
     hovered_color: Option<Hsla>,
     state: Entity<InputState>,
+    hsla_sliders: HslaSliders,
+    needs_slider_sync: bool,
+    suppress_input_change: bool,
+    active_tab: usize,
     open: bool,
     _subscriptions: Vec<Subscription>,
 }
@@ -76,33 +150,76 @@ impl ColorPickerState {
         let state = cx.new(|cx| {
             InputState::new(window, cx).pattern(regex::Regex::new(r"^#[0-9a-fA-F]{0,8}$").unwrap())
         });
+        let hsla_sliders = HslaSliders::new(cx);
 
-        let _subscriptions = vec![cx.subscribe_in(
-            &state,
-            window,
-            |this, state, ev: &InputEvent, window, cx| match ev {
-                InputEvent::Change => {
-                    let value = state.read(cx).value();
-                    if let Ok(color) = Hsla::parse_hex(value.as_str()) {
-                        this.hovered_color = Some(color);
+        let mut _subscriptions = vec![
+            cx.subscribe_in(
+                &state,
+                window,
+                |this, state, ev: &InputEvent, window, cx| match ev {
+                    InputEvent::Change => {
+                        if this.suppress_input_change {
+                            return;
+                        }
+                        let value = state.read(cx).value();
+                        if let Ok(color) = Hsla::parse_hex(value.as_str()) {
+                            this.hovered_color = Some(color);
+                            this.sync_sliders(Some(color), window, cx);
+                        }
                     }
-                }
-                InputEvent::PressEnter { .. } => {
-                    let val = this.state.read(cx).value();
-                    if let Ok(color) = Hsla::parse_hex(&val) {
-                        this.open = false;
-                        this.update_value(Some(color), true, window, cx);
+                    InputEvent::PressEnter { .. } => {
+                        let val = this.state.read(cx).value();
+                        if let Ok(color) = Hsla::parse_hex(&val) {
+                            this.open = false;
+                            this.update_value(Some(color), true, window, cx);
+                        }
                     }
-                }
-                _ => {}
-            },
-        )];
+                    _ => {}
+                },
+            ),
+            cx.subscribe_in(
+                &hsla_sliders.hue,
+                window,
+                |this, _, _: &SliderEvent, window, cx| {
+                    let color = this.hsla_sliders.read(cx);
+                    this.update_value_from_slider(color, true, window, cx);
+                },
+            ),
+            cx.subscribe_in(
+                &hsla_sliders.saturation,
+                window,
+                |this, _, _: &SliderEvent, window, cx| {
+                    let color = this.hsla_sliders.read(cx);
+                    this.update_value_from_slider(color, true, window, cx);
+                },
+            ),
+            cx.subscribe_in(
+                &hsla_sliders.lightness,
+                window,
+                |this, _, _: &SliderEvent, window, cx| {
+                    let color = this.hsla_sliders.read(cx);
+                    this.update_value_from_slider(color, true, window, cx);
+                },
+            ),
+            cx.subscribe_in(
+                &hsla_sliders.alpha,
+                window,
+                |this, _, _: &SliderEvent, window, cx| {
+                    let color = this.hsla_sliders.read(cx);
+                    this.update_value_from_slider(color, true, window, cx);
+                },
+            ),
+        ];
 
         Self {
             focus_handle: cx.focus_handle(),
             value: None,
             hovered_color: None,
             state,
+            hsla_sliders,
+            needs_slider_sync: false,
+            suppress_input_change: false,
+            active_tab: 0,
             open: false,
             _subscriptions,
         }
@@ -110,7 +227,10 @@ impl ColorPickerState {
 
     /// Set default color value.
     pub fn default_value(mut self, value: impl Into<Hsla>) -> Self {
-        self.value = Some(value.into());
+        let value = value.into();
+        self.value = Some(value);
+        self.hovered_color = Some(value);
+        self.needs_slider_sync = true;
         self
     }
 
@@ -141,6 +261,7 @@ impl ColorPickerState {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.needs_slider_sync = false;
         self.value = value;
         self.hovered_color = value;
         self.state.update(cx, |view, cx| {
@@ -154,6 +275,28 @@ impl ColorPickerState {
             cx.emit(ColorPickerEvent::Change(value));
         }
         cx.notify();
+    }
+
+    fn update_value_from_slider(
+        &mut self,
+        value: Hsla,
+        emit: bool,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.needs_slider_sync = false;
+        self.value = Some(value);
+        self.hovered_color = Some(value);
+        if emit {
+            cx.emit(ColorPickerEvent::Change(Some(value)));
+        }
+        cx.notify();
+    }
+
+    fn sync_sliders(&mut self, color: Option<Hsla>, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(color) = color {
+            self.hsla_sliders.update(color, window, cx);
+        }
     }
 }
 
@@ -274,6 +417,66 @@ impl ColorPicker {
     }
 
     fn render_colors(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        self.state.update(cx, |state, cx| {
+            if state.needs_slider_sync {
+                let value = state.value;
+                state.update_value(value, false, window, cx);
+            }
+        });
+
+        let active_tab = self.state.read(cx).active_tab;
+
+        let (slider_color, hovered_color) = {
+            let state = self.state.read(cx);
+            let slider_color = state
+                .hovered_color
+                .or(state.value)
+                .unwrap_or_else(|| hsla(0., 0., 0., 1.));
+            (slider_color, state.hovered_color)
+        };
+
+        v_flex()
+            .p_0p5()
+            .gap_3()
+            .child(
+                TabBar::new("mode")
+                    .segmented()
+                    .selected_index(active_tab)
+                    .on_click(
+                        window.listener_for(&self.state, |state, ix: &usize, _, cx| {
+                            state.active_tab = *ix;
+                            cx.notify();
+                        }),
+                    )
+                    .child(Tab::new().flex_1().label(t!("ColorPicker.Palette")))
+                    .child(Tab::new().flex_1().label(t!("ColorPicker.HSLA"))),
+            )
+            .child(match active_tab {
+                0 => self.render_palette_panel(window, cx).into_any_element(),
+                _ => self
+                    .render_slider_tab_panel(slider_color, cx)
+                    .into_any_element(),
+            })
+            .when_some(hovered_color, |this, hovered_color| {
+                this.child(Divider::horizontal()).child(
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(
+                            div()
+                                .bg(hovered_color)
+                                .flex_shrink_0()
+                                .border_1()
+                                .border_color(hovered_color.darken(0.2))
+                                .size_5()
+                                .rounded(cx.theme().radius),
+                        )
+                        .child(Input::new(&self.state.read(cx).state).small()),
+                )
+            })
+    }
+
+    fn render_palette_panel(&self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let featured_colors = self.featured_colors.clone().unwrap_or(vec![
             cx.theme().red,
             cx.theme().red_light,
@@ -290,7 +493,6 @@ impl ColorPicker {
         ]);
 
         v_flex()
-            .p_0p5()
             .gap_3()
             .child(
                 h_flex().gap_1().children(
@@ -312,23 +514,200 @@ impl ColorPicker {
                         )
                     })),
             )
-            .when_some(self.state.read(cx).hovered_color, |this, hovered_color| {
-                this.child(Divider::horizontal()).child(
-                    h_flex()
-                        .gap_2()
-                        .items_center()
-                        .child(
-                            div()
-                                .bg(hovered_color)
-                                .flex_shrink_0()
-                                .border_1()
-                                .border_color(hovered_color.darken(0.2))
-                                .size_5()
-                                .rounded(cx.theme().radius),
-                        )
-                        .child(Input::new(&self.state.read(cx).state).small()),
-                )
+    }
+
+    fn render_slider_tab_panel(&self, slider_color: Hsla, cx: &mut App) -> impl IntoElement {
+        let hsla_sliders = self.state.read(cx).hsla_sliders.clone();
+        let steps = 96usize;
+        let hue_colors = (0..steps)
+            .map(|ix| {
+                let h = ix as f32 / (steps.saturating_sub(1)) as f32;
+                hsla(h, 1.0, 0.5, 1.0)
             })
+            .collect::<Vec<_>>();
+        let saturation_start = hsla(slider_color.h, 0.0, slider_color.l, 1.0);
+        let saturation_end = hsla(slider_color.h, 1.0, slider_color.l, 1.0);
+        let lightness_colors = (0..steps)
+            .map(|ix| {
+                let l = ix as f32 / (steps.saturating_sub(1)) as f32;
+                hsla(slider_color.h, 1.0, l, 1.0)
+            })
+            .collect::<Vec<_>>();
+        let alpha_start = hsla(slider_color.h, slider_color.s, slider_color.l, 0.0);
+        let alpha_end = hsla(slider_color.h, slider_color.s, slider_color.l, 1.0);
+
+        let label_color = cx.theme().foreground.opacity(0.7);
+
+        v_flex()
+            .gap_2()
+            .child(
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        div()
+                            .min_w_16()
+                            .text_xs()
+                            .text_color(label_color)
+                            .child(SharedString::from(t!("ColorPicker.Hue"))),
+                    )
+                    .child(
+                        div()
+                            .relative()
+                            .flex()
+                            .items_center()
+                            .flex_1()
+                            .h_8()
+                            .child(self.render_slider_track(hue_colors, cx))
+                            .child(
+                                Slider::new(&hsla_sliders.hue)
+                                    .flex_1()
+                                    .bg(cx.theme().transparent),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .w_10()
+                            .text_xs()
+                            .text_color(label_color)
+                            .text_align(TextAlign::Right)
+                            .child(format!("{:.0}", slider_color.h * 360.)),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        div()
+                            .min_w_16()
+                            .text_xs()
+                            .text_color(label_color)
+                            .child(SharedString::from(t!("ColorPicker.Saturation"))),
+                    )
+                    .child(
+                        div()
+                            .relative()
+                            .flex()
+                            .items_center()
+                            .flex_1()
+                            .h_8()
+                            .child(self.render_slider_track_gradient(
+                                saturation_start,
+                                saturation_end,
+                                cx,
+                            ))
+                            .child(
+                                Slider::new(&hsla_sliders.saturation)
+                                    .flex_1()
+                                    .bg(cx.theme().transparent),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .w_10()
+                            .text_xs()
+                            .text_color(label_color)
+                            .text_align(TextAlign::Right)
+                            .child(format!("{:.0}", slider_color.s * 100.)),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        div()
+                            .min_w_16()
+                            .text_xs()
+                            .text_color(label_color)
+                            .child(SharedString::from(t!("ColorPicker.Lightness"))),
+                    )
+                    .child(
+                        div()
+                            .relative()
+                            .flex()
+                            .items_center()
+                            .flex_1()
+                            .h_8()
+                            .child(self.render_slider_track(lightness_colors, cx))
+                            .child(
+                                Slider::new(&hsla_sliders.lightness)
+                                    .flex_1()
+                                    .bg(cx.theme().transparent),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .w_10()
+                            .text_xs()
+                            .text_color(label_color)
+                            .text_align(TextAlign::Right)
+                            .child(format!("{:.0}", slider_color.l * 100.)),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(
+                        div()
+                            .min_w_16()
+                            .text_xs()
+                            .text_color(label_color)
+                            .child(SharedString::from(t!("ColorPicker.Alpha"))),
+                    )
+                    .child(
+                        div()
+                            .relative()
+                            .flex()
+                            .items_center()
+                            .flex_1()
+                            .h_8()
+                            .child(self.render_slider_track_gradient(alpha_start, alpha_end, cx))
+                            .child(
+                                Slider::new(&hsla_sliders.alpha)
+                                    .flex_1()
+                                    .bg(cx.theme().transparent),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .w_10()
+                            .text_xs()
+                            .text_color(label_color)
+                            .text_align(TextAlign::Right)
+                            .child(format!("{:.0}", slider_color.a * 100.)),
+                    ),
+            )
+    }
+
+    fn render_slider_track(&self, colors: Vec<Hsla>, _: &App) -> impl IntoElement {
+        h_flex()
+            .absolute()
+            .left_0()
+            .right_0()
+            .h_2_5()
+            .overflow_hidden()
+            .children(
+                colors
+                    .into_iter()
+                    .map(|color| div().flex_1().h_full().bg(color)),
+            )
+    }
+
+    fn render_slider_track_gradient(&self, start: Hsla, end: Hsla, _: &App) -> impl IntoElement {
+        div()
+            .absolute()
+            .left_0()
+            .right_0()
+            .h_2_5()
+            .overflow_hidden()
+            .bg(linear_gradient(
+                90.,
+                linear_color_stop(start, 0.),
+                linear_color_stop(end, 1.),
+            ))
     }
 }
 
