@@ -1,12 +1,24 @@
-use std::{cell::RefCell, collections::HashSet, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashSet, rc::Rc, sync::Arc, time::Duration};
 
 use gpui::{
-    AnyElement, App, ElementId, InteractiveElement as _, IntoElement, ParentElement, RenderOnce,
-    SharedString, StatefulInteractiveElement as _, Styled, Window, div,
-    prelude::FluentBuilder as _, rems,
+    Animation, AnimationExt as _, AnyElement, App, ElementId, InteractiveElement as _,
+    IntoElement, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled,
+    Window, bounce, div, ease_in_out, prelude::FluentBuilder as _, px, rems,
 };
 
-use crate::{ActiveTheme as _, Icon, IconName, Sizable, Size, h_flex, v_flex};
+use crate::{
+    ActiveTheme as _, Icon, IconName, Sizable, Size, animation::point_to_point_animation,
+    global_state::GlobalState, h_flex, v_flex,
+};
+
+/// Generous max for animated height reveal. Content fully visible
+/// well before delta=1 due to decelerating easing.
+const ACCORDION_CONTENT_MAX_H: f32 = 1500.0;
+
+/// Shape height progress so sibling reflow lasts longer when max-height cap is large.
+fn accordion_height_progress(progress: f32) -> f32 {
+    progress.clamp(0.0, 1.0).powf(3.0)
+}
 
 /// Accordion element.
 #[derive(IntoElement)]
@@ -219,7 +231,41 @@ impl Sizable for AccordionItem {
 }
 
 impl RenderOnce for AccordionItem {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let motion = &cx.theme().motion;
+        let close_anim = point_to_point_animation(motion, reduced_motion);
+        let open_anim = (!reduced_motion).then(|| {
+            Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms)))
+                .with_easing(bounce(ease_in_out))
+        });
+        let anim_duration = Duration::from_millis(u64::from(motion.fast_duration_ms));
+
+        let open_state = window.use_keyed_state(
+            ElementId::NamedInteger("accordion-open".into(), self.index as u64),
+            cx,
+            |_, _| self.open,
+        );
+        let was_open = *open_state.read(cx);
+        let value_changed = was_open != self.open;
+        if value_changed {
+            if reduced_motion {
+                open_state.update(cx, |state, _| *state = self.open);
+            } else {
+                cx.spawn({
+                    let open_state = open_state.clone();
+                    let target_open = self.open;
+                    async move |cx| {
+                        cx.background_executor().timer(anim_duration).await;
+                        _ = open_state.update(cx, |state, _| *state = target_open);
+                    }
+                })
+                .detach();
+            }
+        }
+
+        let expanded_visible = self.open || (was_open && !reduced_motion);
+
         let text_size = match self.size {
             Size::XSmall => rems(0.875),
             Size::Small => rems(0.875),
@@ -248,7 +294,7 @@ impl RenderOnce for AccordionItem {
                             Size::Large => this.py_1p5().px_4(),
                             _ => this.py_1().px_3(),
                         })
-                        .when(self.open, |this| {
+                        .when(expanded_visible, |this| {
                             this.when(self.bordered, |this| {
                                 this.text_color(cx.theme().foreground)
                                     .border_b_1()
@@ -287,23 +333,49 @@ impl RenderOnce for AccordionItem {
                                 )
                                 .when_some(self.on_toggle_click, |this, on_toggle_click| {
                                     this.on_click({
+                                        let open = self.open;
                                         move |_, window, cx| {
-                                            on_toggle_click(&!self.open, window, cx);
+                                            on_toggle_click(&!open, window, cx);
                                         }
                                     })
                                 })
                         }),
                 )
-                .when(self.open, |this| {
+                .when(expanded_visible, |this| {
                     this.child(
                         div()
-                            .map(|this| match self.size {
-                                Size::XSmall => this.p_1p5(),
-                                Size::Small => this.p_2(),
-                                Size::Large => this.p_4(),
-                                _ => this.p_3(),
-                            })
-                            .children(self.children),
+                            .overflow_hidden()
+                            .child(
+                                div()
+                                    .map(|this| match self.size {
+                                        Size::XSmall => this.p_1p5(),
+                                        Size::Small => this.p_2(),
+                                        Size::Large => this.p_4(),
+                                        _ => this.p_3(),
+                                    })
+                                    .children(self.children),
+                            )
+                            .map(|el| {
+                                let target_open = self.open;
+                                let anim = if target_open { open_anim } else { close_anim };
+                                if let Some(anim) = anim {
+                                    let target_open = self.open;
+                                    let animation_id = ElementId::NamedInteger(
+                                        "accordion-expand".into(),
+                                        (self.index as u64) << 1 | u64::from(self.open),
+                                    );
+
+                                    el.with_animation(animation_id, anim, move |el, delta| {
+                                        let progress = if target_open { delta } else { 1.0 - delta };
+                                        let height_progress = accordion_height_progress(progress);
+                                        el.max_h(px(ACCORDION_CONTENT_MAX_H * height_progress))
+                                            .opacity(progress)
+                                    })
+                                    .into_any_element()
+                                } else {
+                                    el.into_any_element()
+                                }
+                            }),
                     )
                 }),
         )

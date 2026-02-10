@@ -182,6 +182,7 @@ window.open_dialog(cx, |dialog, _, _| {
         .overlay(true)              // Show overlay (default: true)
         .overlay_closable(true)     // Click overlay to close (default: true)
         .keyboard(true)             // ESC to close (default: true)
+        .animate(true)              // Enter animation (default: true)
         .close_button(false)        // Show close button (default: true)
         .child("Dialog content")
 })

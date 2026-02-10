@@ -26,7 +26,6 @@ pub(crate) mod actions;
 
 pub mod accordion;
 pub mod alert;
-pub mod command_palette;
 pub mod animation;
 pub mod avatar;
 pub mod badge;
@@ -37,6 +36,7 @@ pub mod checkbox;
 pub mod clipboard;
 pub mod collapsible;
 pub mod color_picker;
+pub mod command_palette;
 pub mod description_list;
 pub mod dialog;
 pub mod divider;

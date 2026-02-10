@@ -5,19 +5,19 @@ use super::state::{CommandPaletteEvent, CommandPaletteState};
 use super::types::{CommandPaletteConfig, MatchedItem};
 use super::{reveal_animation_duration, reveal_delay};
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
-use crate::animation::cubic_bezier;
+use crate::animation::animation_with_theme_easing;
 use crate::global_state::GlobalState;
 use crate::input::{Input, InputEvent, InputState};
 use crate::kbd::Kbd;
 use crate::{
-    h_flex, v_flex, v_virtual_list, ActiveTheme, Icon, IconName, Sizable, Size, SurfaceContext,
-    SurfacePreset, VirtualListScrollHandle, WindowExt as _,
+    ActiveTheme, Icon, IconName, Sizable, Size, SurfaceContext, SurfacePreset,
+    VirtualListScrollHandle, WindowExt as _, h_flex, v_flex, v_virtual_list,
 };
 use gpui::{
-    div, prelude::FluentBuilder, px, Animation, AnimationExt, App, AppContext as _, Context,
-    ElementId, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
-    ParentElement, Pixels, Render, ScrollStrategy, SharedString, Size as GpuiSize, Styled,
-    Subscription, Task, Window,
+    Animation, AnimationExt, App, AppContext as _, Context, ElementId, Entity, FocusHandle,
+    Focusable, InteractiveElement, IntoElement, KeyBinding, ParentElement, Pixels, Render,
+    ScrollStrategy, SharedString, Size as GpuiSize, Styled, Subscription, Task, Window, div,
+    prelude::FluentBuilder, px,
 };
 use std::rc::Rc;
 use std::sync::Arc;
@@ -28,32 +28,14 @@ const CONTEXT: &str = "CommandPalette";
 const HEADER_HEIGHT: f32 = 52.0;
 const FOOTER_HEIGHT: f32 = 36.0;
 const SECTION_HEADER_HEIGHT: f32 = 28.0;
+const EMPTY_STATE_HEIGHT: f32 = 120.0;
 
-fn parse_cubic_bezier_easing(value: &str) -> Option<(f32, f32, f32, f32)> {
-    let trimmed = value.trim();
-    let body = trimmed
-        .strip_prefix("cubic-bezier(")?
-        .strip_suffix(')')?
-        .trim();
-    let mut parts = body.split(',').map(str::trim);
-    let x1 = parts.next()?.parse::<f32>().ok()?;
-    let y1 = parts.next()?.parse::<f32>().ok()?;
-    let x2 = parts.next()?.parse::<f32>().ok()?;
-    let y2 = parts.next()?.parse::<f32>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    Some((x1, y1, x2, y2))
-}
-
-fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animation {
-    if easing.trim().eq_ignore_ascii_case("linear") {
-        return animation.with_easing(|delta: f32| delta);
-    }
-    if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
-        return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
-    }
-    animation
+/// Monotonic spring-like easing (critically damped) to avoid bounce oscillation.
+fn gentle_spring(delta: f32) -> f32 {
+    let t = delta.clamp(0.0, 1.0);
+    let omega = 10.0;
+    let value = 1.0 - (1.0 + omega * t) * (-omega * t).exp();
+    value.clamp(0.0, 1.0)
 }
 
 /// A render row for the command palette list.
@@ -237,11 +219,13 @@ impl CommandPaletteView {
         let item_data = item.item.clone();
         let match_info = item.match_info.clone();
         let disabled = item_data.disabled;
+        let show_inline_category = show_category && !item_data.category.is_empty();
 
         let shortcut_element = item_data
             .shortcut
             .as_ref()
             .and_then(|s| gpui::Keystroke::parse(s).ok().map(|k| Kbd::new(k)));
+        let has_shortcut = shortcut_element.is_some();
 
         h_flex()
             .id(SharedString::from(format!("cmd-item-{}", item_index)))
@@ -316,15 +300,20 @@ impl CommandPaletteView {
                         )
                     }),
             )
-            // Shortcut
-            .when_some(shortcut_element, |this, kbd| this.child(kbd))
-            // Category (inline, like old palette)
-            .when(show_category && !item_data.category.is_empty(), |this| {
+            .when(show_inline_category || has_shortcut, |this| {
                 this.child(
-                    div()
-                        .text_xs()
-                        .text_color(cx.theme().muted_foreground)
-                        .child(item_data.category.clone()),
+                    h_flex()
+                        .items_center()
+                        .gap_2()
+                        .when(show_inline_category, |this| {
+                            this.child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(item_data.category.clone()),
+                            )
+                        })
+                        .when_some(shortcut_element, |this, kbd| this.child(kbd)),
                 )
             })
     }
@@ -541,7 +530,9 @@ impl Render for CommandPaletteView {
         let max_height = px(config.max_height);
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let reveal_animation_duration = reveal_animation_duration(cx);
-        let reveal_animation = (!reduced_motion).then(|| {
+        let expand_animation =
+            (!reduced_motion).then(|| Animation::new(reveal_animation_duration).with_easing(gentle_spring));
+        let list_reveal_animation = (!reduced_motion).then(|| {
             animation_with_theme_easing(
                 Animation::new(reveal_animation_duration),
                 cx.theme().motion.fast_invoke_easing.as_ref(),
@@ -566,7 +557,7 @@ impl Render for CommandPaletteView {
 
         // Compute height for surface bounds
         let list_content_height = if row_count == 0 {
-            self.item_height
+            px(EMPTY_STATE_HEIGHT)
         } else {
             rows.iter().fold(px(0.0), |sum, row| {
                 sum + match row {
@@ -661,6 +652,25 @@ impl Render for CommandPaletteView {
                             .track_scroll(&self.scroll_handle)
                             .py_1(),
                         )
+                    })
+                    .map(|el| {
+                        if self.list_revealed {
+                            if let Some(anim) = list_reveal_animation {
+                                el.with_animation(
+                                    ElementId::NamedInteger(
+                                        "command-palette-children-reveal".into(),
+                                        1,
+                                    ),
+                                    anim,
+                                    move |this, delta| this.opacity(delta),
+                                )
+                                .into_any_element()
+                            } else {
+                                el.into_any_element()
+                            }
+                        } else {
+                            el.opacity(0.).into_any_element()
+                        }
                     }),
             )
             // Footer
@@ -686,7 +696,7 @@ impl Render for CommandPaletteView {
             .w(px(config.width));
 
         if self.list_revealed {
-            if let Some(reveal_animation) = reveal_animation {
+            if let Some(reveal_animation) = expand_animation {
                 surface
                     .with_animation(
                         ElementId::NamedInteger("command-palette-expand".into(), 1),

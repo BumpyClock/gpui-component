@@ -2,17 +2,20 @@ use std::rc::Rc;
 
 use chrono::NaiveDate;
 use gpui::{
-    App, AppContext, ClickEvent, Context, ElementId, Empty, Entity, EventEmitter, FocusHandle,
-    Focusable, InteractiveElement as _, IntoElement, KeyBinding, MouseButton, ParentElement as _,
-    Render, RenderOnce, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    Subscription, Window, anchored, deferred, div, prelude::FluentBuilder as _, px,
+    AnimationExt as _, App, AppContext, ClickEvent, Context, ElementId, Empty, Entity,
+    EventEmitter, FocusHandle, Focusable, InteractiveElement as _, IntoElement, KeyBinding,
+    MouseButton, ParentElement as _, Render, RenderOnce, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, Subscription, Window, anchored,
+    deferred, div, prelude::FluentBuilder as _, px,
 };
 use rust_i18n::t;
 
 use crate::{
     ActiveTheme, Disableable, Icon, IconName, Sizable, Size, StyleSized as _, StyledExt as _,
     actions::{Cancel, Confirm},
+    animation::fast_invoke_animation,
     button::{Button, ButtonVariants as _},
+    global_state::GlobalState,
     h_flex,
     input::{Delete, clear_button},
     v_flex,
@@ -363,10 +366,7 @@ impl RenderOnce for DatePicker {
             .placeholder
             .clone()
             .unwrap_or_else(|| t!("DatePicker.placeholder").into());
-        let display_title = state
-            .date
-            .format(&state.date_format)
-            .unwrap_or(placeholder);
+        let display_title = state.date.format(&state.date_format).unwrap_or(placeholder);
 
         div()
             .id(self.id.clone())
@@ -441,6 +441,10 @@ impl RenderOnce for DatePicker {
                     ),
             )
             .when(state.open, |this| {
+                let motion = &cx.theme().motion;
+                let reduced_motion = GlobalState::global(cx).reduced_motion();
+                let anim = fast_invoke_animation(motion, reduced_motion);
+
                 this.child(
                     deferred(
                         anchored().snap_to_window_with_margin(px(8.)).child(
@@ -496,7 +500,17 @@ impl RenderOnce for DatePicker {
                                                 .p_0()
                                                 .with_size(self.size),
                                         ),
-                                ),
+                                )
+                                .map(|el| {
+                                    if let Some(anim) = anim {
+                                        el.with_animation("datepicker-enter", anim, |el, delta| {
+                                            el.opacity(delta)
+                                        })
+                                        .into_any_element()
+                                    } else {
+                                        el.into_any_element()
+                                    }
+                                }),
                         ),
                     )
                     .with_priority(2),

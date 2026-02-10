@@ -2,40 +2,14 @@ use std::{rc::Rc, time::Duration};
 
 use crate::{
     ActiveTheme, Disableable, FocusableExt, IconName, Selectable, Sizable, Size, StyledExt as _,
-    animation::cubic_bezier, global_state::GlobalState, icon::IconNamed, text::Text, v_flex,
+    animation::animation_with_theme_easing, global_state::GlobalState, icon::IconNamed, text::Text,
+    v_flex,
 };
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Div, ElementId, InteractiveElement, IntoElement,
     ParentElement, RenderOnce, StatefulInteractiveElement, StyleRefinement, Styled, Window, div,
     prelude::FluentBuilder as _, px, relative, rems, svg,
 };
-
-fn parse_cubic_bezier_easing(value: &str) -> Option<(f32, f32, f32, f32)> {
-    let trimmed = value.trim();
-    let body = trimmed
-        .strip_prefix("cubic-bezier(")?
-        .strip_suffix(')')?
-        .trim();
-    let mut parts = body.split(',').map(str::trim);
-    let x1 = parts.next()?.parse::<f32>().ok()?;
-    let y1 = parts.next()?.parse::<f32>().ok()?;
-    let x2 = parts.next()?.parse::<f32>().ok()?;
-    let y2 = parts.next()?.parse::<f32>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    Some((x1, y1, x2, y2))
-}
-
-fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animation {
-    if easing.trim().eq_ignore_ascii_case("linear") {
-        return animation.with_easing(|delta: f32| delta);
-    }
-    if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
-        return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
-    }
-    animation
-}
 
 /// A Checkbox element.
 #[derive(IntoElement)]
@@ -199,8 +173,7 @@ pub(crate) fn checkbox_check_icon(
             }
 
             if value_changed {
-                let duration =
-                    Duration::from_millis(u64::from(cx.theme().motion.fast_duration_ms));
+                let duration = Duration::from_millis(u64::from(cx.theme().motion.fast_duration_ms));
                 let animation = animation_with_theme_easing(
                     Animation::new(duration),
                     cx.theme().motion.fade_easing.as_ref(),

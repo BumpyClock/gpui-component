@@ -1,12 +1,15 @@
 use gpui::{
-    AnyElement, App, Bounds, Context, Deferred, DismissEvent, Div, ElementId, EventEmitter,
-    FocusHandle, Focusable, Half, InteractiveElement as _, IntoElement, KeyBinding, MouseButton,
-    ParentElement, Pixels, Point, Render, RenderOnce, Stateful, StyleRefinement, Styled,
-    Subscription, Window, deferred, div, prelude::FluentBuilder as _, px,
+    AnimationExt as _, AnyElement, App, Bounds, Context, Deferred, DismissEvent, Div, ElementId,
+    EventEmitter, FocusHandle, Focusable, Half, InteractiveElement as _, IntoElement, KeyBinding,
+    MouseButton, ParentElement, Pixels, Point, Render, RenderOnce, Stateful, StyleRefinement,
+    Styled, Subscription, Window, deferred, div, prelude::FluentBuilder as _, px,
 };
 use std::rc::Rc;
 
-use crate::{Anchor, ElementExt, Selectable, StyledExt as _, actions::Cancel, anchored, v_flex};
+use crate::{
+    ActiveTheme, Anchor, ElementExt, Selectable, StyledExt as _, actions::Cancel, anchored,
+    animation::fast_invoke_animation, global_state::GlobalState, v_flex,
+};
 
 const CONTEXT: &str = "Popover";
 pub(crate) fn init(cx: &mut App) {
@@ -383,6 +386,10 @@ impl RenderOnce for Popover {
             return el;
         }
 
+        let motion = &cx.theme().motion;
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let anim = fast_invoke_animation(motion, reduced_motion);
+
         let popover_content =
             Self::render_popover_content(self.anchor, self.appearance, window, cx)
                 .track_focus(&focus_handle)
@@ -403,7 +410,15 @@ impl RenderOnce for Popover {
                         }
                     })
                 })
-                .refine_style(&self.style);
+                .refine_style(&self.style)
+                .map(|el| {
+                    if let Some(anim) = anim {
+                        el.with_animation("popover-enter", anim, |el, delta| el.opacity(delta))
+                            .into_any_element()
+                    } else {
+                        el.into_any_element()
+                    }
+                });
 
         el.child(Self::render_popover(
             self.anchor,

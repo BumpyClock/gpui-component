@@ -1,11 +1,15 @@
 use std::rc::Rc;
+use std::time::Duration;
 
-use crate::{ActiveTheme, Icon, IconName, Selectable, Sizable, Size, StyledExt, h_flex};
+use crate::{
+    ActiveTheme, Icon, IconName, Selectable, Sizable, Size, StyledExt,
+    animation::animation_with_theme_easing, global_state::GlobalState, h_flex,
+};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    AnyElement, App, ClickEvent, Div, Edges, Hsla, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, Pixels, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window,
-    div, px, relative,
+    Animation, AnimationExt as _, AnyElement, App, ClickEvent, Div, Edges, ElementId, Hsla,
+    InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, SharedString,
+    StatefulInteractiveElement, Styled, Window, div, px, relative,
 };
 
 /// Tab variants.
@@ -583,7 +587,7 @@ impl Sizable for Tab {
 }
 
 impl RenderOnce for Tab {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let mut tab_style = if self.selected {
             self.variant.selected(cx)
         } else {
@@ -608,6 +612,48 @@ impl RenderOnce for Tab {
         let inner_height = self.variant.inner_height(self.size);
         let height = self.variant.height(self.size);
 
+        let selected = self.selected;
+        let disabled = self.disabled;
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+
+        // Track selected state transitions for animation
+        let tab_select_state = window.use_keyed_state(
+            ElementId::NamedInteger("tab-select".into(), self.ix as u64),
+            cx,
+            |_, _| selected,
+        );
+        let became_selected = {
+            let prev = *tab_select_state.read(cx);
+            let changed = !disabled && selected && !prev;
+            if prev != selected {
+                if reduced_motion {
+                    tab_select_state.update(cx, |state, _| *state = selected);
+                } else if changed {
+                    let duration =
+                        Duration::from_millis(u64::from(cx.theme().motion.fade_duration_ms));
+                    cx.spawn({
+                        let tab_select_state = tab_select_state.clone();
+                        async move |cx| {
+                            cx.background_executor().timer(duration).await;
+                            _ = tab_select_state.update(cx, |this, _| *this = selected);
+                        }
+                    })
+                    .detach();
+                } else {
+                    tab_select_state.update(cx, |state, _| *state = selected);
+                }
+            }
+            changed && !reduced_motion
+        };
+
+        let fade_animation = became_selected.then(|| {
+            let motion = &cx.theme().motion;
+            animation_with_theme_easing(
+                Animation::new(Duration::from_millis(u64::from(motion.fade_duration_ms))),
+                &motion.fade_easing,
+            )
+        });
+
         self.base
             .id(self.ix)
             .flex()
@@ -631,7 +677,7 @@ impl RenderOnce for Tab {
             .border_b(tab_style.borders.bottom)
             .border_color(tab_style.border_color)
             .rounded(radius)
-            .when(!self.selected && !self.disabled, |this| {
+            .when(!selected && !disabled, |this| {
                 this.hover(|this| {
                     this.text_color(hover_style.fg)
                         .bg(hover_style.bg)
@@ -683,10 +729,20 @@ impl RenderOnce for Tab {
                 // https://github.com/longbridge/gpui-component/issues/1836
                 cx.stop_propagation();
             })
-            .when(!self.disabled, |this| {
+            .when(!disabled, |this| {
                 this.when_some(self.on_click.clone(), |this, on_click| {
                     this.on_click(move |event, window, cx| on_click(event, window, cx))
                 })
+            })
+            .map(|this| match fade_animation {
+                Some(anim) => this
+                    .with_animation(
+                        ElementId::NamedInteger("tab-fade".into(), self.ix as u64),
+                        anim,
+                        |this, delta| this.opacity(delta),
+                    )
+                    .into_any_element(),
+                None => this.into_any_element(),
             })
     }
 }

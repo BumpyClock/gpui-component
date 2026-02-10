@@ -1,8 +1,8 @@
 //! State management for the Command Palette.
 
+use super::REVEAL_QUERY_DELAY;
 use super::matcher::{FuzzyMatcherWrapper, NucleoMatcher};
 use super::provider::CommandPaletteProvider;
-use super::REVEAL_QUERY_DELAY;
 use super::types::{
     CommandMatcher, CommandMatcherKind, CommandPaletteConfig, CommandPaletteItem, MatchedItem,
 };

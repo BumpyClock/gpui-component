@@ -398,9 +398,7 @@ impl Render for Dock {
                 DockItem::Tiles { .. } => this,
             })
             .child(self.render_resize_handle(window, cx))
-            .child(DockElement {
-                view: cx.entity(),
-            })
+            .child(DockElement { view: cx.entity() })
     }
 }
 

@@ -1,10 +1,10 @@
 use std::{rc::Rc, sync::LazyLock, time::Duration};
 
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent, Edges,
-    ElementId, FocusHandle, Hsla, InteractiveElement, IntoElement, KeyBinding, MouseButton,
-    ParentElement, Pixels, Point, RenderOnce, SharedString, StyleRefinement, Styled, Window,
-    WindowControlArea, anchored, div, hsla, point, prelude::FluentBuilder, px, relative,
+    Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent, Edges, ElementId,
+    FocusHandle, Hsla, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement,
+    Pixels, Point, RenderOnce, SharedString, StyleRefinement, Styled, Window, WindowControlArea,
+    anchored, div, hsla, point, prelude::FluentBuilder, px, relative,
 };
 use rust_i18n::t;
 
@@ -12,7 +12,7 @@ use crate::{
     ActiveTheme as _, FocusTrapElement as _, IconName, Root, Sizable as _, StyledExt,
     TITLE_BAR_HEIGHT, WindowExt as _,
     actions::{Cancel, Confirm},
-    animation::cubic_bezier,
+    animation::animation_with_theme_easing,
     button::{Button, ButtonVariant, ButtonVariants as _},
     global_state::GlobalState,
     h_flex,
@@ -27,33 +27,6 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("escape", Cancel, Some(CONTEXT)),
         KeyBinding::new("enter", Confirm { secondary: false }, Some(CONTEXT)),
     ]);
-}
-
-fn parse_cubic_bezier_easing(value: &str) -> Option<(f32, f32, f32, f32)> {
-    let trimmed = value.trim();
-    let body = trimmed
-        .strip_prefix("cubic-bezier(")?
-        .strip_suffix(')')?
-        .trim();
-    let mut parts = body.split(',').map(str::trim);
-    let x1 = parts.next()?.parse::<f32>().ok()?;
-    let y1 = parts.next()?.parse::<f32>().ok()?;
-    let x2 = parts.next()?.parse::<f32>().ok()?;
-    let y2 = parts.next()?.parse::<f32>().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
-    Some((x1, y1, x2, y2))
-}
-
-fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animation {
-    if easing.trim().eq_ignore_ascii_case("linear") {
-        return animation.with_easing(|delta: f32| delta);
-    }
-    if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
-        return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
-    }
-    animation
 }
 
 fn dialog_shadow(delta: f32) -> Vec<BoxShadow> {
@@ -141,6 +114,7 @@ pub struct Dialog {
     overlay: bool,
     overlay_closable: bool,
     keyboard: bool,
+    animate: bool,
 
     /// This will be change when open the dialog, the focus handle is create when open the dialog.
     pub(crate) focus_handle: FocusHandle,
@@ -170,6 +144,7 @@ impl Dialog {
             max_width: None,
             overlay: true,
             keyboard: true,
+            animate: true,
             layer_ix: 0,
             overlay_visible: false,
             on_close: Rc::new(|_, _, _| {}),
@@ -315,6 +290,12 @@ impl Dialog {
     /// Set whether to support keyboard esc to close the dialog, defaults to `true`.
     pub fn keyboard(mut self, keyboard: bool) -> Self {
         self.keyboard = keyboard;
+        self
+    }
+
+    /// Set whether to play enter animations, defaults to `true`.
+    pub fn animate(mut self, animate: bool) -> Self {
+        self.animate = animate;
         self
     }
 
@@ -604,23 +585,27 @@ impl RenderOnce for Dialog {
                                 }
                             })
                             .map(move |this| {
-                                if reduced_motion {
+                                if reduced_motion || !self.animate {
                                     this.shadow(dialog_shadow(1.)).into_any_element()
                                 } else {
-                                    this.with_animation("slide-down", slide_animation, move |this, delta| {
-                                    this.top(y * delta).shadow(dialog_shadow(delta))
-                                    })
+                                    this.with_animation(
+                                        "slide-down",
+                                        slide_animation,
+                                        move |this, delta| {
+                                            this.top(y * delta).shadow(dialog_shadow(delta))
+                                        },
+                                    )
                                     .into_any_element()
                                 }
                             }),
                     )
                     .map(move |this| {
-                        if reduced_motion {
+                        if reduced_motion || !self.animate {
                             this.into_any_element()
                         } else {
                             this.with_animation("fade-in", fade_animation, move |this, delta| {
-                            this.opacity(delta)
-                        })
+                                this.opacity(delta)
+                            })
                             .into_any_element()
                         }
                     }),

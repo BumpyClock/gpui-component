@@ -160,6 +160,7 @@ impl CommandPalette {
                 .overlay(true)
                 .overlay_closable(true)
                 .keyboard(true)
+                .animate(false)
                 .close_button(false)
                 .p_0()
                 .child(view.clone())

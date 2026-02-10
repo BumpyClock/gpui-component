@@ -103,13 +103,10 @@ impl CommandPaletteStory {
         let provider = Arc::new(StaticProvider::new(items));
         let handle = CommandPalette::open(window, cx, provider);
 
-        let view = cx.entity();
-        cx.subscribe(&handle.state(), move |_, _state, event, cx| {
+        cx.subscribe(&handle.state(), move |this, _state, event, cx| {
             if let CommandPaletteEvent::Selected { item } = event {
-                view.update(cx, |view, cx| {
-                    view.last_selected = Some(item.title.clone());
-                    cx.notify();
-                });
+                this.last_selected = Some(item.title.clone());
+                cx.notify();
             }
         })
         .detach();
@@ -119,13 +116,10 @@ impl CommandPaletteStory {
         let provider = Arc::new(AsyncDemoProvider::new());
         let handle = CommandPalette::open(window, cx, provider);
 
-        let view = cx.entity();
-        cx.subscribe(&handle.state(), move |_, _state, event, cx| {
+        cx.subscribe(&handle.state(), move |this, _state, event, cx| {
             if let CommandPaletteEvent::Selected { item } = event {
-                view.update(cx, |view, cx| {
-                    view.last_selected = Some(item.title.clone());
-                    cx.notify();
-                });
+                this.last_selected = Some(item.title.clone());
+                cx.notify();
             }
         })
         .detach();
@@ -158,13 +152,10 @@ impl CommandPaletteStory {
 
         let handle = CommandPalette::open_with_config(window, cx, provider, custom_config);
 
-        let view = cx.entity();
-        cx.subscribe(&handle.state(), move |_, _state, event, cx| {
+        cx.subscribe(&handle.state(), move |this, _state, event, cx| {
             if let CommandPaletteEvent::Selected { item } = event {
-                view.update(cx, |view, cx| {
-                    view.last_selected = Some(item.title.clone());
-                    cx.notify();
-                });
+                this.last_selected = Some(item.title.clone());
+                cx.notify();
             }
         })
         .detach();

@@ -206,6 +206,17 @@ pub struct ThemeColor {
     /// This is only works on Linux, other platforms we can't change the window border color.
     pub window_border: Hsla,
 
+    /// Fluent TextFillColorDisabled — disabled text color.
+    pub disabled_foreground: Hsla,
+    /// Fluent ControlStrokeColorDefault — subtle control border.
+    pub control_stroke: Hsla,
+    /// Fluent CardBackgroundFillColorDefault — card surface background.
+    pub card: Hsla,
+    /// Card text color.
+    pub card_foreground: Hsla,
+    /// Fluent SolidBackgroundFillColorBase — solid opaque background.
+    pub solid_background: Hsla,
+
     /// The base red color.
     pub red: Hsla,
     /// The base red light color.

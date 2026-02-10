@@ -1,13 +1,15 @@
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
-    AnyElement, App, Context, Corner, DismissEvent, Element, ElementId, Entity, Focusable,
-    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement, IntoElement,
-    MouseButton, MouseDownEvent, ParentElement, Pixels, Point, StyleRefinement, Styled,
-    Subscription, Window, anchored, deferred, div, prelude::FluentBuilder, px,
+    AnimationExt as _, AnyElement, App, Context, Corner, DismissEvent, Element, ElementId, Entity,
+    Focusable, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement,
+    IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, StyleRefinement,
+    Styled, Subscription, Window, anchored, deferred, div, prelude::FluentBuilder, px,
 };
 
-use crate::menu::PopupMenu;
+use crate::{
+    ActiveTheme, animation::fast_invoke_animation, global_state::GlobalState, menu::PopupMenu,
+};
 
 /// A extension trait for adding a context menu to an element.
 pub trait ContextMenuExt: ParentElement + Styled {
@@ -172,6 +174,10 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                         .unwrap_or(false);
 
                     if has_menu_item {
+                        let motion = &cx.theme().motion;
+                        let reduced_motion = GlobalState::global(cx).reduced_motion();
+                        let anim = fast_invoke_animation(motion, reduced_motion);
+
                         menu_element = Some(
                             deferred(
                                 anchored().child(
@@ -197,7 +203,19 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
 
                                                     this.child(menu)
                                                 }),
-                                        ),
+                                        )
+                                        .map(|el| {
+                                            if let Some(anim) = anim {
+                                                el.with_animation(
+                                                    "context-menu-enter",
+                                                    anim,
+                                                    |el, delta| el.opacity(delta),
+                                                )
+                                                .into_any_element()
+                                            } else {
+                                                el.into_any_element()
+                                            }
+                                        }),
                                 ),
                             )
                             .with_priority(1)
