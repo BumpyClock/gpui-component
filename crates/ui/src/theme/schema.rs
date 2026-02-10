@@ -5,7 +5,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    Colorize, Theme, ThemeColor, ThemeMode,
+    Colorize, Theme, ThemeColor, ThemeElevation, ThemeMaterial, ThemeMode, ThemeMotion,
+    ThemeShadowToken,
     highlighter::{HighlightTheme, HighlightThemeStyle},
     try_parse_color,
 };
@@ -60,6 +61,12 @@ pub struct ThemeConfig {
     /// Set shadows in the theme, for example the Input and Button, default is true.
     #[serde(rename = "shadow")]
     pub shadow: Option<bool>,
+    /// Motion token overrides sourced from Fluent animation tokens.
+    pub motion: Option<ThemeMotionConfig>,
+    /// Elevation token overrides sourced from Fluent elevation tokens.
+    pub elevation: Option<ThemeElevationConfig>,
+    /// Material and layering token overrides sourced from Fluent material tokens.
+    pub material: Option<ThemeMaterialConfig>,
 
     /// The colors of the theme.
     pub colors: ThemeConfigColors,
@@ -67,6 +74,290 @@ pub struct ThemeConfig {
     ///
     /// https://github.com/zed-industries/zed/blob/f50041779dcfd7a76c8aec293361c60c53f02d51/assets/themes/ayu/ayu.json#L9
     pub highlight: Option<HighlightThemeStyle>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub struct ThemeMotionConfig {
+    pub fast_duration_ms: Option<u16>,
+    pub normal_duration_ms: Option<u16>,
+    pub slow_duration_ms: Option<u16>,
+    pub strong_invoke_duration_ms: Option<u16>,
+    pub soft_dismiss_duration_ms: Option<u16>,
+    pub fade_duration_ms: Option<u16>,
+    pub fast_invoke_easing: Option<SharedString>,
+    pub strong_invoke_easing: Option<SharedString>,
+    pub fast_dismiss_easing: Option<SharedString>,
+    pub soft_dismiss_easing: Option<SharedString>,
+    pub point_to_point_easing: Option<SharedString>,
+    pub fade_easing: Option<SharedString>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub struct ThemeElevationConfig {
+    pub control_level: Option<usize>,
+    pub card_rest_level: Option<usize>,
+    pub tooltip_level: Option<usize>,
+    pub flyout_level: Option<usize>,
+    pub dialog_level: Option<usize>,
+    pub shell_level: Option<usize>,
+    pub inactive_window_level: Option<usize>,
+    pub active_window_level: Option<usize>,
+    pub surface_flyout_shadow: Option<ThemeShadowToken>,
+    pub surface_panel_shadow: Option<ThemeShadowToken>,
+    pub surface_card_shadow: Option<ThemeShadowToken>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(default)]
+pub struct ThemeMaterialConfig {
+    pub flyout_blur_radius: Option<f32>,
+    pub panel_blur_radius: Option<f32>,
+    pub flyout_light_opacity: Option<f32>,
+    pub flyout_dark_opacity: Option<f32>,
+    pub panel_light_opacity: Option<f32>,
+    pub panel_dark_opacity: Option<f32>,
+    pub card_light_opacity: Option<f32>,
+    pub card_dark_opacity: Option<f32>,
+    pub subtle_stroke_light_opacity: Option<f32>,
+    pub subtle_stroke_dark_opacity: Option<f32>,
+    pub smoke_light: Option<SharedString>,
+    pub smoke_dark: Option<SharedString>,
+    pub layer_light: Option<SharedString>,
+    pub layer_dark: Option<SharedString>,
+    pub layer_alt_light: Option<SharedString>,
+    pub layer_alt_dark: Option<SharedString>,
+    pub mica_base_light: Option<SharedString>,
+    pub mica_base_dark: Option<SharedString>,
+    pub mica_base_alt_light: Option<SharedString>,
+    pub mica_base_alt_dark: Option<SharedString>,
+    pub acrylic_base_light: Option<SharedString>,
+    pub acrylic_base_dark: Option<SharedString>,
+    pub acrylic_default_light: Option<SharedString>,
+    pub acrylic_default_dark: Option<SharedString>,
+}
+
+impl ThemeMotion {
+    fn apply_config(&mut self, config: Option<&ThemeMotionConfig>, default_theme: &ThemeMotion) {
+        if let Some(config) = config {
+            self.fast_duration_ms = config
+                .fast_duration_ms
+                .unwrap_or(default_theme.fast_duration_ms);
+            self.normal_duration_ms = config
+                .normal_duration_ms
+                .unwrap_or(default_theme.normal_duration_ms);
+            self.slow_duration_ms = config
+                .slow_duration_ms
+                .unwrap_or(default_theme.slow_duration_ms);
+            self.strong_invoke_duration_ms = config
+                .strong_invoke_duration_ms
+                .unwrap_or(default_theme.strong_invoke_duration_ms);
+            self.soft_dismiss_duration_ms = config
+                .soft_dismiss_duration_ms
+                .unwrap_or(default_theme.soft_dismiss_duration_ms);
+            self.fade_duration_ms = config
+                .fade_duration_ms
+                .unwrap_or(default_theme.fade_duration_ms);
+            self.fast_invoke_easing = config
+                .fast_invoke_easing
+                .as_ref()
+                .unwrap_or(&default_theme.fast_invoke_easing)
+                .clone();
+            self.strong_invoke_easing = config
+                .strong_invoke_easing
+                .as_ref()
+                .unwrap_or(&default_theme.strong_invoke_easing)
+                .clone();
+            self.fast_dismiss_easing = config
+                .fast_dismiss_easing
+                .as_ref()
+                .unwrap_or(&default_theme.fast_dismiss_easing)
+                .clone();
+            self.soft_dismiss_easing = config
+                .soft_dismiss_easing
+                .as_ref()
+                .unwrap_or(&default_theme.soft_dismiss_easing)
+                .clone();
+            self.point_to_point_easing = config
+                .point_to_point_easing
+                .as_ref()
+                .unwrap_or(&default_theme.point_to_point_easing)
+                .clone();
+            self.fade_easing = config
+                .fade_easing
+                .as_ref()
+                .unwrap_or(&default_theme.fade_easing)
+                .clone();
+            return;
+        }
+
+        *self = default_theme.clone();
+    }
+}
+
+impl ThemeElevation {
+    fn apply_config(
+        &mut self,
+        config: Option<&ThemeElevationConfig>,
+        default_theme: &ThemeElevation,
+    ) {
+        if let Some(config) = config {
+            self.control_level = config.control_level.unwrap_or(default_theme.control_level);
+            self.card_rest_level = config
+                .card_rest_level
+                .unwrap_or(default_theme.card_rest_level);
+            self.tooltip_level = config.tooltip_level.unwrap_or(default_theme.tooltip_level);
+            self.flyout_level = config.flyout_level.unwrap_or(default_theme.flyout_level);
+            self.dialog_level = config.dialog_level.unwrap_or(default_theme.dialog_level);
+            self.shell_level = config.shell_level.unwrap_or(default_theme.shell_level);
+            self.inactive_window_level = config
+                .inactive_window_level
+                .unwrap_or(default_theme.inactive_window_level);
+            self.active_window_level = config
+                .active_window_level
+                .unwrap_or(default_theme.active_window_level);
+            self.surface_flyout_shadow = config
+                .surface_flyout_shadow
+                .unwrap_or(default_theme.surface_flyout_shadow);
+            self.surface_panel_shadow = config
+                .surface_panel_shadow
+                .unwrap_or(default_theme.surface_panel_shadow);
+            self.surface_card_shadow = config
+                .surface_card_shadow
+                .unwrap_or(default_theme.surface_card_shadow);
+            return;
+        }
+
+        *self = default_theme.clone();
+    }
+}
+
+impl ThemeMaterial {
+    fn apply_config(
+        &mut self,
+        config: Option<&ThemeMaterialConfig>,
+        default_theme: &ThemeMaterial,
+    ) {
+        if let Some(config) = config {
+            self.flyout_blur_radius = px(config
+                .flyout_blur_radius
+                .unwrap_or(f32::from(default_theme.flyout_blur_radius)));
+            self.panel_blur_radius = px(config
+                .panel_blur_radius
+                .unwrap_or(f32::from(default_theme.panel_blur_radius)));
+            self.flyout_light_opacity = config
+                .flyout_light_opacity
+                .unwrap_or(default_theme.flyout_light_opacity)
+                .clamp(0.0, 1.0);
+            self.flyout_dark_opacity = config
+                .flyout_dark_opacity
+                .unwrap_or(default_theme.flyout_dark_opacity)
+                .clamp(0.0, 1.0);
+            self.panel_light_opacity = config
+                .panel_light_opacity
+                .unwrap_or(default_theme.panel_light_opacity)
+                .clamp(0.0, 1.0);
+            self.panel_dark_opacity = config
+                .panel_dark_opacity
+                .unwrap_or(default_theme.panel_dark_opacity)
+                .clamp(0.0, 1.0);
+            self.card_light_opacity = config
+                .card_light_opacity
+                .unwrap_or(default_theme.card_light_opacity)
+                .clamp(0.0, 1.0);
+            self.card_dark_opacity = config
+                .card_dark_opacity
+                .unwrap_or(default_theme.card_dark_opacity)
+                .clamp(0.0, 1.0);
+            self.subtle_stroke_light_opacity = config
+                .subtle_stroke_light_opacity
+                .unwrap_or(default_theme.subtle_stroke_light_opacity)
+                .clamp(0.0, 1.0);
+            self.subtle_stroke_dark_opacity = config
+                .subtle_stroke_dark_opacity
+                .unwrap_or(default_theme.subtle_stroke_dark_opacity)
+                .clamp(0.0, 1.0);
+
+            self.smoke_light = config
+                .smoke_light
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.smoke_light);
+            self.smoke_dark = config
+                .smoke_dark
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.smoke_dark);
+            self.layer_light = config
+                .layer_light
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.layer_light);
+            self.layer_dark = config
+                .layer_dark
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.layer_dark);
+            self.layer_alt_light = config
+                .layer_alt_light
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.layer_alt_light);
+            self.layer_alt_dark = config
+                .layer_alt_dark
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.layer_alt_dark);
+            self.mica_base_light = config
+                .mica_base_light
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.mica_base_light);
+            self.mica_base_dark = config
+                .mica_base_dark
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.mica_base_dark);
+            self.mica_base_alt_light = config
+                .mica_base_alt_light
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.mica_base_alt_light);
+            self.mica_base_alt_dark = config
+                .mica_base_alt_dark
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.mica_base_alt_dark);
+            self.acrylic_base_light = config
+                .acrylic_base_light
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.acrylic_base_light);
+            self.acrylic_base_dark = config
+                .acrylic_base_dark
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.acrylic_base_dark);
+            self.acrylic_default_light = config
+                .acrylic_default_light
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.acrylic_default_light);
+            self.acrylic_default_dark = config
+                .acrylic_default_dark
+                .as_ref()
+                .and_then(parse_config_color)
+                .unwrap_or(default_theme.acrylic_default_dark);
+            return;
+        }
+
+        *self = default_theme.clone();
+    }
+}
+
+fn parse_config_color(value: &SharedString) -> Option<gpui::Hsla> {
+    try_parse_color(value).ok()
 }
 
 #[derive(Debug, Default, Clone, JsonSchema, Serialize, Deserialize)]
@@ -695,6 +986,12 @@ impl Theme {
         } else {
             self.shadow = default_theme.shadow;
         }
+        self.motion
+            .apply_config(config.motion.as_ref(), &default_theme.motion);
+        self.elevation
+            .apply_config(config.elevation.as_ref(), &default_theme.elevation);
+        self.material
+            .apply_config(config.material.as_ref(), &default_theme.material);
 
         self.colors.apply_config(&config, &default_theme.colors);
         self.mode = config.mode;

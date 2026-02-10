@@ -12,8 +12,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     ActiveTheme, IconName, Placement, Sizable, StyledExt as _, WindowExt as _,
     actions::Cancel,
+    animation::cubic_bezier,
     button::{Button, ButtonVariants as _},
     dialog::overlay_color,
+    global_state::GlobalState,
     h_flex,
     scroll::ScrollableElement as _,
     title_bar::TITLE_BAR_HEIGHT,
@@ -23,6 +25,33 @@ use crate::{
 const CONTEXT: &str = "Sheet";
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([KeyBinding::new("escape", Cancel, Some(CONTEXT))])
+}
+
+fn parse_cubic_bezier_easing(value: &str) -> Option<(f32, f32, f32, f32)> {
+    let trimmed = value.trim();
+    let body = trimmed
+        .strip_prefix("cubic-bezier(")?
+        .strip_suffix(')')?
+        .trim();
+    let mut parts = body.split(',').map(str::trim);
+    let x1 = parts.next()?.parse::<f32>().ok()?;
+    let y1 = parts.next()?.parse::<f32>().ok()?;
+    let x2 = parts.next()?.parse::<f32>().ok()?;
+    let y2 = parts.next()?.parse::<f32>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((x1, y1, x2, y2))
+}
+
+fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animation {
+    if easing.trim().eq_ignore_ascii_case("linear") {
+        return animation.with_easing(|delta: f32| delta);
+    }
+    if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
+        return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
+    }
+    animation
 }
 
 /// The settings for sheets.
@@ -142,6 +171,12 @@ impl RenderOnce for Sheet {
                 window_paddings.top + window_paddings.bottom,
             );
         let top = cx.theme().sheet.margin_top;
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let motion = &cx.theme().motion;
+        let slide_animation = animation_with_theme_easing(
+            Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms))),
+            motion.fast_invoke_easing.as_ref(),
+        );
         let on_close = self.on_close.clone();
 
         let base_size = window.text_style().font_size;
@@ -190,7 +225,6 @@ impl RenderOnce for Sheet {
                     })
                     .child(
                         v_flex()
-                            .id("sheet")
                             .tab_group()
                             .key_context(CONTEXT)
                             .track_focus(&self.focus_handle)
@@ -273,19 +307,22 @@ impl RenderOnce for Sheet {
                                     cx.stop_propagation();
                                 }
                             })
-                            .with_animation(
-                                "slide",
-                                Animation::new(Duration::from_secs_f64(0.15)),
-                                move |this, delta| {
-                                    let y = px(-100.) + delta * px(100.);
-                                    this.map(|this| match placement {
-                                        Placement::Top => this.top(top + y),
-                                        Placement::Right => this.right(y),
-                                        Placement::Bottom => this.bottom(y),
-                                        Placement::Left => this.left(y),
+                            .map(move |this| {
+                                if reduced_motion {
+                                    this.into_any_element()
+                                } else {
+                                    this.with_animation("slide", slide_animation, move |this, delta| {
+                                        let y = px(-100.) + delta * px(100.);
+                                        this.map(|this| match placement {
+                                            Placement::Top => this.top(top + y),
+                                            Placement::Right => this.right(y),
+                                            Placement::Bottom => this.bottom(y),
+                                            Placement::Left => this.left(y),
+                                        })
                                     })
-                                },
-                            ),
+                                    .into_any_element()
+                                }
+                            }),
                     ),
             )
     }

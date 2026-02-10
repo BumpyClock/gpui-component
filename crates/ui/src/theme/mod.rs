@@ -12,6 +12,7 @@ use std::{
 };
 
 mod color;
+mod fluent_tokens;
 mod registry;
 mod schema;
 mod theme_color;
@@ -20,6 +21,95 @@ pub use color::*;
 pub use registry::*;
 pub use schema::*;
 pub use theme_color::*;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeShadowToken {
+    #[default]
+    None,
+    Xs,
+    Sm,
+    Md,
+    Lg,
+    Xl,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ThemeMotion {
+    pub fast_duration_ms: u16,
+    pub normal_duration_ms: u16,
+    pub slow_duration_ms: u16,
+    pub strong_invoke_duration_ms: u16,
+    pub soft_dismiss_duration_ms: u16,
+    pub fade_duration_ms: u16,
+    pub fast_invoke_easing: SharedString,
+    pub strong_invoke_easing: SharedString,
+    pub fast_dismiss_easing: SharedString,
+    pub soft_dismiss_easing: SharedString,
+    pub point_to_point_easing: SharedString,
+    pub fade_easing: SharedString,
+}
+
+impl Default for ThemeMotion {
+    fn default() -> Self {
+        fluent_tokens::theme_motion_defaults()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ThemeElevation {
+    pub control_level: usize,
+    pub card_rest_level: usize,
+    pub tooltip_level: usize,
+    pub flyout_level: usize,
+    pub dialog_level: usize,
+    pub shell_level: usize,
+    pub inactive_window_level: usize,
+    pub active_window_level: usize,
+    pub surface_flyout_shadow: ThemeShadowToken,
+    pub surface_panel_shadow: ThemeShadowToken,
+    pub surface_card_shadow: ThemeShadowToken,
+}
+
+impl Default for ThemeElevation {
+    fn default() -> Self {
+        fluent_tokens::theme_elevation_defaults()
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ThemeMaterial {
+    pub flyout_blur_radius: Pixels,
+    pub panel_blur_radius: Pixels,
+    pub flyout_light_opacity: f32,
+    pub flyout_dark_opacity: f32,
+    pub panel_light_opacity: f32,
+    pub panel_dark_opacity: f32,
+    pub card_light_opacity: f32,
+    pub card_dark_opacity: f32,
+    pub subtle_stroke_light_opacity: f32,
+    pub subtle_stroke_dark_opacity: f32,
+    pub smoke_light: Hsla,
+    pub smoke_dark: Hsla,
+    pub layer_light: Hsla,
+    pub layer_dark: Hsla,
+    pub layer_alt_light: Hsla,
+    pub layer_alt_dark: Hsla,
+    pub mica_base_light: Hsla,
+    pub mica_base_dark: Hsla,
+    pub mica_base_alt_light: Hsla,
+    pub mica_base_alt_dark: Hsla,
+    pub acrylic_base_light: Hsla,
+    pub acrylic_base_dark: Hsla,
+    pub acrylic_default_light: Hsla,
+    pub acrylic_default_dark: Hsla,
+}
+
+impl Default for ThemeMaterial {
+    fn default() -> Self {
+        fluent_tokens::theme_material_defaults()
+    }
+}
 
 pub fn init(cx: &mut App) {
     registry::init(cx);
@@ -43,6 +133,9 @@ impl ActiveTheme for App {
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Theme {
     pub colors: ThemeColor,
+    pub motion: ThemeMotion,
+    pub elevation: ThemeElevation,
+    pub material: ThemeMaterial,
     pub highlight_theme: Arc<HighlightTheme>,
     pub light_theme: Rc<ThemeConfig>,
     pub dark_theme: Rc<ThemeConfig>,
@@ -214,6 +307,9 @@ impl From<&ThemeColor> for Theme {
             tile_radius: px(0.),
             list: ListSettings::default(),
             colors: *colors,
+            motion: ThemeMotion::default(),
+            elevation: ThemeElevation::default(),
+            material: ThemeMaterial::default(),
             light_theme: Rc::new(ThemeConfig::default()),
             dark_theme: Rc::new(ThemeConfig::default()),
             highlight_theme: HighlightTheme::default_light(),
@@ -223,7 +319,18 @@ impl From<&ThemeColor> for Theme {
 }
 
 #[derive(
-    Debug, Clone, Copy, Default, PartialEq, PartialOrd, Eq, Ord, Hash, Serialize, Deserialize, JsonSchema,
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    PartialOrd,
+    Eq,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    JsonSchema,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum ThemeMode {

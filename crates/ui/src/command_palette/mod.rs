@@ -48,17 +48,22 @@ pub use types::{
 
 const REVEAL_DELAY_MS: u64 = 100;
 const REVEAL_ANIMATION_DURATION_MS: u64 = 180;
-pub(crate) const REVEAL_DELAY: Duration = Duration::from_millis(REVEAL_DELAY_MS);
-pub(crate) const REVEAL_ANIMATION_DURATION: Duration =
-    Duration::from_millis(REVEAL_ANIMATION_DURATION_MS);
 pub(crate) const REVEAL_QUERY_DELAY: Duration =
     Duration::from_millis(REVEAL_DELAY_MS + REVEAL_ANIMATION_DURATION_MS);
+
+pub(crate) fn reveal_delay(cx: &App) -> Duration {
+    Duration::from_millis(u64::from(cx.theme().motion.fade_duration_ms))
+}
+
+pub(crate) fn reveal_animation_duration(cx: &App) -> Duration {
+    Duration::from_millis(u64::from(cx.theme().motion.fast_duration_ms))
+}
 
 use gpui::{App, AppContext as _, Entity, KeyBinding, ParentElement as _, Styled, Window, actions};
 use std::sync::Arc;
 use view::CommandPaletteView;
 
-use crate::WindowExt as _;
+use crate::{ActiveTheme as _, WindowExt as _};
 
 actions!(command_palette, [Open]);
 

@@ -1,4 +1,6 @@
-use crate::{ActiveTheme, Sizable, Size, StyledExt};
+use crate::{
+    ActiveTheme, Sizable, Size, StyledExt, animation::cubic_bezier, global_state::GlobalState,
+};
 use gpui::{
     Animation, AnimationExt as _, App, ElementId, Hsla, InteractiveElement as _, IntoElement,
     ParentElement, RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder, px,
@@ -7,6 +9,41 @@ use gpui::{
 use std::time::Duration;
 
 use super::ProgressState;
+
+fn parse_cubic_bezier_easing(value: &str) -> Option<(f32, f32, f32, f32)> {
+    let trimmed = value.trim();
+    let body = trimmed
+        .strip_prefix("cubic-bezier(")?
+        .strip_suffix(')')?
+        .trim();
+    let mut parts = body.split(',').map(str::trim);
+    let x1 = parts.next()?.parse::<f32>().ok()?;
+    let y1 = parts.next()?.parse::<f32>().ok()?;
+    let x2 = parts.next()?.parse::<f32>().ok()?;
+    let y2 = parts.next()?.parse::<f32>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((x1, y1, x2, y2))
+}
+
+fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animation {
+    if easing.trim().eq_ignore_ascii_case("linear") {
+        return animation.with_easing(|delta: f32| delta);
+    }
+    if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
+        return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
+    }
+    animation
+}
+
+fn progress_fraction(value: f32) -> f32 {
+    match value {
+        v if v < 0. => 0.,
+        v if v > 100. => 1.,
+        v => v / 100.,
+    }
+}
 
 /// A linear horizontal progress bar element.
 #[derive(IntoElement)]
@@ -77,6 +114,7 @@ impl RenderOnce for Progress {
 
         let state = window.use_keyed_state(self.id.clone(), cx, |_, _| ProgressState { value });
         let prev_value = state.read(cx).value;
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
 
         div()
             .id(self.id)
@@ -102,8 +140,17 @@ impl RenderOnce for Progress {
                     })
                     .map(|this| {
                         if prev_value != value {
-                            // Animate from prev_value to value
-                            let duration = Duration::from_secs_f64(0.15);
+                            if reduced_motion {
+                                state.update(cx, |state, _| state.value = value);
+                                return this.w(relative(progress_fraction(value))).into_any_element();
+                            }
+
+                            let duration =
+                                Duration::from_millis(u64::from(cx.theme().motion.fast_duration_ms));
+                            let animation = animation_with_theme_easing(
+                                Animation::new(duration),
+                                cx.theme().motion.point_to_point_easing.as_ref(),
+                            );
                             cx.spawn({
                                 let state = state.clone();
                                 async move |cx| {
@@ -115,25 +162,15 @@ impl RenderOnce for Progress {
 
                             this.with_animation(
                                 "progress-animation",
-                                Animation::new(duration),
+                                animation,
                                 move |this, delta| {
                                     let current_value = prev_value + (value - prev_value) * delta;
-                                    let relative_w = relative(match current_value {
-                                        v if v < 0. => 0.,
-                                        v if v > 100. => 1.,
-                                        v => v / 100.,
-                                    });
-                                    this.w(relative_w)
+                                    this.w(relative(progress_fraction(current_value)))
                                 },
                             )
                             .into_any_element()
                         } else {
-                            let relative_w = relative(match value {
-                                v if v < 0. => 0.,
-                                v if v > 100. => 1.,
-                                v => v / 100.,
-                            });
-                            this.w(relative_w).into_any_element()
+                            this.w(relative(progress_fraction(value))).into_any_element()
                         }
                     }),
             )

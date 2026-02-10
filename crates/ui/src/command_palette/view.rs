@@ -3,7 +3,7 @@
 use super::provider::CommandPaletteProvider;
 use super::state::{CommandPaletteEvent, CommandPaletteState};
 use super::types::{CommandPaletteConfig, MatchedItem};
-use super::{REVEAL_ANIMATION_DURATION, REVEAL_DELAY};
+use super::{reveal_animation_duration, reveal_delay};
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::animation::cubic_bezier;
 use crate::global_state::GlobalState;
@@ -28,6 +28,33 @@ const CONTEXT: &str = "CommandPalette";
 const HEADER_HEIGHT: f32 = 52.0;
 const FOOTER_HEIGHT: f32 = 36.0;
 const SECTION_HEADER_HEIGHT: f32 = 28.0;
+
+fn parse_cubic_bezier_easing(value: &str) -> Option<(f32, f32, f32, f32)> {
+    let trimmed = value.trim();
+    let body = trimmed
+        .strip_prefix("cubic-bezier(")?
+        .strip_suffix(')')?
+        .trim();
+    let mut parts = body.split(',').map(str::trim);
+    let x1 = parts.next()?.parse::<f32>().ok()?;
+    let y1 = parts.next()?.parse::<f32>().ok()?;
+    let x2 = parts.next()?.parse::<f32>().ok()?;
+    let y2 = parts.next()?.parse::<f32>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((x1, y1, x2, y2))
+}
+
+fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animation {
+    if easing.trim().eq_ignore_ascii_case("linear") {
+        return animation.with_easing(|delta: f32| delta);
+    }
+    if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
+        return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
+    }
+    animation
+}
 
 /// A render row for the command palette list.
 #[derive(Clone)]
@@ -107,8 +134,9 @@ impl CommandPaletteView {
             return;
         }
 
+        let delay = reveal_delay(cx);
         self._reveal_task = Some(cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(REVEAL_DELAY).await;
+            cx.background_executor().timer(delay).await;
 
             if let Some(this) = this.upgrade() {
                 this.update(cx, |this, cx| {
@@ -512,6 +540,13 @@ impl Render for CommandPaletteView {
             .and_then(|provider| provider(&state.query));
         let max_height = px(config.max_height);
         let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let reveal_animation_duration = reveal_animation_duration(cx);
+        let reveal_animation = (!reduced_motion).then(|| {
+            animation_with_theme_easing(
+                Animation::new(reveal_animation_duration),
+                cx.theme().motion.fast_invoke_easing.as_ref(),
+            )
+        });
 
         // Focus input once after opening to avoid render jitter
         if !self.did_focus {
@@ -650,19 +685,22 @@ impl Render for CommandPaletteView {
             })
             .w(px(config.width));
 
-        if self.list_revealed && !reduced_motion {
-            surface
-                .with_animation(
-                    ElementId::NamedInteger("command-palette-expand".into(), 1),
-                    Animation::new(REVEAL_ANIMATION_DURATION)
-                        .with_easing(cubic_bezier(0.2, 0.0, 0.0, 1.0)),
-                    move |this, delta| {
-                        let height =
-                            collapsed_height + (expanded_height - collapsed_height) * delta;
-                        this.h(height)
-                    },
-                )
-                .into_any_element()
+        if self.list_revealed {
+            if let Some(reveal_animation) = reveal_animation {
+                surface
+                    .with_animation(
+                        ElementId::NamedInteger("command-palette-expand".into(), 1),
+                        reveal_animation,
+                        move |this, delta| {
+                            let height =
+                                collapsed_height + (expanded_height - collapsed_height) * delta;
+                            this.h(height)
+                        },
+                    )
+                    .into_any_element()
+            } else {
+                surface.into_any_element()
+            }
         } else {
             surface.into_any_element()
         }

@@ -1,5 +1,6 @@
 use crate::{
-    ActiveTheme, Disableable, Side, Sizable, Size, StyledExt, h_flex, text::Text, tooltip::Tooltip,
+    ActiveTheme, Disableable, Side, Sizable, Size, StyledExt, animation::cubic_bezier,
+    global_state::GlobalState, h_flex, text::Text, tooltip::Tooltip,
 };
 use gpui::{
     Animation, AnimationExt as _, App, ElementId, InteractiveElement, IntoElement,
@@ -7,6 +8,33 @@ use gpui::{
     Styled, Window, div, prelude::FluentBuilder as _, px,
 };
 use std::{rc::Rc, time::Duration};
+
+fn parse_cubic_bezier_easing(value: &str) -> Option<(f32, f32, f32, f32)> {
+    let trimmed = value.trim();
+    let body = trimmed
+        .strip_prefix("cubic-bezier(")?
+        .strip_suffix(')')?
+        .trim();
+    let mut parts = body.split(',').map(str::trim);
+    let x1 = parts.next()?.parse::<f32>().ok()?;
+    let y1 = parts.next()?.parse::<f32>().ok()?;
+    let x2 = parts.next()?.parse::<f32>().ok()?;
+    let y2 = parts.next()?.parse::<f32>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((x1, y1, x2, y2))
+}
+
+fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animation {
+    if easing.trim().eq_ignore_ascii_case("linear") {
+        return animation.with_easing(|delta: f32| delta);
+    }
+    if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
+        return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
+    }
+    animation
+}
 
 /// A Switch element that can be toggled on or off.
 #[derive(IntoElement)]
@@ -92,6 +120,7 @@ impl RenderOnce for Switch {
         let checked = self.checked;
         let on_click = self.on_click.clone();
         let toggle_state = window.use_keyed_state(self.id.clone(), cx, |_, _| checked);
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
 
         let (bg, toggle_bg) = match checked {
             true => (cx.theme().primary, cx.theme().switch_thumb),
@@ -153,9 +182,20 @@ impl RenderOnce for Switch {
                                 .shadow_md()
                                 .size(bar_width)
                                 .map(|this| {
-                                    let prev_checked = toggle_state.read(cx);
-                                    if !self.disabled && *prev_checked != checked {
-                                        let duration = Duration::from_secs_f64(0.15);
+                                    let previous_checked = *toggle_state.read(cx);
+                                    let value_changed = !self.disabled && previous_checked != checked;
+                                    if value_changed && reduced_motion {
+                                        toggle_state.update(cx, |state, _| *state = checked);
+                                    }
+
+                                    if value_changed && !reduced_motion {
+                                        let duration = Duration::from_millis(u64::from(
+                                            cx.theme().motion.fast_duration_ms,
+                                        ));
+                                        let animation = animation_with_theme_easing(
+                                            Animation::new(duration),
+                                            cx.theme().motion.point_to_point_easing.as_ref(),
+                                        );
                                         cx.spawn({
                                             let toggle_state = toggle_state.clone();
                                             async move |cx| {
@@ -168,7 +208,7 @@ impl RenderOnce for Switch {
 
                                         this.with_animation(
                                             ElementId::NamedInteger("move".into(), checked as u64),
-                                            Animation::new(duration),
+                                            animation,
                                             move |this, delta| {
                                                 let max_x = bg_width - bar_width - inset * 2;
                                                 let x = if checked {

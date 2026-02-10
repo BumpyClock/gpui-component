@@ -2,9 +2,9 @@ use std::{rc::Rc, time::Duration};
 
 use gpui::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent, Edges,
-    FocusHandle, Hsla, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement,
-    Pixels, Point, RenderOnce, SharedString, StyleRefinement, Styled, Window, WindowControlArea,
-    anchored, div, hsla, point, prelude::FluentBuilder, px, relative,
+    ElementId, FocusHandle, Hsla, InteractiveElement, IntoElement, KeyBinding, MouseButton,
+    ParentElement, Pixels, Point, RenderOnce, SharedString, StyleRefinement, Styled, Window,
+    WindowControlArea, anchored, div, hsla, point, prelude::FluentBuilder, px, relative,
 };
 use rust_i18n::t;
 
@@ -13,6 +13,7 @@ use crate::{
     actions::{Cancel, Confirm},
     animation::cubic_bezier,
     button::{Button, ButtonVariant, ButtonVariants as _},
+    global_state::GlobalState,
     h_flex,
     scroll::ScrollableElement as _,
     v_flex,
@@ -24,6 +25,50 @@ pub(crate) fn init(cx: &mut App) {
         KeyBinding::new("escape", Cancel, Some(CONTEXT)),
         KeyBinding::new("enter", Confirm { secondary: false }, Some(CONTEXT)),
     ]);
+}
+
+fn parse_cubic_bezier_easing(value: &str) -> Option<(f32, f32, f32, f32)> {
+    let trimmed = value.trim();
+    let body = trimmed
+        .strip_prefix("cubic-bezier(")?
+        .strip_suffix(')')?
+        .trim();
+    let mut parts = body.split(',').map(str::trim);
+    let x1 = parts.next()?.parse::<f32>().ok()?;
+    let y1 = parts.next()?.parse::<f32>().ok()?;
+    let x2 = parts.next()?.parse::<f32>().ok()?;
+    let y2 = parts.next()?.parse::<f32>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((x1, y1, x2, y2))
+}
+
+fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animation {
+    if easing.trim().eq_ignore_ascii_case("linear") {
+        return animation.with_easing(|delta: f32| delta);
+    }
+    if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
+        return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
+    }
+    animation
+}
+
+fn dialog_shadow(delta: f32) -> Vec<BoxShadow> {
+    vec![
+        BoxShadow {
+            color: hsla(0., 0., 0., 0.1 * delta),
+            offset: point(px(0.), px(20.)),
+            blur_radius: px(25.),
+            spread_radius: px(-5.),
+        },
+        BoxShadow {
+            color: hsla(0., 0., 0., 0.1 * delta),
+            offset: point(px(0.), px(8.)),
+            blur_radius: px(10.),
+            spread_radius: px(-6.),
+        },
+    ]
 }
 
 type RenderButtonFn = Box<dyn FnOnce(&mut Window, &mut App) -> AnyElement>;
@@ -390,15 +435,23 @@ impl RenderOnce for Dialog {
             paddings.top -= px(6.);
         }
 
-        let animation = Animation::new(Duration::from_secs_f64(0.25))
-            .with_easing(cubic_bezier(0.32, 0.72, 0., 1.));
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let motion = &cx.theme().motion;
+        let slide_animation = animation_with_theme_easing(
+            Animation::new(Duration::from_millis(u64::from(motion.normal_duration_ms))),
+            motion.strong_invoke_easing.as_ref(),
+        );
+        let fade_animation = animation_with_theme_easing(
+            Animation::new(Duration::from_millis(u64::from(motion.normal_duration_ms))),
+            motion.fade_easing.as_ref(),
+        );
 
         anchored()
             .position(point(window_paddings.left, window_paddings.top))
             .snap_to_window()
             .child(
                 div()
-                    .id("dialog")
+                    .id(ElementId::NamedInteger("dialog".into(), layer_ix as u64))
                     .occlude()
                     .w(view_size.width)
                     .h(view_size.height)
@@ -542,26 +595,27 @@ impl RenderOnce for Dialog {
                                     cx.stop_propagation();
                                 }
                             })
-                            .with_animation("slide-down", animation.clone(), move |this, delta| {
-                                // This is equivalent to `shadow_xl` with an extra opacity.
-                                let shadow = vec![
-                                    BoxShadow {
-                                        color: hsla(0., 0., 0., 0.1 * delta),
-                                        offset: point(px(0.), px(20.)),
-                                        blur_radius: px(25.),
-                                        spread_radius: px(-5.),
-                                    },
-                                    BoxShadow {
-                                        color: hsla(0., 0., 0., 0.1 * delta),
-                                        offset: point(px(0.), px(8.)),
-                                        blur_radius: px(10.),
-                                        spread_radius: px(-6.),
-                                    },
-                                ];
-                                this.top(y * delta).shadow(shadow)
+                            .map(move |this| {
+                                if reduced_motion {
+                                    this.shadow(dialog_shadow(1.)).into_any_element()
+                                } else {
+                                    this.with_animation("slide-down", slide_animation, move |this, delta| {
+                                    this.top(y * delta).shadow(dialog_shadow(delta))
+                                    })
+                                    .into_any_element()
+                                }
                             }),
                     )
-                    .with_animation("fade-in", animation, move |this, delta| this.opacity(delta)),
+                    .map(move |this| {
+                        if reduced_motion {
+                            this.into_any_element()
+                        } else {
+                            this.with_animation("fade-in", fade_animation, move |this, delta| {
+                            this.opacity(delta)
+                        })
+                            .into_any_element()
+                        }
+                    }),
             )
     }
 }

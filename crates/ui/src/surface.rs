@@ -14,11 +14,11 @@
 //! ```
 
 use gpui::{
-    div, img, px, App, Div, Hsla, ImageSource, IntoElement, ObjectFit, ParentElement, Pixels,
-    Resource, Styled, StyledImage, Window,
+    App, Div, Hsla, ImageSource, IntoElement, ObjectFit, ParentElement, Pixels, Resource, Styled,
+    StyledImage, Window, div, img, px,
 };
 
-use crate::{ActiveTheme, StyledExt};
+use crate::{ActiveTheme, StyledExt, ThemeShadowToken};
 
 const GLASS_NOISE_ASSET_PATH: &str = "NoiseAsset_256.png";
 const GLASS_NOISE_TILE_SIZE_BASE: f32 = 128.0;
@@ -168,8 +168,13 @@ impl StrokeSpec {
 
     /// Resolves the stroke color based on the current theme.
     pub fn resolve_color(&self, cx: &App) -> Hsla {
+        let subtle_stroke_opacity = if cx.theme().mode.is_dark() {
+            cx.theme().material.subtle_stroke_dark_opacity
+        } else {
+            cx.theme().material.subtle_stroke_light_opacity
+        };
         match self.color {
-            StrokeColor::Subtle => cx.theme().border.opacity(0.5),
+            StrokeColor::Subtle => cx.theme().border.opacity(subtle_stroke_opacity),
             StrokeColor::Default => cx.theme().border,
             StrokeColor::Strong => cx.theme().border,
             StrokeColor::SubtleWithOpacity(opacity) => cx.theme().border.opacity(opacity),
@@ -192,6 +197,8 @@ pub struct SurfacePreset {
     pub stroke: Option<StrokeSpec>,
     pub transparency_factor: f32,
     pub radius: Option<Pixels>,
+    pub use_theme_material_defaults: bool,
+    pub use_theme_elevation_defaults: bool,
 }
 
 impl SurfacePreset {
@@ -215,6 +222,8 @@ impl SurfacePreset {
             stroke: None,
             transparency_factor: 1.0,
             radius: None,
+            use_theme_material_defaults: false,
+            use_theme_elevation_defaults: false,
         }
     }
 
@@ -239,6 +248,8 @@ impl SurfacePreset {
             stroke: Some(StrokeSpec::subtle()),
             transparency_factor: 1.0,
             radius: Some(px(12.0)),
+            use_theme_material_defaults: true,
+            use_theme_elevation_defaults: true,
         }
     }
 
@@ -263,6 +274,8 @@ impl SurfacePreset {
             stroke: Some(StrokeSpec::subtle()),
             transparency_factor: 1.0,
             radius: Some(px(16.0)),
+            use_theme_material_defaults: true,
+            use_theme_elevation_defaults: true,
         }
     }
 
@@ -287,6 +300,8 @@ impl SurfacePreset {
             stroke: Some(StrokeSpec::default_border()),
             transparency_factor: 1.0,
             radius: None,
+            use_theme_material_defaults: true,
+            use_theme_elevation_defaults: true,
         }
     }
 
@@ -299,6 +314,7 @@ impl SurfacePreset {
     /// Sets the blur radius for the backdrop blur effect.
     pub fn with_blur_radius(mut self, radius: Option<Pixels>) -> Self {
         self.blur_radius = radius;
+        self.use_theme_material_defaults = false;
         self
     }
 
@@ -317,12 +333,14 @@ impl SurfacePreset {
     /// Sets the elevation level for shadow effects.
     pub fn with_elevation(mut self, elevation: ElevationToken) -> Self {
         self.elevation = elevation;
+        self.use_theme_elevation_defaults = false;
         self
     }
 
     /// Sets the stroke/border specification.
     pub fn with_stroke(mut self, stroke: Option<StrokeSpec>) -> Self {
         self.stroke = stroke;
+        self.use_theme_material_defaults = false;
         self
     }
 
@@ -345,11 +363,11 @@ impl SurfacePreset {
     ) -> Div {
         let radius = self.radius.unwrap_or(cx.theme().radius);
         let scale_factor = window.scale_factor();
+        let blur_radius = self.resolve_blur_radius(cx);
+        let background = self.resolve_background(cx);
+        let elevation = self.resolve_elevation(cx);
 
-        let bg_color = self
-            .background
-            .resolve(cx)
-            .opacity(self.transparency_factor);
+        let bg_color = background.resolve(cx).opacity(self.transparency_factor);
         let noise_opacity = self.noise_intensity.opacity();
         let should_render_noise = ctx.blur_enabled && noise_opacity > 0.0;
 
@@ -360,7 +378,7 @@ impl SurfacePreset {
         }
 
         if ctx.blur_enabled {
-            if let Some(blur_radius) = self.blur_radius {
+            if let Some(blur_radius) = blur_radius {
                 surface = surface.backdrop_blur(blur_radius);
             }
         }
@@ -371,7 +389,7 @@ impl SurfacePreset {
                 .border_color(stroke.resolve_color(cx));
         }
 
-        surface = self.elevation.apply(surface, cx);
+        surface = elevation.apply(surface, cx);
 
         if should_render_noise {
             surface = surface.child(render_noise_overlay(
@@ -384,6 +402,73 @@ impl SurfacePreset {
         }
 
         surface.child(content)
+    }
+
+    fn resolve_blur_radius(&self, cx: &App) -> Option<Pixels> {
+        if !self.use_theme_material_defaults {
+            return self.blur_radius;
+        }
+
+        match self.kind {
+            SurfaceKind::Flyout => Some(cx.theme().material.flyout_blur_radius),
+            SurfaceKind::Panel => Some(cx.theme().material.panel_blur_radius),
+            SurfaceKind::Card | SurfaceKind::Base => self.blur_radius,
+        }
+    }
+
+    fn resolve_background(&self, cx: &App) -> SurfaceBackground {
+        if !self.use_theme_material_defaults {
+            return self.background;
+        }
+
+        match self.kind {
+            SurfaceKind::Flyout => SurfaceBackground {
+                color_source: self.background.color_source,
+                light_opacity: cx.theme().material.flyout_light_opacity,
+                dark_opacity: cx.theme().material.flyout_dark_opacity,
+            },
+            SurfaceKind::Panel => SurfaceBackground {
+                color_source: self.background.color_source,
+                light_opacity: cx.theme().material.panel_light_opacity,
+                dark_opacity: cx.theme().material.panel_dark_opacity,
+            },
+            SurfaceKind::Card => SurfaceBackground {
+                color_source: self.background.color_source,
+                light_opacity: cx.theme().material.card_light_opacity,
+                dark_opacity: cx.theme().material.card_dark_opacity,
+            },
+            SurfaceKind::Base => self.background,
+        }
+    }
+
+    fn resolve_elevation(&self, cx: &App) -> ElevationToken {
+        if !self.use_theme_elevation_defaults {
+            return self.elevation;
+        }
+
+        match self.kind {
+            SurfaceKind::Flyout => {
+                theme_shadow_token_to_elevation_token(cx.theme().elevation.surface_flyout_shadow)
+            }
+            SurfaceKind::Panel => {
+                theme_shadow_token_to_elevation_token(cx.theme().elevation.surface_panel_shadow)
+            }
+            SurfaceKind::Card => {
+                theme_shadow_token_to_elevation_token(cx.theme().elevation.surface_card_shadow)
+            }
+            SurfaceKind::Base => self.elevation,
+        }
+    }
+}
+
+fn theme_shadow_token_to_elevation_token(token: ThemeShadowToken) -> ElevationToken {
+    match token {
+        ThemeShadowToken::None => ElevationToken::None,
+        ThemeShadowToken::Xs => ElevationToken::Xs,
+        ThemeShadowToken::Sm => ElevationToken::Sm,
+        ThemeShadowToken::Md => ElevationToken::Md,
+        ThemeShadowToken::Lg => ElevationToken::Lg,
+        ThemeShadowToken::Xl => ElevationToken::Xl,
     }
 }
 

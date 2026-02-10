@@ -1,6 +1,8 @@
 use std::{
     any::TypeId,
+    collections::hash_map::DefaultHasher,
     collections::{HashMap, VecDeque},
+    hash::{Hash, Hasher},
     rc::Rc,
     time::Duration,
 };
@@ -19,8 +21,42 @@ use crate::{
     ActiveTheme as _, Anchor, Edges, Icon, IconName, Sizable as _, StyledExt, TITLE_BAR_HEIGHT,
     animation::cubic_bezier,
     button::{Button, ButtonVariants as _},
+    global_state::GlobalState,
     h_flex, v_flex,
 };
+
+fn parse_cubic_bezier_easing(value: &str) -> Option<(f32, f32, f32, f32)> {
+    let trimmed = value.trim();
+    let body = trimmed
+        .strip_prefix("cubic-bezier(")?
+        .strip_suffix(')')?
+        .trim();
+    let mut parts = body.split(',').map(str::trim);
+    let x1 = parts.next()?.parse::<f32>().ok()?;
+    let y1 = parts.next()?.parse::<f32>().ok()?;
+    let x2 = parts.next()?.parse::<f32>().ok()?;
+    let y2 = parts.next()?.parse::<f32>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((x1, y1, x2, y2))
+}
+
+fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animation {
+    if easing.trim().eq_ignore_ascii_case("linear") {
+        return animation.with_easing(|delta: f32| delta);
+    }
+    if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
+        return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
+    }
+    animation
+}
+
+fn notification_element_id(id: &NotificationId) -> ElementId {
+    let mut hasher = DefaultHasher::new();
+    id.hash(&mut hasher);
+    ElementId::NamedInteger("notification".into(), hasher.finish())
+}
 
 #[derive(Debug, Clone, Copy, Default)]
 pub enum NotificationType {
@@ -242,9 +278,17 @@ impl Notification {
         self.closing = true;
         cx.notify();
 
-        // Dismiss the notification after 0.15s to show the animation.
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let dismiss_duration = if reduced_motion {
+            Duration::ZERO
+        } else {
+            Duration::from_millis(u64::from(cx.theme().motion.soft_dismiss_duration_ms))
+        };
+
         cx.spawn(async move |view, cx| {
-            Timer::after(Duration::from_secs_f32(0.15)).await;
+            if !dismiss_duration.is_zero() {
+                cx.background_executor().timer(dismiss_duration).await;
+            }
             cx.update(|cx| {
                 if let Some(view) = view.upgrade() {
                     view.update(cx, |view, cx| {
@@ -291,9 +335,26 @@ impl Render for Notification {
         };
         let has_icon = icon.is_some();
         let placement = cx.theme().notification.placement;
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let motion = &cx.theme().motion;
+        let animation = (!reduced_motion).then(|| {
+            if closing {
+                animation_with_theme_easing(
+                    Animation::new(Duration::from_millis(u64::from(
+                        motion.soft_dismiss_duration_ms,
+                    ))),
+                    motion.soft_dismiss_easing.as_ref(),
+                )
+            } else {
+                animation_with_theme_easing(
+                    Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms))),
+                    motion.fast_invoke_easing.as_ref(),
+                )
+            }
+        });
 
-        h_flex()
-            .id("notification")
+        let notification = h_flex()
+            .id(notification_element_id(&self.id))
             .group("")
             .occlude()
             .relative()
@@ -344,49 +405,55 @@ impl Render for Notification {
                     view.dismiss(window, cx);
                     on_click(event, window, cx);
                 }))
-            })
-            .with_animation(
-                ElementId::NamedInteger("slide-down".into(), closing as u64),
-                Animation::new(Duration::from_secs_f64(0.25))
-                    .with_easing(cubic_bezier(0.4, 0., 0.2, 1.)),
-                move |this, delta| {
-                    if closing {
-                        let opacity = 1. - delta;
-                        let that = this
-                            .shadow_none()
-                            .opacity(opacity)
-                            .when(opacity < 0.85, |this| this.shadow_none());
-                        match placement {
-                            Anchor::TopRight | Anchor::BottomRight => {
-                                let x_offset = px(0.) + delta * px(45.);
-                                that.left(px(0.) + x_offset)
+            });
+
+        if let Some(animation) = animation {
+            notification
+                .with_animation(
+                    ElementId::NamedInteger("slide-down".into(), closing as u64),
+                    animation,
+                    move |this, delta| {
+                        if closing {
+                            let opacity = 1. - delta;
+                            let that = this
+                                .shadow_none()
+                                .opacity(opacity)
+                                .when(opacity < 0.85, |this| this.shadow_none());
+                            match placement {
+                                Anchor::TopRight | Anchor::BottomRight => {
+                                    let x_offset = px(0.) + delta * px(45.);
+                                    that.left(px(0.) + x_offset)
+                                }
+                                Anchor::TopLeft | Anchor::BottomLeft => {
+                                    let x_offset = px(0.) - delta * px(45.);
+                                    that.left(px(0.) + x_offset)
+                                }
+                                Anchor::TopCenter => {
+                                    let y_offset = px(0.) - delta * px(45.);
+                                    that.top(px(0.) + y_offset)
+                                }
+                                Anchor::BottomCenter => {
+                                    let y_offset = px(0.) + delta * px(45.);
+                                    that.top(px(0.) + y_offset)
+                                }
                             }
-                            Anchor::TopLeft | Anchor::BottomLeft => {
-                                let x_offset = px(0.) - delta * px(45.);
-                                that.left(px(0.) + x_offset)
-                            }
-                            Anchor::TopCenter => {
-                                let y_offset = px(0.) - delta * px(45.);
-                                that.top(px(0.) + y_offset)
-                            }
-                            Anchor::BottomCenter => {
-                                let y_offset = px(0.) + delta * px(45.);
-                                that.top(px(0.) + y_offset)
-                            }
+                        } else {
+                            let y_offset = match placement {
+                                placement if placement.is_top() => px(-45.) + delta * px(45.),
+                                placement if placement.is_bottom() => px(45.) - delta * px(45.),
+                                _ => px(0.),
+                            };
+                            let opacity = delta;
+                            this.top(px(0.) + y_offset)
+                                .opacity(opacity)
+                                .when(opacity < 0.85, |this| this.shadow_none())
                         }
-                    } else {
-                        let y_offset = match placement {
-                            placement if placement.is_top() => px(-45.) + delta * px(45.),
-                            placement if placement.is_bottom() => px(45.) - delta * px(45.),
-                            _ => px(0.),
-                        };
-                        let opacity = delta;
-                        this.top(px(0.) + y_offset)
-                            .opacity(opacity)
-                            .when(opacity < 0.85, |this| this.shadow_none())
-                    }
-                },
-            )
+                    },
+                )
+                .into_any_element()
+        } else {
+            notification.into_any_element()
+        }
     }
 }
 

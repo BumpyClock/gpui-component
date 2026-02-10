@@ -1,4 +1,7 @@
-use crate::{ActiveTheme, PixelsExt, Sizable, Size, StyledExt};
+use crate::{
+    ActiveTheme, PixelsExt, Sizable, Size, StyledExt, animation::cubic_bezier,
+    global_state::GlobalState,
+};
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     Animation, AnimationExt as _, AnyElement, App, ElementId, Hsla, InteractiveElement as _,
@@ -11,6 +14,33 @@ use std::time::Duration;
 
 use super::ProgressState;
 use crate::plot::shape::{Arc, ArcData};
+
+fn parse_cubic_bezier_easing(value: &str) -> Option<(f32, f32, f32, f32)> {
+    let trimmed = value.trim();
+    let body = trimmed
+        .strip_prefix("cubic-bezier(")?
+        .strip_suffix(')')?
+        .trim();
+    let mut parts = body.split(',').map(str::trim);
+    let x1 = parts.next()?.parse::<f32>().ok()?;
+    let y1 = parts.next()?.parse::<f32>().ok()?;
+    let x2 = parts.next()?.parse::<f32>().ok()?;
+    let y2 = parts.next()?.parse::<f32>().ok()?;
+    if parts.next().is_some() {
+        return None;
+    }
+    Some((x1, y1, x2, y2))
+}
+
+fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animation {
+    if easing.trim().eq_ignore_ascii_case("linear") {
+        return animation.with_easing(|delta: f32| delta);
+    }
+    if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
+        return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
+    }
+    animation
+}
 
 /// A circular progress indicator element.
 #[derive(IntoElement)]
@@ -162,6 +192,7 @@ impl RenderOnce for ProgressCircle {
 
         let color = self.color.unwrap_or(cx.theme().progress_bar);
         let has_changed = prev_value != value;
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
 
         div()
             .id(self.id.clone())
@@ -180,9 +211,29 @@ impl RenderOnce for ProgressCircle {
             .children(self.children)
             .map(|this| {
                 if has_changed {
+                    if reduced_motion {
+                        state.update(cx, |state, _| state.value = value);
+                        return this.child(Self::render_circle(value, color)).into_any_element();
+                    }
+
+                    let duration =
+                        Duration::from_millis(u64::from(cx.theme().motion.fast_duration_ms));
+                    let animation = animation_with_theme_easing(
+                        Animation::new(duration),
+                        cx.theme().motion.point_to_point_easing.as_ref(),
+                    );
+                    cx.spawn({
+                        let state = state.clone();
+                        async move |cx| {
+                            cx.background_executor().timer(duration).await;
+                            _ = state.update(cx, |state, _| state.value = value);
+                        }
+                    })
+                    .detach();
+
                     this.with_animation(
                         format!("progress-circle-{}", prev_value),
-                        Animation::new(Duration::from_secs_f64(0.15)),
+                        animation,
                         move |this, delta| {
                             let animated_value = prev_value + (value - prev_value) * delta;
                             this.child(Self::render_circle(animated_value, color))
