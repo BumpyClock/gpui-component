@@ -3,12 +3,15 @@ use std::{cell::RefCell, collections::HashSet, rc::Rc, sync::Arc, time::Duration
 use gpui::{
     AnimationExt as _, AnyElement, App, ElementId, InteractiveElement as _, IntoElement,
     ParentElement, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled, Window, div,
-    prelude::FluentBuilder as _, px, rems,
+    percentage, prelude::FluentBuilder as _, px, rems,
 };
 
 use crate::{
     ActiveTheme as _, Icon, IconName, Sizable, Size,
-    animation::{PresenceOptions, PresencePhase, fast_invoke_animation, keyed_presence, point_to_point_animation},
+    animation::{
+        PresenceOptions, PresencePhase, keyed_presence, point_to_point_animation,
+        spring_invoke_animation,
+    },
     global_state::GlobalState, h_flex, v_flex,
 };
 
@@ -248,7 +251,9 @@ impl RenderOnce for AccordionItem {
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
         let close_anim = point_to_point_animation(&motion, reduced_motion);
-        let open_anim = fast_invoke_animation(&motion, reduced_motion);
+        let open_anim = spring_invoke_animation(&motion, reduced_motion);
+        let chevron_open_anim = spring_invoke_animation(&motion, reduced_motion);
+        let chevron_close_anim = close_anim.clone();
         let presence_key = SharedString::from(format!("accordion-presence-{}", self.key_prefix));
         let open_duration = Duration::from_millis(u64::from(motion.fast_duration_ms));
         let close_duration = Duration::from_millis(u64::from(motion.fast_duration_ms));
@@ -268,6 +273,44 @@ impl RenderOnce for AccordionItem {
             Size::XSmall => rems(0.875),
             Size::Small => rems(0.875),
             _ => rems(1.0),
+        };
+        let is_open = self.open;
+        let chevron = {
+            let base = Icon::new(IconName::ChevronDown)
+                .xsmall()
+                .text_color(cx.theme().muted_foreground);
+            if reduced_motion || !presence.transition_active() {
+                let icon = if is_open {
+                    base.rotate(percentage(0.5))
+                } else {
+                    base
+                };
+                icon.into_any_element()
+            } else {
+                let anim = if matches!(presence.phase, PresencePhase::Entering) {
+                    chevron_open_anim
+                } else {
+                    chevron_close_anim
+                };
+                if let Some(anim) = anim {
+                    let animation_id = ElementId::NamedInteger(
+                        SharedString::from(format!("accordion-chevron-{}", self.key_prefix)),
+                        (self.index as u64) << 1
+                            | u64::from(matches!(presence.phase, PresencePhase::Entering)),
+                    );
+                    base.with_animation(animation_id, anim, move |icon, delta| {
+                        let progress = if matches!(presence.phase, PresencePhase::Entering) {
+                            delta
+                        } else {
+                            1.0 - delta
+                        };
+                        icon.rotate(percentage(0.5 * progress))
+                    })
+                    .into_any_element()
+                } else {
+                    base.into_any_element()
+                }
+            }
         };
 
         div().flex_1().child(
@@ -320,15 +363,7 @@ impl RenderOnce for AccordionItem {
                         )
                         .when(!self.disabled, |this| {
                             this.hover(|this| this.bg(cx.theme().accordion_hover))
-                                .child(
-                                    Icon::new(if self.open {
-                                        IconName::ChevronUp
-                                    } else {
-                                        IconName::ChevronDown
-                                    })
-                                    .xsmall()
-                                    .text_color(cx.theme().muted_foreground),
-                                )
+                                .child(chevron)
                                 .when_some(self.on_toggle_click, |this, on_toggle_click| {
                                     this.on_click({
                                         let open = self.open;
@@ -379,8 +414,14 @@ impl RenderOnce for AccordionItem {
                                     el.with_animation(animation_id, anim, move |el, delta| {
                                         let progress = presence.progress(delta);
                                         let height_progress = accordion_height_progress(progress);
-                                        el.max_h(px(ACCORDION_CONTENT_MAX_H * height_progress))
-                                            .opacity(progress)
+                                        let el = el
+                                            .max_h(px(ACCORDION_CONTENT_MAX_H * height_progress))
+                                            .opacity(progress);
+                                        if matches!(presence.phase, PresencePhase::Entering) {
+                                            el.translate_y(px(4.0 * (1.0 - delta)))
+                                        } else {
+                                            el
+                                        }
                                     })
                                     .into_any_element()
                                 } else {

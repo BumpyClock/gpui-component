@@ -95,3 +95,21 @@ What worked:
 - Route overshoot cubic-bezier curves to unbounded easing in `crates/ui/src/animation.rs`.
 Outcome: Fluent strong-invoke curve can overshoot without debug assert; spring-style easings now supported.
 Next time: use unbounded easing only for transform-like properties.
+
+## 2026-02-10
+Context: Fluent animation tokens source-of-truth.
+What worked: read `/Users/adityasharma/Projects/fluent-tokens/tokens/animation.md` for actual curves/durations.
+Outcome: no spring/damping/frequency tokens; only cubic-bezier and duration sets.
+Next time: when adding springs, pick local defaults or extend tokens explicitly.
+
+## 2026-02-10
+Context: trying to patch GPUI from local submodule during app build.
+What worked: path override does not work here because `gpui` uses workspace-inherited deps.
+Outcome: proper flow is commit/push submodule changes, then bump `Cargo.toml` `gpui` `rev` to the new commit.
+Next time: skip `[patch]` path attempts for this repo; use git `rev` updates only.
+
+## 2026-02-10
+Context: collapsed sidebar items with children were not navigable.
+What worked: wrap collapsed parent in `Popover` and render children via `PopupMenu` (recursive submenu builder); cache menu entity with keyed state and clear on dismiss.
+Outcome: collapsed sidebar click now exposes child actions without expanding the sidebar.
+Next time: for collapsed navigation groups, prefer popover menu over inline open-state toggles.

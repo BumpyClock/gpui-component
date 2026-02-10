@@ -14,6 +14,7 @@ use crate::{
     actions::{Cancel, Confirm},
     animation::{
         PresenceOptions, PresencePhase, animation_with_theme_easing, keyed_presence,
+        spring_invoke_animation,
     },
     button::{Button, ButtonVariant, ButtonVariants as _},
     global_state::GlobalState,
@@ -353,6 +354,7 @@ impl RenderOnce for Dialog {
         let on_ok = self.on_ok.clone();
         let on_cancel = self.on_cancel.clone();
         let has_title = self.title.is_some();
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
         let should_animate = self.should_animate(cx);
         let target_open = !self.closing;
 
@@ -467,9 +469,13 @@ impl RenderOnce for Dialog {
         let transition_active = presence.transition_active();
 
         let motion = &cx.theme().motion;
-        let open_panel_animation = animation_with_theme_easing(
-            Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms))),
-            motion.fast_invoke_easing.as_ref(),
+        let open_panel_animation = spring_invoke_animation(motion, reduced_motion).unwrap_or_else(
+            || {
+                animation_with_theme_easing(
+                    Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms))),
+                    motion.fast_invoke_easing.as_ref(),
+                )
+            },
         );
         let close_panel_animation = animation_with_theme_easing(
             Animation::new(Duration::from_millis(u64::from(motion.soft_dismiss_duration_ms))),
@@ -659,15 +665,15 @@ impl RenderOnce for Dialog {
                                         panel_animation,
                                         move |this, delta| {
                                             let progress = presence.progress(delta).clamp(0.0, 1.0);
-                                            let top = if matches!(
+                                            let offset = if matches!(
                                                 presence.phase,
                                                 PresencePhase::Entering
                                             ) {
-                                                y + px(OPEN_Y_OFFSET * (progress - 1.0))
+                                                px(OPEN_Y_OFFSET * (1.0 - delta))
                                             } else {
-                                                y + px(CLOSE_Y_OFFSET * (1.0 - progress))
+                                                px(CLOSE_Y_OFFSET * (1.0 - progress))
                                             };
-                                            this.top(top)
+                                            this.translate_y(offset)
                                                 .opacity(progress)
                                                 .shadow(dialog_shadow(progress))
                                         },

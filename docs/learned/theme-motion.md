@@ -8,6 +8,16 @@ Date: 2026-02-10
 - Defaults in `crates/ui/src/theme/fluent_tokens.rs` and `crates/ui/src/theme/default-theme.json`.
 - Theme overrides in `crates/ui/src/theme/schema.rs` (`ThemeMotionConfig`).
 
+## Fluent token values (animation.md)
+
+- Fast Invoke: durations 187/333/500ms; easing `cubic-bezier(0, 0, 0, 1)`
+- Strong Invoke: duration 667ms; easing `cubic-bezier(0.13, 1.62, 0, 0.92)`
+- Fast Dismiss: durations 187/333/500ms; easing `cubic-bezier(0, 0, 0, 1)`
+- Soft Dismiss: duration 167ms; easing `cubic-bezier(1, 0, 1, 1)`
+- Point to Point: durations 187/333/500ms; easing `cubic-bezier(0.55, 0.55, 0, 1)`
+- Fade In/Out: duration 83ms; easing `linear`
+- Springs: none in tokens
+
 ## Usage
 
 - Helper fns: `crates/ui/src/animation.rs` (`fast_invoke_animation`, `soft_dismiss_animation`, `point_to_point_animation`, `fade_animation`, `strong_invoke_animation`).

@@ -181,7 +181,7 @@ impl RenderOnce for Badge {
                             (Some(id), Some(anim)) => this
                                 .id(id)
                                 .with_animation("badge-pulse", anim, |this, delta| {
-                                    this.opacity(delta)
+                                    this.opacity(delta.clamp(0.0, 1.0))
                                 })
                                 .into_any_element(),
                             _ => this.into_any_element(),

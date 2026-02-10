@@ -1,8 +1,8 @@
 use crate::{
     ActiveTheme, Collapsible, Icon, IconName, PixelsExt, Side, Sizable, StyledExt,
     animation::{
-        PresenceOptions, PresencePhase, keyed_presence, point_to_point_animation,
-        soft_dismiss_animation,
+        PresenceOptions, PresencePhase, keyed_presence, soft_dismiss_animation,
+        spring_invoke_animation,
     },
     button::{Button, ButtonVariants},
     global_state::GlobalState,
@@ -212,6 +212,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         let target_collapsed = self.collapsed;
         let sidebar_id = self.id.clone();
         let expanded_width = self.width;
+        let collapsed_width = COLLAPSED_WIDTH;
         let presence = keyed_presence(
             SharedString::from(format!("{}-collapsed-presence", sidebar_id)),
             !target_collapsed,
@@ -223,6 +224,24 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
             cx,
         );
         let visual_collapsed = matches!(presence.phase, PresencePhase::Exited);
+        let transition_active = !reduced_motion && presence.transition_active();
+        let from_width = if target_collapsed {
+            expanded_width
+        } else {
+            collapsed_width
+        };
+        let to_width = if target_collapsed {
+            collapsed_width
+        } else {
+            expanded_width
+        };
+        let base_width = if transition_active {
+            from_width
+        } else if target_collapsed {
+            collapsed_width
+        } else {
+            expanded_width
+        };
 
         let content_len = self.content.len();
         let overdraw = px(window.viewport_size().height.as_f32() * 0.3);
@@ -241,7 +260,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         let item_id_prefix = sidebar_id.clone();
         let sidebar = v_flex()
             .id(sidebar_id.clone())
-            .w(expanded_width)
+            .w(base_width)
             .flex_shrink_0()
             .h_full()
             .overflow_hidden()
@@ -254,7 +273,6 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                 Side::Right => this.border_l_1(),
             })
             .refine_style(&self.style)
-            .when(target_collapsed, |this| this.w(COLLAPSED_WIDTH))
             .when(visual_collapsed, |this| this.gap_2())
             .when_some(self.header.take(), |this, header| {
                 this.child(
@@ -321,22 +339,11 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                 )
             });
 
-        if reduced_motion || !presence.transition_active() {
+        if !transition_active {
             sidebar.into_any_element()
         } else {
-            let collapsed_width = COLLAPSED_WIDTH;
-            let from_width = if target_collapsed {
-                expanded_width
-            } else {
-                collapsed_width
-            };
-            let to_width = if target_collapsed {
-                collapsed_width
-            } else {
-                expanded_width
-            };
             let anim = if matches!(presence.phase, PresencePhase::Entering) {
-                point_to_point_animation(&motion, reduced_motion)
+                spring_invoke_animation(&motion, reduced_motion)
             } else {
                 soft_dismiss_animation(&motion, reduced_motion)
             };
@@ -351,7 +358,11 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                         )),
                         anim,
                         move |this, delta| {
-                            let progress = presence.progress(delta);
+                            let progress = if matches!(presence.phase, PresencePhase::Entering) {
+                                delta.clamp(0.0, 1.08)
+                            } else {
+                                delta.clamp(0.0, 1.0)
+                            };
                             this.w(from_width + (to_width - from_width) * progress)
                         },
                     )

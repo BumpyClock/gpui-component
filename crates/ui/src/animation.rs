@@ -1,4 +1,4 @@
-use gpui::{Animation, App, SharedString, Window};
+use gpui::{Animation, App, SharedString, Window, spring};
 use std::time::Duration;
 
 use crate::ThemeMotion;
@@ -125,6 +125,20 @@ pub fn strong_invoke_animation(motion: &ThemeMotion, reduced_motion: bool) -> Op
         motion.strong_invoke_duration_ms,
         &motion.strong_invoke_easing,
         reduced_motion,
+    )
+}
+
+pub const DEFAULT_SPRING_DAMPING_RATIO: f32 = 0.75;
+pub const DEFAULT_SPRING_FREQUENCY: f32 = 1.8;
+
+/// Spring invoke animation (uses unbounded easing, transform-only).
+pub fn spring_invoke_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
+    if reduced_motion {
+        return None;
+    }
+    Some(
+        Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms)))
+            .with_unbounded_easing(spring(DEFAULT_SPRING_DAMPING_RATIO, DEFAULT_SPRING_FREQUENCY)),
     )
 }
 
