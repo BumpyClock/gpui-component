@@ -1,0 +1,3 @@
+[submodule "vendor/gpui"]
+	path = vendor/gpui
+	url = https://github.com/BumpyClock/zed

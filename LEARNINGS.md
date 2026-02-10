@@ -78,3 +78,12 @@ What worked:
 - Use monotonic easings (fast_invoke/point_to_point) for open/close.
 Outcome: no end-frame collapse; open state stays stable.
 Next time: avoid `bounce` for reveal/size/opacity; it is forward-then-reverse.
+
+## 2026-02-10
+Context: vendoring GPUI for local patching.
+What worked:
+- Add `vendor/gpui` git submodule pinned to current `gpui` rev.
+- Keep workspace dependency as git+rev; direct path dependency failed due Zed workspace dependency inheritance.
+- Document patch workflow in `docs/learned/gpui-submodule.md`.
+Outcome: local GPUI source available for edits/review without breaking build.
+Next time: after GPUI patch commit, bump both `Cargo.toml` rev and submodule SHA together.
