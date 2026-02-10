@@ -51,3 +51,12 @@ Context: blank strip persisted even after palette view-level fixes.
 What worked: override dialog default minimum height for command palette (`.min_h(px(0.))`), because `Dialog` enforces `.min_h_24()` by default.
 Outcome: command palette collapsed height now respects its own shell height during pre-reveal.
 Next time: when embedding compact overlays inside `Dialog`, explicitly set min-height if default dialog floor is too large.
+
+## 2026-02-10
+Context: sidebar and nested menu sections had snap-open/snap-close behavior.
+What worked:
+- animate sidebar width from a dedicated expanded width source (`Sidebar::width(...)`) instead of style-only width overrides.
+- keep a delayed visual-collapsed state so compact paddings/icon-only layout applies after close width animation.
+- keep submenu mounted during close and unmount after animation duration.
+Outcome: sidebar collapse/expand and submenu section open/close now animate as continuous layout motion; reduced-motion path remains instant.
+Next time: if caret icon rotation should animate, avoid coupling icon transform to `Button::icon(...)` and render a custom caret container with direct animation hook.

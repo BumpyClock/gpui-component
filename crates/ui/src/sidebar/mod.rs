@@ -1,16 +1,20 @@
 use crate::{
     ActiveTheme, Collapsible, Icon, IconName, PixelsExt, Side, Sizable, StyledExt,
+    animation::{point_to_point_animation, soft_dismiss_animation},
     button::{Button, ButtonVariants},
+    global_state::GlobalState,
     h_flex,
     scroll::ScrollableElement,
     v_flex,
 };
 use gpui::{
-    AnyElement, App, ClickEvent, EdgesRefinement, ElementId, InteractiveElement as _, IntoElement,
-    ListAlignment, ListState, ParentElement, Pixels, RenderOnce, SharedString, StyleRefinement,
-    Styled, Window, div, list, prelude::FluentBuilder, px,
+    AnimationExt as _, AnyElement, App, ClickEvent, EdgesRefinement, ElementId,
+    InteractiveElement as _, IntoElement, ListAlignment, ListState, ParentElement, Pixels,
+    RenderOnce, SharedString, StyleRefinement, Styled, Window, div, list, prelude::FluentBuilder,
+    px,
 };
 use std::rc::Rc;
+use std::time::Duration;
 
 mod footer;
 mod group;
@@ -47,6 +51,7 @@ pub struct Sidebar<E: SidebarItem + 'static> {
     side: Side,
     collapsible: bool,
     collapsed: bool,
+    width: Pixels,
 }
 
 impl<E: SidebarItem> Sidebar<E> {
@@ -61,6 +66,7 @@ impl<E: SidebarItem> Sidebar<E> {
             side: Side::Left,
             collapsible: true,
             collapsed: false,
+            width: DEFAULT_WIDTH,
         }
     }
 
@@ -81,6 +87,12 @@ impl<E: SidebarItem> Sidebar<E> {
     /// Set the sidebar to be collapsed
     pub fn collapsed(mut self, collapsed: bool) -> Self {
         self.collapsed = collapsed;
+        self
+    }
+
+    /// Set the expanded width of the sidebar.
+    pub fn width(mut self, width: impl Into<Pixels>) -> Self {
+        self.width = width.into();
         self
     }
 
@@ -192,11 +204,56 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
     fn render(mut self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         self.style.padding = EdgesRefinement::default();
 
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let motion = cx.theme().motion.clone();
+        let collapse_duration = Duration::from_millis(u64::from(motion.soft_dismiss_duration_ms));
+        let target_collapsed = self.collapsed;
+        let sidebar_id = self.id.clone();
+        let expanded_width = self.width;
+
+        let width_state = window.use_keyed_state(
+            SharedString::from(format!("{}-collapsed-target", sidebar_id)),
+            cx,
+            |_, _| target_collapsed,
+        );
+        let last_collapsed_target = *width_state.read(cx);
+        let collapse_changed = last_collapsed_target != target_collapsed;
+        if collapse_changed {
+            width_state.update(cx, |state, _| *state = target_collapsed);
+        }
+
+        let visual_collapse_state = window.use_keyed_state(
+            SharedString::from(format!("{}-collapsed-visual", sidebar_id)),
+            cx,
+            |_, _| target_collapsed,
+        );
+        if collapse_changed {
+            if reduced_motion {
+                visual_collapse_state.update(cx, |state, _| *state = target_collapsed);
+            } else if target_collapsed {
+                cx.spawn({
+                    let visual_collapse_state = visual_collapse_state.clone();
+                    let width_state = width_state.clone();
+                    async move |cx| {
+                        cx.background_executor().timer(collapse_duration).await;
+                        let still_collapsed = width_state.update(cx, |state, _| *state);
+                        if still_collapsed {
+                            _ = visual_collapse_state.update(cx, |state, _| *state = true);
+                        }
+                    }
+                })
+                .detach();
+            } else {
+                visual_collapse_state.update(cx, |state, _| *state = false);
+            }
+        }
+        let visual_collapsed = *visual_collapse_state.read(cx);
+
         let content_len = self.content.len();
         let overdraw = px(window.viewport_size().height.as_f32() * 0.3);
         let list_state = window
             .use_keyed_state(
-                SharedString::from(format!("{}-list-state", self.id)),
+                SharedString::from(format!("{}-list-state", sidebar_id)),
                 cx,
                 |_, _| ListState::new(content_len, ListAlignment::Top, overdraw),
             )
@@ -206,9 +263,10 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
             list_state.reset(content_len);
         }
 
-        v_flex()
-            .id(self.id)
-            .w(DEFAULT_WIDTH)
+        let item_id_prefix = sidebar_id.clone();
+        let sidebar = v_flex()
+            .id(sidebar_id.clone())
+            .w(expanded_width)
             .flex_shrink_0()
             .h_full()
             .overflow_hidden()
@@ -221,7 +279,8 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                 Side::Right => this.border_l_1(),
             })
             .refine_style(&self.style)
-            .when(self.collapsed, |this| this.w(COLLAPSED_WIDTH).gap_2())
+            .when(target_collapsed, |this| this.w(COLLAPSED_WIDTH))
+            .when(visual_collapsed, |this| this.gap_2())
             .when_some(self.header.take(), |this, header| {
                 this.child(
                     h_flex()
@@ -229,7 +288,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                         .pt_3()
                         .px_3()
                         .gap_2()
-                        .when(self.collapsed, |this| this.pt_2().px_2())
+                        .when(visual_collapsed, |this| this.pt_2().px_2())
                         .child(header),
                 )
             })
@@ -240,7 +299,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                         .size_full()
                         .px_3()
                         .gap_y_3()
-                        .when(self.collapsed, |this| this.p_2())
+                        .when(visual_collapsed, |this| this.p_2())
                         .child(
                             list(list_state.clone(), {
                                 move |ix, window, cx| {
@@ -253,8 +312,15 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                                         .when_some(group, |this, group| {
                                             this.child(
                                                 group
-                                                    .collapsed(self.collapsed)
-                                                    .render(ix, window, cx)
+                                                    .collapsed(visual_collapsed)
+                                                    .render(
+                                                        SharedString::from(format!(
+                                                            "{}-{}",
+                                                            item_id_prefix, ix
+                                                        )),
+                                                        window,
+                                                        cx,
+                                                    )
                                                     .into_any_element(),
                                             )
                                         })
@@ -275,9 +341,46 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                         .pb_3()
                         .px_3()
                         .gap_2()
-                        .when(self.collapsed, |this| this.pt_2().px_2())
+                        .when(visual_collapsed, |this| this.pt_2().px_2())
                         .child(footer),
                 )
-            })
+            });
+
+        if reduced_motion || !collapse_changed {
+            sidebar.into_any_element()
+        } else {
+            let collapsed_width = COLLAPSED_WIDTH;
+            let from_width = if target_collapsed {
+                expanded_width
+            } else {
+                collapsed_width
+            };
+            let to_width = if target_collapsed {
+                collapsed_width
+            } else {
+                expanded_width
+            };
+            let anim = if target_collapsed {
+                soft_dismiss_animation(&motion, reduced_motion)
+            } else {
+                point_to_point_animation(&motion, reduced_motion)
+            };
+
+            if let Some(anim) = anim {
+                sidebar
+                    .with_animation(
+                        SharedString::from(format!(
+                            "{}-sidebar-width-{}",
+                            sidebar_id,
+                            u8::from(target_collapsed)
+                        )),
+                        anim,
+                        move |this, delta| this.w(from_width + (to_width - from_width) * delta),
+                    )
+                    .into_any_element()
+            } else {
+                sidebar.into_any_element()
+            }
+        }
     }
 }

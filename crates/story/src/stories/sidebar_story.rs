@@ -290,7 +290,7 @@ impl Render for SidebarStory {
                 Sidebar::new("sidebar-story")
                     .side(self.side)
                     .collapsed(self.collapsed)
-                    .w(px(220.))
+                    .width(px(220.))
                     .gap_0()
                     .header(
                         SidebarHeader::new()

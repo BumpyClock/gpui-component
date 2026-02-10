@@ -1,17 +1,28 @@
 use crate::{
     ActiveTheme as _, Collapsible, Icon, IconName, Sizable as _, StyledExt,
+    animation::point_to_point_animation,
     button::{Button, ButtonVariants as _},
+    global_state::GlobalState,
     h_flex,
     menu::{ContextMenuExt, PopupMenu},
     sidebar::SidebarItem,
     v_flex,
 };
 use gpui::{
-    AnyElement, App, ClickEvent, ElementId, InteractiveElement as _, IntoElement,
-    ParentElement as _, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    Window, div, percentage, prelude::FluentBuilder,
+    Animation, AnimationExt as _, AnyElement, App, ClickEvent, ElementId, InteractiveElement as _,
+    IntoElement, ParentElement as _, SharedString, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, Window, bounce, div, ease_in_out, percentage, prelude::FluentBuilder,
+    px,
 };
 use std::rc::Rc;
+use std::time::Duration;
+
+/// Generous max for animated submenu reveal.
+const SUBMENU_CONTENT_MAX_H: f32 = 1200.0;
+
+fn submenu_height_progress(progress: f32) -> f32 {
+    progress.clamp(0.0, 1.0).powf(3.0)
+}
 
 /// Menu for the [`super::Sidebar`]
 #[derive(Clone)]
@@ -234,6 +245,49 @@ impl SidebarItem for SidebarMenuItem {
         let is_disabled = self.disabled;
         let is_submenu = self.is_submenu();
         let is_open = is_submenu && !is_collapsed && *open_state.read(cx);
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let motion = cx.theme().motion.clone();
+        let submenu_anim_duration = Duration::from_millis(u64::from(motion.fast_duration_ms));
+        let submenu_visibility_state = window.use_keyed_state(
+            SharedString::from(format!("{}-submenu-visible", id)),
+            cx,
+            |_, _| is_open,
+        );
+        let submenu_target_state = window.use_keyed_state(
+            SharedString::from(format!("{}-submenu-target", id)),
+            cx,
+            |_, _| is_open,
+        );
+        let last_target_open = *submenu_target_state.read(cx);
+        let open_value_changed = last_target_open != is_open;
+        if open_value_changed {
+            submenu_target_state.update(cx, |state, _| *state = is_open);
+            if reduced_motion {
+                submenu_visibility_state.update(cx, |state, _| *state = is_open);
+            } else if is_open {
+                submenu_visibility_state.update(cx, |state, _| *state = true);
+            } else {
+                cx.spawn({
+                    let submenu_visibility_state = submenu_visibility_state.clone();
+                    let submenu_target_state = submenu_target_state.clone();
+                    async move |cx| {
+                        cx.background_executor().timer(submenu_anim_duration).await;
+                        let should_close = submenu_target_state.update(cx, |state, _| !*state);
+                        if should_close {
+                            _ = submenu_visibility_state.update(cx, |state, _| *state = false);
+                        }
+                    }
+                })
+                .detach();
+            }
+        }
+        let submenu_visible = *submenu_visibility_state.read(cx);
+        let transition_active = open_value_changed || (submenu_visible != is_open);
+        let open_anim = (!reduced_motion).then(|| {
+            Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms)))
+                .with_easing(bounce(ease_in_out))
+        });
+        let close_anim = point_to_point_animation(&motion, reduced_motion);
 
         div()
             .id(id.clone())
@@ -339,7 +393,7 @@ impl SidebarItem for SidebarMenuItem {
                         }
                     }),
             )
-            .when(is_open, |this| {
+            .when(submenu_visible, |this| {
                 this.child(
                     v_flex()
                         .id("submenu")
@@ -352,7 +406,36 @@ impl SidebarItem for SidebarMenuItem {
                         .children(self.children.into_iter().enumerate().map(|(ix, item)| {
                             let id = format!("{}-{}", id, ix);
                             item.render(id, window, cx).into_any_element()
-                        })),
+                        }))
+                        .map(|el| {
+                            let target_open = is_open;
+                            let anim = if transition_active {
+                                if target_open { open_anim } else { close_anim }
+                            } else {
+                                None
+                            };
+                            if let Some(anim) = anim {
+                                el.with_animation(
+                                    SharedString::from(format!(
+                                        "{}-submenu-expand-{}",
+                                        id,
+                                        u8::from(target_open)
+                                    )),
+                                    anim,
+                                    move |el, delta| {
+                                        let progress =
+                                            if target_open { delta } else { 1.0 - delta };
+                                        let clamped = progress.clamp(0.0, 1.0);
+                                        el.max_h(px(SUBMENU_CONTENT_MAX_H
+                                            * submenu_height_progress(clamped)))
+                                            .opacity(clamped)
+                                    },
+                                )
+                                .into_any_element()
+                            } else {
+                                el.into_any_element()
+                            }
+                        }),
                 )
             })
     }

@@ -97,6 +97,7 @@ impl RenderOnce for Accordion {
     fn render(self, _window: &mut Window, _cx: &mut App) -> impl IntoElement {
         let open_ixs = Rc::new(RefCell::new(HashSet::new()));
         let is_multiple = self.multiple;
+        let accordion_id_prefix = SharedString::from(format!("{}", self.id));
 
         v_flex()
             .id(self.id)
@@ -113,6 +114,7 @@ impl RenderOnce for Accordion {
 
                         accordion
                             .index(ix)
+                            .key_prefix(accordion_id_prefix.clone())
                             .with_size(self.size)
                             .bordered(self.bordered)
                             .disabled(self.disabled)
@@ -150,6 +152,7 @@ impl RenderOnce for Accordion {
 #[derive(IntoElement)]
 pub struct AccordionItem {
     index: usize,
+    key_prefix: SharedString,
     icon: Option<Icon>,
     title: AnyElement,
     children: Vec<AnyElement>,
@@ -165,6 +168,7 @@ impl AccordionItem {
     pub fn new() -> Self {
         Self {
             index: 0,
+            key_prefix: "accordion".into(),
             icon: None,
             title: SharedString::default().into_any_element(),
             children: Vec::new(),
@@ -208,6 +212,11 @@ impl AccordionItem {
         self
     }
 
+    fn key_prefix(mut self, key_prefix: impl Into<SharedString>) -> Self {
+        self.key_prefix = key_prefix.into();
+        self
+    }
+
     fn on_toggle_click(
         mut self,
         on_toggle_click: impl Fn(&bool, &mut Window, &mut App) + 'static,
@@ -233,31 +242,46 @@ impl Sizable for AccordionItem {
 impl RenderOnce for AccordionItem {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let reduced_motion = GlobalState::global(cx).reduced_motion();
-        let motion = &cx.theme().motion;
-        let close_anim = point_to_point_animation(motion, reduced_motion);
+        let motion = cx.theme().motion.clone();
+        let close_anim = point_to_point_animation(&motion, reduced_motion);
         let open_anim = (!reduced_motion).then(|| {
             Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms)))
                 .with_easing(bounce(ease_in_out))
         });
         let anim_duration = Duration::from_millis(u64::from(motion.fast_duration_ms));
+        let visible_key = SharedString::from(format!("accordion-visible-{}", self.key_prefix));
+        let target_key = SharedString::from(format!("accordion-target-{}", self.key_prefix));
 
-        let open_state = window.use_keyed_state(
-            ElementId::NamedInteger("accordion-open".into(), self.index as u64),
+        let visible_state = window.use_keyed_state(
+            ElementId::NamedInteger(visible_key, self.index as u64),
             cx,
             |_, _| self.open,
         );
-        let was_open = *open_state.read(cx);
-        let value_changed = was_open != self.open;
+        let target_state = window.use_keyed_state(
+            ElementId::NamedInteger(target_key, self.index as u64),
+            cx,
+            |_, _| self.open,
+        );
+        let was_open = *visible_state.read(cx);
+        let target_open = *target_state.read(cx);
+        let value_changed = target_open != self.open;
+        let transition_active = value_changed || (was_open != self.open);
         if value_changed {
+            target_state.update(cx, |state, _| *state = self.open);
             if reduced_motion {
-                open_state.update(cx, |state, _| *state = self.open);
+                visible_state.update(cx, |state, _| *state = self.open);
+            } else if self.open {
+                visible_state.update(cx, |state, _| *state = true);
             } else {
                 cx.spawn({
-                    let open_state = open_state.clone();
-                    let target_open = self.open;
+                    let visible_state = visible_state.clone();
+                    let target_state = target_state.clone();
                     async move |cx| {
                         cx.background_executor().timer(anim_duration).await;
-                        _ = open_state.update(cx, |state, _| *state = target_open);
+                        let should_close = target_state.update(cx, |state, _| !*state);
+                        if should_close {
+                            _ = visible_state.update(cx, |state, _| *state = false);
+                        }
                     }
                 })
                 .detach();
@@ -357,11 +381,18 @@ impl RenderOnce for AccordionItem {
                             )
                             .map(|el| {
                                 let target_open = self.open;
-                                let anim = if target_open { open_anim } else { close_anim };
+                                let anim = if transition_active {
+                                    if target_open { open_anim } else { close_anim }
+                                } else {
+                                    None
+                                };
                                 if let Some(anim) = anim {
                                     let target_open = self.open;
                                     let animation_id = ElementId::NamedInteger(
-                                        "accordion-expand".into(),
+                                        SharedString::from(format!(
+                                            "accordion-expand-{}",
+                                            self.key_prefix
+                                        )),
                                         (self.index as u64) << 1 | u64::from(self.open),
                                     );
 
