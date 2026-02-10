@@ -1,6 +1,9 @@
 use crate::{
     ActiveTheme, Collapsible, Icon, IconName, PixelsExt, Side, Sizable, StyledExt,
-    animation::{point_to_point_animation, soft_dismiss_animation},
+    animation::{
+        PresenceOptions, PresencePhase, keyed_presence, point_to_point_animation,
+        soft_dismiss_animation,
+    },
     button::{Button, ButtonVariants},
     global_state::GlobalState,
     h_flex,
@@ -206,48 +209,20 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
 
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
-        let collapse_duration = Duration::from_millis(u64::from(motion.soft_dismiss_duration_ms));
         let target_collapsed = self.collapsed;
         let sidebar_id = self.id.clone();
         let expanded_width = self.width;
-
-        let width_state = window.use_keyed_state(
-            SharedString::from(format!("{}-collapsed-target", sidebar_id)),
+        let presence = keyed_presence(
+            SharedString::from(format!("{}-collapsed-presence", sidebar_id)),
+            !target_collapsed,
+            !reduced_motion,
+            Duration::from_millis(u64::from(motion.fast_duration_ms)),
+            Duration::from_millis(u64::from(motion.soft_dismiss_duration_ms)),
+            PresenceOptions::default(),
+            window,
             cx,
-            |_, _| target_collapsed,
         );
-        let last_collapsed_target = *width_state.read(cx);
-        let collapse_changed = last_collapsed_target != target_collapsed;
-        if collapse_changed {
-            width_state.update(cx, |state, _| *state = target_collapsed);
-        }
-
-        let visual_collapse_state = window.use_keyed_state(
-            SharedString::from(format!("{}-collapsed-visual", sidebar_id)),
-            cx,
-            |_, _| target_collapsed,
-        );
-        if collapse_changed {
-            if reduced_motion {
-                visual_collapse_state.update(cx, |state, _| *state = target_collapsed);
-            } else if target_collapsed {
-                cx.spawn({
-                    let visual_collapse_state = visual_collapse_state.clone();
-                    let width_state = width_state.clone();
-                    async move |cx| {
-                        cx.background_executor().timer(collapse_duration).await;
-                        let still_collapsed = width_state.update(cx, |state, _| *state);
-                        if still_collapsed {
-                            _ = visual_collapse_state.update(cx, |state, _| *state = true);
-                        }
-                    }
-                })
-                .detach();
-            } else {
-                visual_collapse_state.update(cx, |state, _| *state = false);
-            }
-        }
-        let visual_collapsed = *visual_collapse_state.read(cx);
+        let visual_collapsed = matches!(presence.phase, PresencePhase::Exited);
 
         let content_len = self.content.len();
         let overdraw = px(window.viewport_size().height.as_f32() * 0.3);
@@ -346,7 +321,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                 )
             });
 
-        if reduced_motion || !collapse_changed {
+        if reduced_motion || !presence.transition_active() {
             sidebar.into_any_element()
         } else {
             let collapsed_width = COLLAPSED_WIDTH;
@@ -360,10 +335,10 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
             } else {
                 expanded_width
             };
-            let anim = if target_collapsed {
-                soft_dismiss_animation(&motion, reduced_motion)
-            } else {
+            let anim = if matches!(presence.phase, PresencePhase::Entering) {
                 point_to_point_animation(&motion, reduced_motion)
+            } else {
+                soft_dismiss_animation(&motion, reduced_motion)
             };
 
             if let Some(anim) = anim {
@@ -375,7 +350,10 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                             u8::from(target_collapsed)
                         )),
                         anim,
-                        move |this, delta| this.w(from_width + (to_width - from_width) * delta),
+                        move |this, delta| {
+                            let progress = presence.progress(delta);
+                            this.w(from_width + (to_width - from_width) * progress)
+                        },
                     )
                     .into_any_element()
             } else {

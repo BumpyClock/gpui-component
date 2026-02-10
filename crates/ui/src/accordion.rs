@@ -1,13 +1,14 @@
 use std::{cell::RefCell, collections::HashSet, rc::Rc, sync::Arc, time::Duration};
 
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, ElementId, InteractiveElement as _,
-    IntoElement, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled,
-    Window, bounce, div, ease_in_out, prelude::FluentBuilder as _, px, rems,
+    AnimationExt as _, AnyElement, App, ElementId, InteractiveElement as _, IntoElement,
+    ParentElement, RenderOnce, SharedString, StatefulInteractiveElement as _, Styled, Window, div,
+    prelude::FluentBuilder as _, px, rems,
 };
 
 use crate::{
-    ActiveTheme as _, Icon, IconName, Sizable, Size, animation::point_to_point_animation,
+    ActiveTheme as _, Icon, IconName, Sizable, Size,
+    animation::{PresenceOptions, PresencePhase, fast_invoke_animation, keyed_presence, point_to_point_animation},
     global_state::GlobalState, h_flex, v_flex,
 };
 
@@ -114,7 +115,10 @@ impl RenderOnce for Accordion {
 
                         accordion
                             .index(ix)
-                            .key_prefix(accordion_id_prefix.clone())
+                            .key_prefix(SharedString::from(format!(
+                                "{}-{}",
+                                accordion_id_prefix, ix
+                            )))
                             .with_size(self.size)
                             .bordered(self.bordered)
                             .disabled(self.disabled)
@@ -244,51 +248,21 @@ impl RenderOnce for AccordionItem {
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
         let close_anim = point_to_point_animation(&motion, reduced_motion);
-        let open_anim = (!reduced_motion).then(|| {
-            Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms)))
-                .with_easing(bounce(ease_in_out))
-        });
-        let anim_duration = Duration::from_millis(u64::from(motion.fast_duration_ms));
-        let visible_key = SharedString::from(format!("accordion-visible-{}", self.key_prefix));
-        let target_key = SharedString::from(format!("accordion-target-{}", self.key_prefix));
-
-        let visible_state = window.use_keyed_state(
-            ElementId::NamedInteger(visible_key, self.index as u64),
+        let open_anim = fast_invoke_animation(&motion, reduced_motion);
+        let presence_key = SharedString::from(format!("accordion-presence-{}", self.key_prefix));
+        let open_duration = Duration::from_millis(u64::from(motion.fast_duration_ms));
+        let close_duration = Duration::from_millis(u64::from(motion.fast_duration_ms));
+        let presence = keyed_presence(
+            presence_key,
+            self.open,
+            !reduced_motion,
+            open_duration,
+            close_duration,
+            PresenceOptions::default(),
+            window,
             cx,
-            |_, _| self.open,
         );
-        let target_state = window.use_keyed_state(
-            ElementId::NamedInteger(target_key, self.index as u64),
-            cx,
-            |_, _| self.open,
-        );
-        let was_open = *visible_state.read(cx);
-        let target_open = *target_state.read(cx);
-        let value_changed = target_open != self.open;
-        let transition_active = value_changed || (was_open != self.open);
-        if value_changed {
-            target_state.update(cx, |state, _| *state = self.open);
-            if reduced_motion {
-                visible_state.update(cx, |state, _| *state = self.open);
-            } else if self.open {
-                visible_state.update(cx, |state, _| *state = true);
-            } else {
-                cx.spawn({
-                    let visible_state = visible_state.clone();
-                    let target_state = target_state.clone();
-                    async move |cx| {
-                        cx.background_executor().timer(anim_duration).await;
-                        let should_close = target_state.update(cx, |state, _| !*state);
-                        if should_close {
-                            _ = visible_state.update(cx, |state, _| *state = false);
-                        }
-                    }
-                })
-                .detach();
-            }
-        }
-
-        let expanded_visible = self.open || (was_open && !reduced_motion);
+        let expanded_visible = presence.should_render();
 
         let text_size = match self.size {
             Size::XSmall => rems(0.875),
@@ -380,24 +354,30 @@ impl RenderOnce for AccordionItem {
                                     .children(self.children),
                             )
                             .map(|el| {
-                                let target_open = self.open;
-                                let anim = if transition_active {
-                                    if target_open { open_anim } else { close_anim }
+                                let anim = if presence.transition_active() {
+                                    if matches!(presence.phase, PresencePhase::Entering) {
+                                        open_anim
+                                    } else {
+                                        close_anim
+                                    }
                                 } else {
                                     None
                                 };
                                 if let Some(anim) = anim {
-                                    let target_open = self.open;
                                     let animation_id = ElementId::NamedInteger(
                                         SharedString::from(format!(
                                             "accordion-expand-{}",
                                             self.key_prefix
                                         )),
-                                        (self.index as u64) << 1 | u64::from(self.open),
+                                        (self.index as u64) << 1
+                                            | u64::from(matches!(
+                                                presence.phase,
+                                                PresencePhase::Entering
+                                            )),
                                     );
 
                                     el.with_animation(animation_id, anim, move |el, delta| {
-                                        let progress = if target_open { delta } else { 1.0 - delta };
+                                        let progress = presence.progress(delta);
                                         let height_progress = accordion_height_progress(progress);
                                         el.max_h(px(ACCORDION_CONTENT_MAX_H * height_progress))
                                             .opacity(progress)

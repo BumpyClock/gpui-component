@@ -19,7 +19,7 @@ Date: 2026-02-10
 
 - Submenu sections:
   - Added delayed visibility state to keep submenu mounted while closing.
-  - Open animation: subtle spring (`bounce(ease_in_out)`) using fast duration.
+  - Open animation: `fast_invoke_easing` using fast duration.
   - Close animation: `point_to_point_easing`.
   - Height + opacity animate together with shaped progress (`powf(3.0)`) to keep reflow readable.
 

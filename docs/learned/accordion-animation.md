@@ -10,25 +10,21 @@ Date: 2026-02-10
 
 ## Fix Pattern
 
-- Keep content mounted while closing.
-- Track prior open state with `window.use_keyed_state`.
-- On open state change:
-  - animate with `with_animation`
-  - update keyed state after animation duration
-- Render condition: `open || (was_open && !reduced_motion)`.
-- Progress: `delta` for opening, `1 - delta` for closing.
+- Use `animation::keyed_presence` to manage Entering/Entered/Exiting/Exited.
+- Keep content mounted during close via `PresenceTransition::should_render`.
+- Gate `with_animation` on `presence.transition_active()`.
+- Progress: `presence.progress(delta)` for open/close.
 
 ## Token Alignment
 
 - Source: `theme.motion` defaults (Fluent-aligned).
-- Applied curve: `point_to_point_easing`.
+-- Applied curve: `fast_invoke_easing` (open), `point_to_point_easing` (close).
 - Duration used: `fast_duration_ms`.
 
-## Spring Variant
+## Notes
 
-- Open transition: `Animation::new(fast_duration_ms).with_easing(bounce(ease_in_out))`.
-- Close transition: keep `point_to_point_easing` (clean, quick dismiss).
-- Height uses shaped progress (`powf(3.0)`) so sibling reflow does not finish too early with large max-height caps.
+- Avoid `bounce(...)` for reveal/size/opacity; it reverses at the end and causes a collapse flash.
+- Keep height shaping (`powf(3.0)`) so sibling reflow does not finish too early with large max-height caps.
 
 ## Why It Works
 

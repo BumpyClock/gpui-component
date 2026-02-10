@@ -1,4 +1,4 @@
-use gpui::Animation;
+use gpui::{Animation, App, SharedString, Window};
 use std::time::Duration;
 
 use crate::ThemeMotion;
@@ -108,6 +108,145 @@ pub fn strong_invoke_animation(motion: &ThemeMotion, reduced_motion: bool) -> Op
         &motion.strong_invoke_easing,
         reduced_motion,
     )
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PresencePhase {
+    Entering,
+    Entered,
+    Exiting,
+    Exited,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct PresenceTransition {
+    pub phase: PresencePhase,
+}
+
+impl PresenceTransition {
+    pub fn transition_active(self) -> bool {
+        matches!(self.phase, PresencePhase::Entering | PresencePhase::Exiting)
+    }
+
+    pub fn should_render(self) -> bool {
+        self.phase != PresencePhase::Exited
+    }
+
+    pub fn progress(self, delta: f32) -> f32 {
+        let delta = delta.clamp(0.0, 1.0);
+        match self.phase {
+            PresencePhase::Entering => delta,
+            PresencePhase::Exiting => 1.0 - delta,
+            PresencePhase::Entered => 1.0,
+            PresencePhase::Exited => 0.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct PresenceOptions {
+    pub animate_on_mount: bool,
+}
+
+/// Shared mount/open/close presence state machine keyed by element id.
+///
+/// - `target_open=true` moves to Entering/Entered
+/// - `target_open=false` moves to Exiting/Exited
+/// - stale async timers are ignored via generation guard
+pub fn keyed_presence(
+    key_base: SharedString,
+    target_open: bool,
+    animate: bool,
+    open_duration: Duration,
+    close_duration: Duration,
+    options: PresenceOptions,
+    window: &mut Window,
+    cx: &mut App,
+) -> PresenceTransition {
+    let initial_open = if options.animate_on_mount && animate {
+        false
+    } else {
+        target_open
+    };
+    let target_key = SharedString::from(format!("{}-presence-target", key_base));
+    let phase_key = SharedString::from(format!("{}-presence-phase", key_base));
+    let generation_key = SharedString::from(format!("{}-presence-generation", key_base));
+    let target_state = window.use_keyed_state(target_key, cx, |_, _| initial_open);
+    let phase_state = window.use_keyed_state(phase_key, cx, |_, _| {
+        if initial_open {
+            PresencePhase::Entered
+        } else {
+            PresencePhase::Exited
+        }
+    });
+    let generation_state = window.use_keyed_state(generation_key, cx, |_, _| 0_u64);
+
+    let previous_target = *target_state.read(cx);
+    let target_changed = previous_target != target_open;
+    if target_changed {
+        target_state.update(cx, |state, _| *state = target_open);
+        let generation = generation_state.update(cx, |state, _| {
+            *state += 1;
+            *state
+        });
+
+        if !animate {
+            let next_phase = if target_open {
+                PresencePhase::Entered
+            } else {
+                PresencePhase::Exited
+            };
+            phase_state.update(cx, |state, _| *state = next_phase);
+        } else if target_open {
+            phase_state.update(cx, |state, _| *state = PresencePhase::Entering);
+            cx.spawn({
+                let target_state = target_state.clone();
+                let phase_state = phase_state.clone();
+                let generation_state = generation_state.clone();
+                async move |cx| {
+                    cx.background_executor().timer(open_duration).await;
+                    let still_latest = generation_state.update(cx, |state, _| *state == generation);
+                    if !still_latest {
+                        return;
+                    }
+                    let still_open = target_state.update(cx, |state, _| *state);
+                    if still_open {
+                        _ = phase_state.update(cx, |state, cx| {
+                            *state = PresencePhase::Entered;
+                            cx.notify();
+                        });
+                    }
+                }
+            })
+            .detach();
+        } else {
+            phase_state.update(cx, |state, _| *state = PresencePhase::Exiting);
+            cx.spawn({
+                let target_state = target_state.clone();
+                let phase_state = phase_state.clone();
+                let generation_state = generation_state.clone();
+                async move |cx| {
+                    cx.background_executor().timer(close_duration).await;
+                    let still_latest = generation_state.update(cx, |state, _| *state == generation);
+                    if !still_latest {
+                        return;
+                    }
+                    let still_closed = target_state.update(cx, |state, _| !*state);
+                    if still_closed {
+                        _ = phase_state.update(cx, |state, cx| {
+                            *state = PresencePhase::Exited;
+                            cx.notify();
+                        });
+                    }
+                }
+            })
+            .detach();
+        }
+    }
+
+    PresenceTransition {
+        phase: *phase_state.read(cx),
+    }
 }
 
 #[cfg(test)]

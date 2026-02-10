@@ -1,6 +1,6 @@
 use crate::{
     ActiveTheme, Anchor, ElementExt, Placement, StyledExt,
-    dialog::{ANIMATION_DURATION, Dialog},
+    dialog::{Dialog, close_animation_duration},
     focus_trap::FocusTrapManager,
     input::InputState,
     notification::{Notification, NotificationList},
@@ -30,6 +30,7 @@ pub(crate) fn init(cx: &mut App) {
 pub struct Root {
     pub(crate) active_sheet: Option<ActiveSheet>,
     pub(crate) active_dialogs: Vec<ActiveDialog>,
+    next_dialog_id: u64,
     pub(super) focused_input: Option<Entity<InputState>>,
     pub notification: Entity<NotificationList>,
     sheet_size: Option<DefiniteLength>,
@@ -48,6 +49,8 @@ pub(crate) struct ActiveSheet {
 
 #[derive(Clone)]
 pub(crate) struct ActiveDialog {
+    id: u64,
+    closing: bool,
     focus_handle: FocusHandle,
     /// The previous focused handle before opening the Dialog.
     previous_focused_handle: Option<WeakFocusHandle>,
@@ -56,11 +59,14 @@ pub(crate) struct ActiveDialog {
 
 impl ActiveDialog {
     pub(crate) fn new(
+        id: u64,
         focus_handle: FocusHandle,
         previous_focused_handle: Option<WeakFocusHandle>,
         builder: impl Fn(Dialog, &mut Window, &mut App) -> Dialog + 'static,
     ) -> Self {
         Self {
+            id,
+            closing: false,
             focus_handle,
             previous_focused_handle,
             builder: Rc::new(builder),
@@ -74,6 +80,7 @@ impl Root {
         Self {
             active_sheet: None,
             active_dialogs: Vec::new(),
+            next_dialog_id: 1,
             focused_input: None,
             notification: cx.new(|cx| NotificationList::new(window, cx)),
             sheet_size: None,
@@ -206,7 +213,9 @@ impl Root {
                 // So we keep the focus handle in the `active_dialog`, this is owned by the `Root`.
                 dialog.focus_handle = active_dialog.focus_handle.clone();
 
+                dialog.id = active_dialog.id;
                 dialog.layer_ix = i;
+                dialog.closing = active_dialog.closing;
                 // Find the dialog which one needs to show overlay.
                 if dialog.has_overlay() {
                     show_overlay_ix = Some(i);
@@ -232,8 +241,11 @@ impl Root {
         let previous_focused_handle = window.focused(cx).map(|h| h.downgrade());
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
+        let dialog_id = self.next_dialog_id;
+        self.next_dialog_id += 1;
 
         self.active_dialogs.push(ActiveDialog::new(
+            dialog_id,
             focus_handle,
             previous_focused_handle,
             build,
@@ -241,33 +253,67 @@ impl Root {
         cx.notify();
     }
 
-    fn close_dialog_internal(&mut self) -> Option<FocusHandle> {
-        self.focused_input = None;
-        self.active_dialogs
-            .pop()
-            .and_then(|d| d.previous_focused_handle)
-            .and_then(|h| h.upgrade())
+    fn finalize_dialog_close(
+        &mut self,
+        dialog_id: u64,
+        restore_focus: Option<FocusHandle>,
+        window: &mut Window,
+        cx: &mut Context<'_, Root>,
+    ) {
+        if let Some(ix) = self.active_dialogs.iter().position(|d| d.id == dialog_id) {
+            self.focused_input = None;
+            let was_top = ix + 1 == self.active_dialogs.len();
+            self.active_dialogs.remove(ix);
+            if was_top && let Some(handle) = restore_focus {
+                window.focus(&handle, cx);
+            }
+            cx.notify();
+        }
     }
 
     pub fn close_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, Root>) {
-        if let Some(handle) = self.close_dialog_internal() {
-            window.focus(&handle, cx);
+        let Some(active_dialog) = self.active_dialogs.last_mut() else {
+            return;
+        };
+
+        if active_dialog.closing {
+            return;
         }
+
+        let restore_focus = active_dialog
+            .previous_focused_handle
+            .as_ref()
+            .and_then(|h| h.upgrade());
+        let dialog_id = active_dialog.id;
+
+        let should_animate_close = {
+            let mut dialog = Dialog::new(window, cx);
+            dialog = (active_dialog.builder)(dialog, window, cx);
+            dialog.should_animate(cx)
+        };
+
+        if !should_animate_close {
+            self.finalize_dialog_close(dialog_id, restore_focus, window, cx);
+            return;
+        }
+
+        active_dialog.closing = true;
+        let duration = close_animation_duration(cx);
+        window
+            .spawn(cx, async move |cx| {
+                cx.background_executor().timer(duration).await;
+                _ = cx.update(|window, cx| {
+                    Root::update(window, cx, |root, window, cx| {
+                        root.finalize_dialog_close(dialog_id, restore_focus.clone(), window, cx);
+                    });
+                });
+            })
+            .detach();
         cx.notify();
     }
 
     pub(crate) fn defer_close_dialog(&mut self, window: &mut Window, cx: &mut Context<'_, Root>) {
-        if let Some(handle) = self.close_dialog_internal() {
-            window
-                .spawn(cx, async move |cx| {
-                    cx.background_executor().timer(*ANIMATION_DURATION).await;
-                    _ = cx.update(|window, cx| {
-                        window.focus(&handle, cx);
-                    });
-                })
-                .detach();
-        }
-        cx.notify();
+        self.close_dialog(window, cx);
     }
 
     pub fn close_all_dialogs(&mut self, window: &mut Window, cx: &mut Context<'_, Root>) {

@@ -1,14 +1,16 @@
 use gpui::{
     AnimationExt as _, AnyElement, App, Bounds, Context, Deferred, DismissEvent, Div, ElementId,
     EventEmitter, FocusHandle, Focusable, Half, InteractiveElement as _, IntoElement, KeyBinding,
-    MouseButton, ParentElement, Pixels, Point, Render, RenderOnce, Stateful, StyleRefinement,
-    Styled, Subscription, Window, deferred, div, prelude::FluentBuilder as _, px,
+    MouseButton, ParentElement, Pixels, Point, Render, RenderOnce, SharedString, Stateful,
+    StyleRefinement, Styled, Subscription, Window, deferred, div, prelude::FluentBuilder as _, px,
 };
 use std::rc::Rc;
 
 use crate::{
     ActiveTheme, Anchor, ElementExt, Selectable, StyledExt as _, actions::Cancel, anchored,
-    animation::fast_invoke_animation, global_state::GlobalState, v_flex,
+    animation::{PresenceOptions, PresencePhase, fade_animation, fast_invoke_animation, keyed_presence},
+    global_state::GlobalState,
+    v_flex,
 };
 
 const CONTEXT: &str = "Popover";
@@ -356,9 +358,10 @@ impl RenderOnce for Popover {
         };
 
         let parent_view_id = window.current_view();
+        let popover_id = self.id.clone();
 
         let el = div()
-            .id(self.id)
+            .id(popover_id.clone())
             .child((trigger)(open, window, cx))
             .on_mouse_down(self.mouse_button, {
                 let state = state.clone();
@@ -382,13 +385,26 @@ impl RenderOnce for Popover {
                 }
             });
 
-        if !open {
+        let motion = cx.theme().motion.clone();
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let presence = keyed_presence(
+            SharedString::from(format!("popover-presence-{}", popover_id)),
+            open,
+            !reduced_motion,
+            std::time::Duration::from_millis(u64::from(motion.fast_duration_ms)),
+            std::time::Duration::from_millis(u64::from(motion.fade_duration_ms)),
+            PresenceOptions {
+                animate_on_mount: true,
+            },
+            window,
+            cx,
+        );
+        if !presence.should_render() {
             return el;
         }
 
-        let motion = &cx.theme().motion;
-        let reduced_motion = GlobalState::global(cx).reduced_motion();
-        let anim = fast_invoke_animation(motion, reduced_motion);
+        let open_anim = fast_invoke_animation(&motion, reduced_motion);
+        let close_anim = fade_animation(&motion, reduced_motion);
 
         let popover_content =
             Self::render_popover_content(self.anchor, self.appearance, window, cx)
@@ -411,12 +427,28 @@ impl RenderOnce for Popover {
                     })
                 })
                 .refine_style(&self.style)
-                .map(|el| {
-                    if let Some(anim) = anim {
-                        el.with_animation("popover-enter", anim, |el, delta| el.opacity(delta))
-                            .into_any_element()
+                .map(move |el| {
+                    if !presence.transition_active() {
+                        el.opacity(presence.progress(1.0)).into_any_element()
                     } else {
-                        el.into_any_element()
+                        let anim = if matches!(presence.phase, PresencePhase::Entering) {
+                            open_anim
+                        } else {
+                            close_anim
+                        };
+                        if let Some(anim) = anim {
+                            el.with_animation(
+                                SharedString::from(format!(
+                                    "popover-motion-{}",
+                                    u8::from(matches!(presence.phase, PresencePhase::Entering))
+                                )),
+                                anim,
+                                move |el, delta| el.opacity(presence.progress(delta)),
+                            )
+                            .into_any_element()
+                        } else {
+                            el.into_any_element()
+                        }
                     }
                 });
 

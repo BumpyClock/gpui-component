@@ -60,3 +60,21 @@ What worked:
 - keep submenu mounted during close and unmount after animation duration.
 Outcome: sidebar collapse/expand and submenu section open/close now animate as continuous layout motion; reduced-motion path remains instant.
 Next time: if caret icon rotation should animate, avoid coupling icon transform to `Button::icon(...)` and render a custom caret container with direct animation hook.
+
+## 2026-02-10
+Context: recurring motion regressions (snap-back, reopen-on-close, no-exit) across dialog/sidebar/accordion/popover.
+What worked:
+- Introduce shared keyed presence state machine in `animation::keyed_presence` (Entering/Entered/Exiting/Exited).
+- Use generation-guarded timers to ignore stale async transitions.
+- Drive render + animation from presence phase (`should_render`, `transition_active`, `progress`) instead of ad-hoc booleans.
+- For dropdown menus, delay menu entity reset until popover exit completes.
+Outcome: motion lifecycle is centralized; avoids per-component timer drift and repeated transition bugs.
+Next time: default new animated components to keyed presence first; avoid custom target/visible timer code.
+
+## 2026-02-10
+Context: open animations flashed (open -> collapse -> open) on Accordion/Sidebar/Dialog.
+What worked:
+- Remove `bounce(...)` easing from reveal/size/opacity transitions.
+- Use monotonic easings (fast_invoke/point_to_point) for open/close.
+Outcome: no end-frame collapse; open state stays stable.
+Next time: avoid `bounce` for reveal/size/opacity; it is forward-then-reverse.
