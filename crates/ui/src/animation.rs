@@ -23,11 +23,25 @@ pub fn cubic_bezier(x1: f32, y1: f32, x2: f32, y2: f32) -> impl Fn(f32) -> f32 {
         let _x = 3.0 * x1 * one_t2 * t + 3.0 * x2 * one_t * t2 + t3;
         let y = 3.0 * y1 * one_t2 * t + 3.0 * y2 * one_t * t2 + t3;
 
-        if y.is_finite() {
-            y.clamp(0.0, 1.0)
-        } else {
-            0.0
+        if y.is_finite() { y.clamp(0.0, 1.0) } else { 0.0 }
+    }
+}
+
+/// A cubic bezier function without clamping the output.
+pub fn cubic_bezier_unbounded(x1: f32, y1: f32, x2: f32, y2: f32) -> impl Fn(f32) -> f32 {
+    move |t: f32| {
+        if !t.is_finite() {
+            return 0.0;
         }
+        let t = t.clamp(0.0, 1.0);
+        let one_t = 1.0 - t;
+        let one_t2 = one_t * one_t;
+        let t2 = t * t;
+        let t3 = t2 * t;
+
+        let _x = 3.0 * x1 * one_t2 * t + 3.0 * x2 * one_t * t2 + t3;
+        let y = 3.0 * y1 * one_t2 * t + 3.0 * y2 * one_t * t2 + t3;
+        if y.is_finite() { y } else { 0.0 }
     }
 }
 
@@ -55,6 +69,10 @@ pub fn animation_with_theme_easing(animation: Animation, easing: &str) -> Animat
         return animation.with_easing(|delta: f32| delta);
     }
     if let Some((x1, y1, x2, y2)) = parse_cubic_bezier_easing(easing) {
+        let overshoot = y1 < 0.0 || y1 > 1.0 || y2 < 0.0 || y2 > 1.0;
+        if overshoot {
+            return animation.with_unbounded_easing(cubic_bezier_unbounded(x1, y1, x2, y2));
+        }
         return animation.with_easing(cubic_bezier(x1, y1, x2, y2));
     }
     animation

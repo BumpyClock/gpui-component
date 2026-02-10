@@ -87,3 +87,11 @@ What worked:
 - Document patch workflow in `docs/learned/gpui-submodule.md`.
 Outcome: local GPUI source available for edits/review without breaking build.
 Next time: after GPUI patch commit, bump both `Cargo.toml` rev and submodule SHA together.
+
+## 2026-02-10
+Context: spring/overshoot easing support.
+What worked:
+- Add unbounded easing support in GPUI (`Animation::with_unbounded_easing` + bounds).
+- Route overshoot cubic-bezier curves to unbounded easing in `crates/ui/src/animation.rs`.
+Outcome: Fluent strong-invoke curve can overshoot without debug assert; spring-style easings now supported.
+Next time: use unbounded easing only for transform-like properties.
