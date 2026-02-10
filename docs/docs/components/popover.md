@@ -221,6 +221,13 @@ Popover::new("controlled-popover")
     .child("This popover's open state is controlled programmatically.")
 ```
 
+## Motion
+
+- Enter: popover content uses theme fast-invoke timing with opacity + small vertical translation.
+- Exit: popover content uses point-to-point timing for a monotonic dismiss (no bounce overshoot).
+- Reduced motion: transitions are disabled and state changes render immediately.
+- Anchor-aware offset: top anchors drift downward on enter; bottom anchors drift upward.
+
 ### Default Open
 
 The `default_open` method allows you to set the initial open state of the popover when it is first rendered.

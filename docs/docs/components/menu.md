@@ -446,6 +446,13 @@ Button::new("settings")
     })
 ```
 
+## Motion
+
+- Root popup menu surface is static to avoid open-time flicker on app-menu and large scrollable menus.
+- Nested submenu: open/close uses keyed presence state and side-aware horizontal slide + opacity.
+- Reduced motion: popup and submenu transitions are disabled and visibility updates are immediate.
+- Dropdown menu cache reset: menu entity disposal is delayed to match dismiss timing (or immediate under reduced motion) to avoid flicker.
+
 ## Keyboard Shortcuts
 
 | Key               | Action                            |

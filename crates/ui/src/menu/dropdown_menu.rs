@@ -5,7 +5,10 @@ use gpui::{
     RenderOnce, SharedString, StyleRefinement, Styled, Window,
 };
 
-use crate::{ActiveTheme, Selectable, button::Button, menu::PopupMenu, popover::Popover};
+use crate::{
+    ActiveTheme, Selectable, button::Button, global_state::GlobalState, menu::PopupMenu,
+    popover::Popover,
+};
 
 /// A dropdown menu trait for buttons and other interactive elements
 pub trait DropdownMenu: Styled + Selectable + InteractiveElement + IntoElement + 'static {
@@ -120,13 +123,20 @@ where
                                 move |_, _: &DismissEvent, window, cx| {
                                     popover_state.update(cx, |state, cx| {
                                         state.dismiss(window, cx);
-                                        let dismiss_duration = std::time::Duration::from_millis(
-                                            u64::from(cx.theme().motion.fade_duration_ms),
-                                        );
+                                        let reduced_motion = GlobalState::global(cx).reduced_motion();
+                                        let dismiss_duration = if reduced_motion {
+                                            std::time::Duration::ZERO
+                                        } else {
+                                            std::time::Duration::from_millis(u64::from(
+                                                cx.theme().motion.fast_duration_ms,
+                                            ))
+                                        };
                                         cx.spawn({
                                             let menu_state = menu_state.clone();
                                             async move |_, cx| {
-                                                cx.background_executor().timer(dismiss_duration).await;
+                                                if !dismiss_duration.is_zero() {
+                                                    cx.background_executor().timer(dismiss_duration).await;
+                                                }
                                                 _ = menu_state.update(cx, |state, _| {
                                                     state.menu = None;
                                                 });

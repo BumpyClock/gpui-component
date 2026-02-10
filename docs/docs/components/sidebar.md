@@ -306,6 +306,13 @@ Sidebar::new()
     )
 ```
 
+## Collapsed Child Menus
+
+When the sidebar is collapsed and a menu item has children, clicking the parent opens a flyout menu instead of expanding inline.
+
+- Simple child rows render as popup menu items.
+- Child rows with interactive suffix controls (for example `Switch`) render as live sidebar rows inside popover content so interactions and control animations remain intact.
+
 ## Theming
 
 The sidebar uses dedicated theme colors:

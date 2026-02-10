@@ -1,18 +1,22 @@
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::actions::{SelectLeft, SelectRight};
+use crate::animation::{
+    PresenceOptions, PresencePhase, fast_invoke_animation, keyed_presence, point_to_point_animation,
+};
 use crate::global_state::GlobalState;
 use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::ScrollableElement;
 use crate::{ActiveTheme, ElementExt, Icon, IconName, Sizable as _, SurfaceContext};
 use crate::{Side, Size, SurfacePreset, h_flex, kbd::Kbd, v_flex};
 use gpui::{
-    Action, AnyElement, App, AppContext, Bounds, Context, Corner, DismissEvent, Edges, Entity,
-    EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
-    ParentElement, Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled,
-    WeakEntity, Window, anchored, div, prelude::FluentBuilder, px, rems,
+    Action, AnimationExt as _, AnyElement, App, AppContext, Bounds, Context, Corner, DismissEvent,
+    Edges, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
+    KeyBinding, ParentElement, Pixels, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement, Styled, WeakEntity, Window, anchored, div,
+    prelude::FluentBuilder, px, rems,
 };
 use gpui::{ClickEvent, Half, MouseDownEvent, OwnedMenuItem, Point, Subscription};
-use std::rc::Rc;
+use std::{rc::Rc, time::Duration};
 
 const CONTEXT: &str = "PopupMenu";
 
@@ -1063,6 +1067,26 @@ impl PopupMenu {
         const INNER_PADDING: Pixels = px(8.);
 
         let is_submenu = matches!(item, PopupMenuItem::Submenu { .. });
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let motion = cx.theme().motion.clone();
+        let submenu_presence = is_submenu.then(|| {
+            keyed_presence(
+                SharedString::from(format!(
+                    "popup-menu-submenu-presence-{}-{}",
+                    cx.entity().entity_id(),
+                    ix
+                )),
+                selected,
+                !reduced_motion,
+                Duration::from_millis(u64::from(motion.fast_duration_ms)),
+                Duration::from_millis(u64::from(motion.fade_duration_ms)),
+                PresenceOptions::default(),
+                window,
+                cx,
+            )
+        });
+        let submenu_open_anim = fast_invoke_animation(&motion, reduced_motion);
+        let submenu_close_anim = point_to_point_animation(&motion, reduced_motion);
         let group_name = format!("{}:item-{}", cx.entity().entity_id(), ix);
 
         let (item_height, radius) = match self.size {
@@ -1222,12 +1246,19 @@ impl PopupMenu {
                                 ),
                         ),
                 )
-                .when(selected, |this| {
+                .when(submenu_presence.is_some_and(|presence| presence.should_render()), |this| {
+                    let submenu_presence = submenu_presence.expect("submenu presence must exist");
                     this.child({
                         let (anchor, left) = self.submenu_anchor;
                         let is_bottom_pos =
                             matches!(anchor, Corner::BottomLeft | Corner::BottomRight);
-                        anchored()
+                        let direction = if matches!(anchor, Corner::TopLeft | Corner::BottomLeft)
+                        {
+                            -1.0
+                        } else {
+                            1.0
+                        };
+                        let submenu = anchored()
                             .anchor(anchor)
                             .child(
                                 div()
@@ -1238,7 +1269,43 @@ impl PopupMenu {
                                     .left(left)
                                     .child(menu.clone()),
                             )
-                            .snap_to_window_with_margin(Edges::all(EDGE_PADDING))
+                            .snap_to_window_with_margin(Edges::all(EDGE_PADDING));
+
+                        if submenu_presence.transition_active() {
+                            let anim = if matches!(submenu_presence.phase, PresencePhase::Entering)
+                            {
+                                submenu_open_anim
+                            } else {
+                                submenu_close_anim
+                            };
+
+                            if let Some(anim) = anim {
+                                div()
+                                    .child(submenu)
+                                    .with_animation(
+                                        SharedString::from(format!(
+                                            "popup-submenu-motion-{}-{}",
+                                            ix,
+                                            u8::from(matches!(
+                                                submenu_presence.phase,
+                                                PresencePhase::Entering
+                                            ))
+                                        )),
+                                        anim,
+                                        move |el, delta| {
+                                            let progress = submenu_presence.progress(delta);
+                                            el.opacity(progress).translate_x(px(
+                                                direction * 4.0 * (1.0 - progress),
+                                            ))
+                                        },
+                                    )
+                                    .into_any_element()
+                            } else {
+                                submenu.into_any_element()
+                            }
+                        } else {
+                            submenu.into_any_element()
+                        }
                     })
                 }),
         }

@@ -8,7 +8,10 @@ use std::rc::Rc;
 
 use crate::{
     ActiveTheme, Anchor, ElementExt, Selectable, StyledExt as _, actions::Cancel, anchored,
-    animation::{PresenceOptions, PresencePhase, fade_animation, fast_invoke_animation, keyed_presence},
+    animation::{
+        PresenceOptions, PresencePhase, fast_invoke_animation, keyed_presence,
+        point_to_point_animation,
+    },
     global_state::GlobalState,
     v_flex,
 };
@@ -404,7 +407,15 @@ impl RenderOnce for Popover {
         }
 
         let open_anim = fast_invoke_animation(&motion, reduced_motion);
-        let close_anim = fade_animation(&motion, reduced_motion);
+        let close_anim = point_to_point_animation(&motion, reduced_motion);
+        let vertical_direction = if matches!(
+            self.anchor,
+            Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight
+        ) {
+            1.0
+        } else {
+            -1.0
+        };
 
         let popover_content =
             Self::render_popover_content(self.anchor, self.appearance, window, cx)
@@ -429,7 +440,9 @@ impl RenderOnce for Popover {
                 .refine_style(&self.style)
                 .map(move |el| {
                     if !presence.transition_active() {
-                        el.opacity(presence.progress(1.0)).into_any_element()
+                        el.opacity(presence.progress(1.0))
+                            .translate_y(px(0.0))
+                            .into_any_element()
                     } else {
                         let anim = if matches!(presence.phase, PresencePhase::Entering) {
                             open_anim
@@ -443,7 +456,11 @@ impl RenderOnce for Popover {
                                     u8::from(matches!(presence.phase, PresencePhase::Entering))
                                 )),
                                 anim,
-                                move |el, delta| el.opacity(presence.progress(delta)),
+                                move |el, delta| {
+                                    let progress = presence.progress(delta);
+                                    let offset = px(4.0 * (1.0 - progress) * vertical_direction);
+                                    el.opacity(progress).translate_y(offset)
+                                },
                             )
                             .into_any_element()
                         } else {

@@ -113,3 +113,12 @@ Context: collapsed sidebar items with children were not navigable.
 What worked: wrap collapsed parent in `Popover` and render children via `PopupMenu` (recursive submenu builder); cache menu entity with keyed state and clear on dismiss.
 Outcome: collapsed sidebar click now exposes child actions without expanding the sidebar.
 Next time: for collapsed navigation groups, prefer popover menu over inline open-state toggles.
+
+## 2026-02-10
+Context: menu/popover motion and collapsed flyout control behavior.
+What worked:
+- Added popover motion as opacity + small anchor-aware translate using monotonic curves.
+- Added popup submenu keyed-presence transitions with side-aware translate.
+- For collapsed sidebar flyouts, render live sidebar rows (not popup command rows) when suffix controls exist.
+Outcome: smoother menu motion; suffix controls like `Switch` keep normal interaction/animation behavior.
+Next time: use `PopupMenu` for command rows, but switch to live popover content for embedded interactive controls.
