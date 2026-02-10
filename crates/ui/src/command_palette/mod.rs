@@ -157,6 +157,7 @@ impl CommandPalette {
         window.open_dialog(cx, move |dialog, _window, _cx| {
             dialog
                 .w(width)
+                .min_h(gpui::px(0.))
                 .overlay(true)
                 .overlay_closable(true)
                 .keyboard(true)

@@ -21,6 +21,7 @@ Date: 2026-02-10
 
 - Open sequence feels staged: shell first, content second.
 - Shortcut keycaps align to right edge consistently.
+- Removed list opacity fade during expand to prevent temporary white block from flyout background.
 
 ## Crash Note
 

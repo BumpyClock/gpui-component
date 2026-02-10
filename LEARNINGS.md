@@ -1,55 +1,53 @@
 # Learnings
 
 ## 2026-01-22
-Context: restore glass styling for popup menus and selects.
-What I tried: wrapped menu content with SurfacePreset::flyout and used blur_enabled from GlobalState.
-Outcome: popover surfaces now handle opacity, border, elevation, and noise consistently.
-Next time: prefer SurfacePreset::flyout for popover containers and keep content styling separate.
-
-## 2026-01-22
-Context: noise asset failing to load for surface overlays.
-What I tried: used `img("NoiseAsset_256.png")` with gpui assets.
-Outcome: gpui treated the path as a URI; loading failed until using `ImageSource::Resource(Resource::Embedded(...))`.
-Next time: use explicit embedded resource sources for non-URI image assets.
+Context: popup/select glass surface styling and noise overlay consistency.
+What worked:
+- Use `SurfacePreset::flyout` on popover containers; keep content styling separate.
+- Read noise texture via `ImageSource::Resource(Resource::Embedded(...))`, not `img("...")`.
+Outcome: consistent opacity, border, elevation, and noise; no URI-loading failures.
+Next time: default to flyout preset + embedded resource images for non-URI assets.
 
 ## 2026-02-10
-Context: opening command palette in story app panicked with `delta should always be between 0 and 1`.
-What I tried: traced call path (`open_dialog` -> `dialog` slide animation -> `strong_invoke_easing`) and sampled default curve `cubic-bezier(0.13, 1.62, 0, 0.92)`.
-Outcome: custom cubic-bezier easing returned values above `1.0`, triggering GPUI animation debug assert.
-Next time: keep custom easing outputs bounded in `[0, 1]` (clamp/sanitize in easing helper) and add regression test for overshoot curves.
+Context: command palette animation stability and quality.
+What worked:
+- Clamp/sanitize custom easing output to `[0, 1]` to avoid `delta should always be between 0 and 1`.
+- Stage motion: shell instant (`animate(false)`), then list/content reveal.
+- Keep container expand and child reveal aligned; avoid conflicting opacity/height phases on translucent surfaces.
+Outcome: no animation assert panic and cleaner open sequence without white flash.
+Next time: add regression test for overshoot cubic-bezier curves; keep dismiss curves simpler than entrance curves.
 
 ## 2026-02-10
-Context: accordion content animated in, but container/sibling reflow felt abrupt.
-What I tried: kept content mounted during close with keyed open-state + delayed state commit, animated both directions with `with_animation`.
-Outcome: expand and collapse both animate height/opacity, sibling items move smoothly with the panel.
-Next time: for collapsible UI, avoid conditional unmount on close if exit/layout animation needed.
+Context: collapsible/accordion motion felt abrupt.
+What worked:
+- Keep content mounted during close (delayed commit), animate both open and close.
+- Use spring-style easing on open (`bounce(ease_in_out)`) and simpler close easing.
+Outcome: smoother sibling reflow and playful open without heavy dismiss.
+Next time: avoid conditional unmount when exit/layout animation is required.
 
 ## 2026-02-10
-Context: wanted a fun spring feel without making dismiss motion heavy.
-What I tried: spring easing only on open (`bounce(ease_in_out)`), point-to-point easing on close, shaped height progress with `powf(3.0)`.
-Outcome: open feels playful; close remains crisp; sibling reflow reads longer and smoother.
-Next time: split open/close curves for collapsibles instead of one shared easing.
+Context: command palette selection crash (`cannot update ... while it is already being updated`).
+What worked: in `cx.subscribe(...)` callbacks, update `this` directly; remove nested `view.update(...)` on the same entity.
+Outcome: no re-entrant lease panic; selection updates render normally.
+Next time: treat subscribe callbacks as the update scope; avoid nested entity updates.
 
 ## 2026-02-10
-Context: command palette felt busy because shell enter and content expand happened together.
-What I tried: added dialog-level `animate(false)` for command palette only, then kept delayed list reveal + separate children fade.
-Outcome: shell appears instantly, content animates second, overall motion feels more fluid and intentional.
-Next time: stage modal motion in phases (container first, list/items second) for search palettes.
+Context: command palette empty state clipping/blankness during expand.
+What worked:
+- Use dedicated `EMPTY_STATE_HEIGHT` instead of row `item_height`.
+- Top-align empty-state content (`pt_6`) instead of vertical centering.
+Outcome: icon/text render fully and appear earlier during expansion.
+Next time: design empty-state layout independently from row metrics when height is animated.
 
 ## 2026-02-10
-Context: command palette open still felt a bit mechanical after staging.
-What I tried: switched expand phase easing to `bounce(ease_in_out)` while keeping shell instant and reduced-motion guard.
-Outcome: open feels more playful without changing close behavior.
-Next time: tune spring intensity per surface; keep dismissal curves simpler than entrance.
+Context: command palette still showed a blank strip under search before results reveal.
+What worked:
+- Make header row explicitly match `HEADER_HEIGHT` (`h + flex + items_center`) instead of relying on padding-only sizing.
+Outcome: collapsed shell height and header layout now match; removed mismatch strip.
+Next time: when using fixed layout constants, size the corresponding section explicitly to that constant.
 
 ## 2026-02-10
-Context: command palette story crashed on selection with `cannot update ... while it is already being updated`.
-What I tried: removed nested `view.update(...)` calls from `cx.subscribe(...)` callbacks and updated `this` directly in the subscription closure.
-Outcome: no re-entrant lease panic; selection updates render correctly.
-Next time: in `cx.subscribe` callbacks, mutate `this` directly; avoid nested entity updates on the same entity.
-
-## 2026-02-10
-Context: command palette empty-state icon clipped when there are zero results.
-What I tried: replaced zero-results list height from `item_height` to dedicated `EMPTY_STATE_HEIGHT`.
-Outcome: empty-state icon/text render fully without clipping.
-Next time: avoid reusing row height for empty states that have larger vertical content.
+Context: blank strip persisted even after palette view-level fixes.
+What worked: override dialog default minimum height for command palette (`.min_h(px(0.))`), because `Dialog` enforces `.min_h_24()` by default.
+Outcome: command palette collapsed height now respects its own shell height during pre-reveal.
+Next time: when embedding compact overlays inside `Dialog`, explicitly set min-height if default dialog floor is too large.

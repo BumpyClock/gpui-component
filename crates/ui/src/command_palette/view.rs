@@ -5,7 +5,6 @@ use super::state::{CommandPaletteEvent, CommandPaletteState};
 use super::types::{CommandPaletteConfig, MatchedItem};
 use super::{reveal_animation_duration, reveal_delay};
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
-use crate::animation::animation_with_theme_easing;
 use crate::global_state::GlobalState;
 use crate::input::{Input, InputEvent, InputState};
 use crate::kbd::Kbd;
@@ -431,9 +430,8 @@ impl CommandPaletteView {
     fn render_empty(&self, cx: &App) -> impl IntoElement {
         v_flex()
             .size_full()
-            .justify_center()
             .items_center()
-            .py_8()
+            .pt_6()
             .gap_2()
             .text_color(cx.theme().muted_foreground)
             .child(Icon::new(IconName::Search).size_8().opacity(0.5))
@@ -532,12 +530,6 @@ impl Render for CommandPaletteView {
         let reveal_animation_duration = reveal_animation_duration(cx);
         let expand_animation =
             (!reduced_motion).then(|| Animation::new(reveal_animation_duration).with_easing(gentle_spring));
-        let list_reveal_animation = (!reduced_motion).then(|| {
-            animation_with_theme_easing(
-                Animation::new(reveal_animation_duration),
-                cx.theme().motion.fast_invoke_easing.as_ref(),
-            )
-        });
 
         // Focus input once after opening to avoid render jitter
         if !self.did_focus {
@@ -587,15 +579,21 @@ impl Render for CommandPaletteView {
             .on_action(cx.listener(Self::on_action_confirm))
             .on_action(cx.listener(Self::on_action_select_up))
             .on_action(cx.listener(Self::on_action_select_down))
-            .h(expanded_height)
+            .h(if self.list_revealed {
+                expanded_height
+            } else {
+                collapsed_height
+            })
             .w_full()
             .overflow_hidden()
             // Search input
             .child(
                 div()
                     .w_full()
+                    .h(px(HEADER_HEIGHT))
+                    .flex()
+                    .items_center()
                     .px_3()
-                    .py_2()
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .child(
@@ -611,70 +609,53 @@ impl Render for CommandPaletteView {
                     ),
             )
             // Results list
-            .child(
-                div()
-                    .w_full()
-                    .h(list_height)
-                    .overflow_hidden()
-                    .when(row_count == 0, |this| this.child(self.render_empty(cx)))
-                    .when(row_count > 0, |this| {
-                        this.child(
-                            v_virtual_list(cx.entity(), "command-palette-list", item_sizes, {
-                                let matched_items = matched_items.clone();
-                                let rows = rows.clone();
-                                move |view, visible_range, window, cx| {
-                                    visible_range
-                                        .filter_map(|ix| {
-                                            let row = rows.get(ix)?;
-                                            match row {
-                                                CommandPaletteRow::Header(title) => Some(
-                                                    view.render_section_header(title.clone(), cx)
-                                                        .into_any_element(),
-                                                ),
-                                                CommandPaletteRow::Item(item_index) => {
-                                                    matched_items.get(*item_index).map(|item| {
-                                                        view.render_item(
-                                                            item,
-                                                            *item_index,
-                                                            selected_index == Some(*item_index),
-                                                            show_categories,
-                                                            window,
-                                                            cx,
-                                                        )
-                                                        .into_any_element()
-                                                    })
+            .when(self.list_revealed, |this| {
+                this.child(
+                    div()
+                        .w_full()
+                        .h(list_height)
+                        .overflow_hidden()
+                        .when(row_count == 0, |this| this.child(self.render_empty(cx)))
+                        .when(row_count > 0, |this| {
+                            this.child(
+                                v_virtual_list(cx.entity(), "command-palette-list", item_sizes, {
+                                    let matched_items = matched_items.clone();
+                                    let rows = rows.clone();
+                                    move |view, visible_range, window, cx| {
+                                        visible_range
+                                            .filter_map(|ix| {
+                                                let row = rows.get(ix)?;
+                                                match row {
+                                                    CommandPaletteRow::Header(title) => Some(
+                                                        view.render_section_header(title.clone(), cx)
+                                                            .into_any_element(),
+                                                    ),
+                                                    CommandPaletteRow::Item(item_index) => {
+                                                        matched_items.get(*item_index).map(|item| {
+                                                            view.render_item(
+                                                                item,
+                                                                *item_index,
+                                                                selected_index == Some(*item_index),
+                                                                show_categories,
+                                                                window,
+                                                                cx,
+                                                            )
+                                                            .into_any_element()
+                                                        })
+                                                    }
                                                 }
-                                            }
-                                        })
-                                        .collect()
-                                }
-                            })
-                            .track_scroll(&self.scroll_handle)
-                            .py_1(),
-                        )
-                    })
-                    .map(|el| {
-                        if self.list_revealed {
-                            if let Some(anim) = list_reveal_animation {
-                                el.with_animation(
-                                    ElementId::NamedInteger(
-                                        "command-palette-children-reveal".into(),
-                                        1,
-                                    ),
-                                    anim,
-                                    move |this, delta| this.opacity(delta),
-                                )
-                                .into_any_element()
-                            } else {
-                                el.into_any_element()
-                            }
-                        } else {
-                            el.opacity(0.).into_any_element()
-                        }
-                    }),
-            )
+                                            })
+                                            .collect()
+                                    }
+                                })
+                                .track_scroll(&self.scroll_handle)
+                                .py_1(),
+                            )
+                        }),
+                )
+            })
             // Footer
-            .when(show_footer, |this| {
+            .when(show_footer && self.list_revealed, |this| {
                 this.child(self.render_footer(footer_status.clone(), cx))
             });
 
