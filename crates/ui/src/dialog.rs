@@ -1,4 +1,4 @@
-use std::{rc::Rc, time::Duration};
+use std::{rc::Rc, sync::LazyLock, time::Duration};
 
 use gpui::{
     Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent, Edges,
@@ -9,7 +9,8 @@ use gpui::{
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme as _, IconName, Root, Sizable as _, StyledExt, TITLE_BAR_HEIGHT, WindowExt as _,
+    ActiveTheme as _, FocusTrapElement as _, IconName, Root, Sizable as _, StyledExt,
+    TITLE_BAR_HEIGHT, WindowExt as _,
     actions::{Cancel, Confirm},
     animation::cubic_bezier,
     button::{Button, ButtonVariant, ButtonVariants as _},
@@ -19,6 +20,7 @@ use crate::{
     v_flex,
 };
 
+pub static ANIMATION_DURATION: LazyLock<Duration> = LazyLock::new(|| Duration::from_secs_f64(0.25));
 const CONTEXT: &str = "Dialog";
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
@@ -319,6 +321,12 @@ impl Dialog {
     pub(crate) fn has_overlay(&self) -> bool {
         self.overlay
     }
+
+    fn defer_close_dialog(window: &mut Window, cx: &mut App) {
+        Root::update(window, cx, |root, window, cx| {
+            root.defer_close_dialog(window, cx);
+        });
+    }
 }
 
 impl ParentElement for Dialog {
@@ -485,6 +493,8 @@ impl RenderOnce for Dialog {
                     .child(
                         v_flex()
                             .id(layer_ix)
+                            .track_focus(&self.focus_handle)
+                            .focus_trap(format!("dialog-{}", layer_ix), &self.focus_handle)
                             .bg(cx.theme().popover)
                             .border_1()
                             .border_color(cx.theme().border)
@@ -496,8 +506,6 @@ impl RenderOnce for Dialog {
                             .refine_style(&self.style)
                             .px_0()
                             .key_context(CONTEXT)
-                            .track_focus(&self.focus_handle)
-                            .tab_group()
                             .when(self.keyboard, |this| {
                                 this.on_action({
                                     let on_cancel = on_cancel.clone();
@@ -519,11 +527,11 @@ impl RenderOnce for Dialog {
                                     move |_: &Confirm, window, cx| {
                                         if let Some(on_ok) = &on_ok {
                                             if on_ok(&ClickEvent::default(), window, cx) {
-                                                window.close_dialog(cx);
+                                                Self::defer_close_dialog(window, cx);
                                                 on_close(&ClickEvent::default(), window, cx);
                                             }
                                         } else if has_footer {
-                                            window.close_dialog(cx);
+                                            Self::defer_close_dialog(window, cx);
                                             on_close(&ClickEvent::default(), window, cx);
                                         }
                                     }
