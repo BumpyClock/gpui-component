@@ -13,8 +13,8 @@ use gpui::{
     Action, AnimationExt as _, AnyElement, App, AppContext, Bounds, Context, Corner, DismissEvent,
     Edges, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
     KeyBinding, ParentElement, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, WeakEntity, Window, anchored, div,
-    prelude::FluentBuilder, px, rems,
+    StatefulInteractiveElement, Styled, WeakEntity, Window, anchored, div, prelude::FluentBuilder,
+    px, rems,
 };
 use gpui::{ClickEvent, Half, MouseDownEvent, OwnedMenuItem, Point, Subscription};
 use std::{rc::Rc, time::Duration};
@@ -1086,7 +1086,8 @@ impl PopupMenu {
                 cx,
             )
         });
-        let submenu_open_anim = spring_invoke_animation(&motion, reduced_motion);
+        let submenu_open_opacity_anim = point_to_point_animation(&motion, reduced_motion);
+        let submenu_open_transform_anim = spring_invoke_animation(&motion, reduced_motion);
         let submenu_close_anim = point_to_point_animation(&motion, reduced_motion);
         let group_name = format!("{}:item-{}", cx.entity().entity_id(), ix);
 
@@ -1247,76 +1248,110 @@ impl PopupMenu {
                                 ),
                         ),
                 )
-                .when(submenu_presence.is_some_and(|presence| presence.should_render()), |this| {
-                    let submenu_presence = submenu_presence.expect("submenu presence must exist");
-                    this.child({
-                        let (anchor, left) = self.submenu_anchor;
-                        let is_bottom_pos =
-                            matches!(anchor, Corner::BottomLeft | Corner::BottomRight);
-                        let direction = if matches!(anchor, Corner::TopLeft | Corner::BottomLeft)
-                        {
-                            -1.0
-                        } else {
-                            1.0
-                        };
-                        let submenu = anchored()
-                            .anchor(anchor)
-                            .child(
-                                div()
-                                    .id("submenu")
-                                    .occlude()
-                                    .when(is_bottom_pos, |this| this.bottom_0())
-                                    .when(!is_bottom_pos, |this| this.top_neg_1())
-                                    .left(left)
-                                    .child(menu.clone()),
-                            )
-                            .snap_to_window_with_margin(Edges::all(EDGE_PADDING));
+                .when(
+                    submenu_presence.is_some_and(|presence| presence.should_render()),
+                    |this| {
+                        let submenu_presence =
+                            submenu_presence.expect("submenu presence must exist");
+                        this.child({
+                            let (anchor, left) = self.submenu_anchor;
+                            let is_bottom_pos =
+                                matches!(anchor, Corner::BottomLeft | Corner::BottomRight);
+                            let direction =
+                                if matches!(anchor, Corner::TopLeft | Corner::BottomLeft) {
+                                    -1.0
+                                } else {
+                                    1.0
+                                };
+                            let submenu = anchored()
+                                .anchor(anchor)
+                                .child(
+                                    div()
+                                        .id("submenu")
+                                        .occlude()
+                                        .when(is_bottom_pos, |this| this.bottom_0())
+                                        .when(!is_bottom_pos, |this| this.top_neg_1())
+                                        .left(left)
+                                        .child(menu.clone()),
+                                )
+                                .snap_to_window_with_margin(Edges::all(EDGE_PADDING));
 
-                        if submenu_presence.transition_active() {
-                            let anim = if matches!(submenu_presence.phase, PresencePhase::Entering)
-                            {
-                                submenu_open_anim
-                            } else {
-                                submenu_close_anim
-                            };
-
-                            if let Some(anim) = anim {
-                                div()
-                                    .child(submenu)
-                                    .with_animation(
-                                        SharedString::from(format!(
-                                            "popup-submenu-motion-{}-{}",
-                                            ix,
-                                            u8::from(matches!(
-                                                submenu_presence.phase,
-                                                PresencePhase::Entering
-                                            ))
-                                        )),
-                                        anim,
-                                        move |el, delta| {
-                                            let opacity = submenu_presence.progress(delta);
-                                            let transform_progress = if matches!(
-                                                submenu_presence.phase,
-                                                PresencePhase::Entering
-                                            ) {
-                                                delta
-                                            } else {
-                                                opacity
-                                            };
-                                            el.opacity(opacity).translate_x(px(
-                                                direction * 6.0 * (1.0 - transform_progress),
-                                            ))
-                                        },
-                                    )
-                                    .into_any_element()
+                            if submenu_presence.transition_active() {
+                                if matches!(submenu_presence.phase, PresencePhase::Entering) {
+                                    let transformed =
+                                        if let Some(anim) = submenu_open_transform_anim {
+                                            div()
+                                                .child(submenu)
+                                                .with_animation(
+                                                    SharedString::from(format!(
+                                                        "popup-submenu-open-transform-{}",
+                                                        ix
+                                                    )),
+                                                    anim,
+                                                    move |el, delta| {
+                                                        el.translate_x(px(direction
+                                                            * 6.0
+                                                            * (1.0 - delta)))
+                                                    },
+                                                )
+                                                .into_any_element()
+                                        } else {
+                                            div().child(submenu).into_any_element()
+                                        };
+                                    if let Some(anim) = submenu_open_opacity_anim {
+                                        div()
+                                            .child(transformed)
+                                            .with_animation(
+                                                SharedString::from(format!(
+                                                    "popup-submenu-open-opacity-{}",
+                                                    ix
+                                                )),
+                                                anim,
+                                                move |el, delta| {
+                                                    el.opacity(
+                                                        submenu_presence
+                                                            .progress(delta)
+                                                            .clamp(0.0, 1.0),
+                                                    )
+                                                },
+                                            )
+                                            .into_any_element()
+                                    } else {
+                                        div()
+                                            .child(transformed)
+                                            .opacity(submenu_presence.progress(1.0))
+                                            .into_any_element()
+                                    }
+                                } else {
+                                    if let Some(anim) = submenu_close_anim {
+                                        div()
+                                            .child(submenu)
+                                            .with_animation(
+                                                SharedString::from(format!(
+                                                    "popup-submenu-close-motion-{}",
+                                                    ix
+                                                )),
+                                                anim,
+                                                move |el, delta| {
+                                                    let progress = submenu_presence
+                                                        .progress(delta)
+                                                        .clamp(0.0, 1.0);
+                                                    el.opacity(progress).translate_x(px(direction
+                                                        * 6.0
+                                                        * (1.0 - progress)))
+                                                },
+                                            )
+                                            .into_any_element()
+                                    } else {
+                                        submenu.into_any_element()
+                                    }
+                                }
                             } else {
                                 submenu.into_any_element()
                             }
-                        } else {
-                            submenu.into_any_element()
-                        }
-                    })
-                }),
+                        })
+                    },
+                ),
         }
     }
 }

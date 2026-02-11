@@ -1,7 +1,7 @@
 use crate::{
     ActiveTheme, Collapsible, Icon, IconName, PixelsExt, Side, Sizable, StyledExt,
     animation::{
-        PresenceOptions, PresencePhase, keyed_presence, soft_dismiss_animation,
+        PresenceOptions, PresencePhase, keyed_presence, point_to_point_animation,
         spring_invoke_animation,
     },
     button::{Button, ButtonVariants},
@@ -235,6 +235,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         } else {
             expanded_width
         };
+        let open_slide_direction = if self.side.is_left() { -1.0 } else { 1.0 };
         let base_width = if transition_active {
             from_width
         } else if target_collapsed {
@@ -342,31 +343,37 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         if !transition_active {
             sidebar.into_any_element()
         } else {
-            let anim = if matches!(presence.phase, PresencePhase::Entering) {
-                spring_invoke_animation(&motion, reduced_motion)
-            } else {
-                soft_dismiss_animation(&motion, reduced_motion)
-            };
+            let width_anim = point_to_point_animation(&motion, reduced_motion);
+            if let Some(width_anim) = width_anim {
+                let width_animated = sidebar.with_animation(
+                    SharedString::from(format!(
+                        "{}-sidebar-width-{}",
+                        sidebar_id,
+                        u8::from(target_collapsed)
+                    )),
+                    width_anim,
+                    move |this, delta| this.w(from_width + (to_width - from_width) * delta),
+                );
 
-            if let Some(anim) = anim {
-                sidebar
-                    .with_animation(
-                        SharedString::from(format!(
-                            "{}-sidebar-width-{}",
-                            sidebar_id,
-                            u8::from(target_collapsed)
-                        )),
-                        anim,
-                        move |this, delta| {
-                            let progress = if matches!(presence.phase, PresencePhase::Entering) {
-                                delta.clamp(0.0, 1.08)
-                            } else {
-                                delta.clamp(0.0, 1.0)
-                            };
-                            this.w(from_width + (to_width - from_width) * progress)
-                        },
-                    )
-                    .into_any_element()
+                if matches!(presence.phase, PresencePhase::Entering) {
+                    if let Some(transform_anim) = spring_invoke_animation(&motion, reduced_motion) {
+                        return div()
+                            .child(width_animated)
+                            .with_animation(
+                                SharedString::from(format!(
+                                    "{}-sidebar-open-transform",
+                                    sidebar_id
+                                )),
+                                transform_anim,
+                                move |this, delta| {
+                                    this.translate_x(px(open_slide_direction * 6.0 * (1.0 - delta)))
+                                },
+                            )
+                            .into_any_element();
+                    }
+                }
+
+                width_animated.into_any_element()
             } else {
                 sidebar.into_any_element()
             }

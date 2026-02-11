@@ -14,7 +14,7 @@ use crate::{
     actions::{Cancel, Confirm},
     animation::{
         PresenceOptions, PresencePhase, animation_with_theme_easing, keyed_presence,
-        spring_invoke_animation,
+        point_to_point_animation, spring_invoke_animation,
     },
     button::{Button, ButtonVariant, ButtonVariants as _},
     global_state::GlobalState,
@@ -52,14 +52,12 @@ fn dialog_shadow(delta: f32) -> Vec<BoxShadow> {
 
 pub(crate) fn close_animation_duration(cx: &App) -> Duration {
     let motion = &cx.theme().motion;
-    Duration::from_millis(
-        u64::from(
-            motion
-                .fast_duration_ms
-                .max(motion.soft_dismiss_duration_ms)
-                .max(motion.fade_duration_ms),
-        ),
-    )
+    Duration::from_millis(u64::from(
+        motion
+            .fast_duration_ms
+            .max(motion.soft_dismiss_duration_ms)
+            .max(motion.fade_duration_ms),
+    ))
 }
 
 type RenderButtonFn = Box<dyn FnOnce(&mut Window, &mut App) -> AnyElement>;
@@ -469,16 +467,18 @@ impl RenderOnce for Dialog {
         let transition_active = presence.transition_active();
 
         let motion = &cx.theme().motion;
-        let open_panel_animation = spring_invoke_animation(motion, reduced_motion).unwrap_or_else(
-            || {
+        let open_panel_layout_animation = point_to_point_animation(motion, reduced_motion)
+            .unwrap_or_else(|| {
                 animation_with_theme_easing(
                     Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms))),
                     motion.fast_invoke_easing.as_ref(),
                 )
-            },
-        );
+            });
+        let open_panel_transform_animation = spring_invoke_animation(motion, reduced_motion);
         let close_panel_animation = animation_with_theme_easing(
-            Animation::new(Duration::from_millis(u64::from(motion.soft_dismiss_duration_ms))),
+            Animation::new(Duration::from_millis(u64::from(
+                motion.soft_dismiss_duration_ms,
+            ))),
             motion.soft_dismiss_easing.as_ref(),
         );
         let fade_in_animation = animation_with_theme_easing(
@@ -646,39 +646,61 @@ impl RenderOnce for Dialog {
                                         .opacity(progress)
                                         .into_any_element()
                                 } else {
-                                    let panel_animation = if matches!(
-                                        presence.phase,
-                                        PresencePhase::Entering
-                                    ) {
-                                        open_panel_animation
-                                    } else {
-                                        close_panel_animation
-                                    };
-                                    this.with_animation(
-                                        SharedString::from(format!(
-                                            "dialog-panel-motion-{}",
-                                            u8::from(matches!(
-                                                presence.phase,
-                                                PresencePhase::Entering
-                                            ))
-                                        )),
-                                        panel_animation,
-                                        move |this, delta| {
-                                            let progress = presence.progress(delta).clamp(0.0, 1.0);
-                                            let offset = if matches!(
-                                                presence.phase,
-                                                PresencePhase::Entering
-                                            ) {
-                                                px(OPEN_Y_OFFSET * (1.0 - delta))
-                                            } else {
-                                                px(CLOSE_Y_OFFSET * (1.0 - progress))
-                                            };
-                                            this.translate_y(offset)
-                                                .opacity(progress)
-                                                .shadow(dialog_shadow(progress))
-                                        },
-                                    )
-                                    .into_any_element()
+                                    let panel_layout_animation =
+                                        if matches!(presence.phase, PresencePhase::Entering) {
+                                            open_panel_layout_animation
+                                        } else {
+                                            close_panel_animation
+                                        };
+                                    let layout_animated = this
+                                        .with_animation(
+                                            SharedString::from(format!(
+                                                "dialog-panel-layout-{}",
+                                                u8::from(matches!(
+                                                    presence.phase,
+                                                    PresencePhase::Entering
+                                                ))
+                                            )),
+                                            panel_layout_animation,
+                                            move |this, delta| {
+                                                let progress =
+                                                    presence.progress(delta).clamp(0.0, 1.0);
+                                                let this = if matches!(
+                                                    presence.phase,
+                                                    PresencePhase::Exiting
+                                                ) {
+                                                    let offset =
+                                                        px(CLOSE_Y_OFFSET * (1.0 - progress));
+                                                    this.translate_y(offset)
+                                                } else {
+                                                    this
+                                                };
+                                                this.opacity(progress)
+                                                    .shadow(dialog_shadow(progress))
+                                            },
+                                        )
+                                        .into_any_element();
+                                    if matches!(presence.phase, PresencePhase::Entering) {
+                                        if let Some(transform_animation) =
+                                            open_panel_transform_animation
+                                        {
+                                            return div()
+                                                .child(layout_animated)
+                                                .with_animation(
+                                                    SharedString::from(
+                                                        "dialog-panel-open-transform",
+                                                    ),
+                                                    transform_animation,
+                                                    move |this, delta| {
+                                                        this.translate_y(px(
+                                                            OPEN_Y_OFFSET * (1.0 - delta)
+                                                        ))
+                                                    },
+                                                )
+                                                .into_any_element();
+                                        }
+                                    }
+                                    layout_animated
                                 }
                             }),
                     )
@@ -686,12 +708,12 @@ impl RenderOnce for Dialog {
                         if !should_animate || !transition_active {
                             this.opacity(presence.progress(1.0)).into_any_element()
                         } else {
-                            let fade_animation = if matches!(presence.phase, PresencePhase::Entering)
-                            {
-                                fade_in_animation
-                            } else {
-                                fade_out_animation
-                            };
+                            let fade_animation =
+                                if matches!(presence.phase, PresencePhase::Entering) {
+                                    fade_in_animation
+                                } else {
+                                    fade_out_animation
+                                };
                             this.with_animation(
                                 SharedString::from(format!(
                                     "dialog-fade-motion-{}",

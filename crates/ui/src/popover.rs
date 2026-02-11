@@ -7,7 +7,9 @@ use gpui::{
 use std::rc::Rc;
 
 use crate::{
-    ActiveTheme, Anchor, ElementExt, Selectable, StyledExt as _, actions::Cancel, anchored,
+    ActiveTheme, Anchor, ElementExt, Selectable, StyledExt as _,
+    actions::Cancel,
+    anchored,
     animation::{
         PresenceOptions, PresencePhase, keyed_presence, point_to_point_animation,
         spring_invoke_animation,
@@ -406,7 +408,8 @@ impl RenderOnce for Popover {
             return el;
         }
 
-        let open_anim = spring_invoke_animation(&motion, reduced_motion);
+        let open_fade_anim = point_to_point_animation(&motion, reduced_motion);
+        let open_transform_anim = spring_invoke_animation(&motion, reduced_motion);
         let close_anim = point_to_point_animation(&motion, reduced_motion);
         let vertical_direction = if matches!(
             self.anchor,
@@ -443,33 +446,51 @@ impl RenderOnce for Popover {
                         el.opacity(presence.progress(1.0))
                             .translate_y(px(0.0))
                             .into_any_element()
-                    } else {
-                        let anim = if matches!(presence.phase, PresencePhase::Entering) {
-                            open_anim
+                    } else if matches!(presence.phase, PresencePhase::Entering) {
+                        let translated = if let Some(anim) = open_transform_anim {
+                            div()
+                                .child(el)
+                                .with_animation(
+                                    SharedString::from("popover-open-transform"),
+                                    anim,
+                                    move |el, delta| {
+                                        el.translate_y(px(6.0 * (1.0 - delta) * vertical_direction))
+                                    },
+                                )
+                                .into_any_element()
                         } else {
-                            close_anim
+                            el.into_any_element()
                         };
-                        if let Some(anim) = anim {
+                        if let Some(anim) = open_fade_anim {
+                            div()
+                                .child(translated)
+                                .with_animation(
+                                    SharedString::from("popover-open-fade"),
+                                    anim,
+                                    move |el, delta| {
+                                        let opacity = presence.progress(delta).clamp(0.0, 1.0);
+                                        el.opacity(opacity)
+                                    },
+                                )
+                                .into_any_element()
+                        } else {
+                            div()
+                                .child(translated)
+                                .opacity(presence.progress(1.0))
+                                .into_any_element()
+                        }
+                    } else {
+                        if let Some(anim) = close_anim {
                             el.with_animation(
                                 SharedString::from(format!(
-                                    "popover-motion-{}",
+                                    "popover-close-motion-{}",
                                     u8::from(matches!(presence.phase, PresencePhase::Entering))
                                 )),
                                 anim,
                                 move |el, delta| {
-                                    let opacity = presence.progress(delta);
-                                    // Keep opacity monotonic while allowing spring overshoot on transform.
-                                    let transform_progress = if matches!(
-                                        presence.phase,
-                                        PresencePhase::Entering
-                                    ) {
-                                        delta
-                                    } else {
-                                        opacity
-                                    };
-                                    let offset =
-                                        px(6.0 * (1.0 - transform_progress) * vertical_direction);
-                                    el.opacity(opacity).translate_y(offset)
+                                    let progress = presence.progress(delta).clamp(0.0, 1.0);
+                                    let offset = px(6.0 * (1.0 - progress) * vertical_direction);
+                                    el.opacity(progress).translate_y(offset)
                                 },
                             )
                             .into_any_element()

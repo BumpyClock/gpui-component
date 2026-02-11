@@ -12,7 +12,8 @@ use crate::{
         PresenceOptions, PresencePhase, keyed_presence, point_to_point_animation,
         spring_invoke_animation,
     },
-    global_state::GlobalState, h_flex, v_flex,
+    global_state::GlobalState,
+    h_flex, v_flex,
 };
 
 /// Generous max for animated height reveal. Content fully visible
@@ -251,7 +252,8 @@ impl RenderOnce for AccordionItem {
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
         let close_anim = point_to_point_animation(&motion, reduced_motion);
-        let open_anim = spring_invoke_animation(&motion, reduced_motion);
+        let open_layout_anim = point_to_point_animation(&motion, reduced_motion);
+        let open_transform_anim = spring_invoke_animation(&motion, reduced_motion);
         let chevron_open_anim = spring_invoke_animation(&motion, reduced_motion);
         let chevron_close_anim = close_anim.clone();
         let presence_key = SharedString::from(format!("accordion-presence-{}", self.key_prefix));
@@ -389,16 +391,17 @@ impl RenderOnce for AccordionItem {
                                     .children(self.children),
                             )
                             .map(|el| {
-                                let anim = if presence.transition_active() {
+                                if !presence.transition_active() {
+                                    return el.into_any_element();
+                                }
+
+                                let layout_anim =
                                     if matches!(presence.phase, PresencePhase::Entering) {
-                                        open_anim
+                                        open_layout_anim
                                     } else {
                                         close_anim
-                                    }
-                                } else {
-                                    None
-                                };
-                                if let Some(anim) = anim {
+                                    };
+                                let layout_animated = if let Some(anim) = layout_anim {
                                     let animation_id = ElementId::NamedInteger(
                                         SharedString::from(format!(
                                             "accordion-expand-{}",
@@ -410,23 +413,39 @@ impl RenderOnce for AccordionItem {
                                                 PresencePhase::Entering
                                             )),
                                     );
-
                                     el.with_animation(animation_id, anim, move |el, delta| {
                                         let progress = presence.progress(delta);
                                         let height_progress = accordion_height_progress(progress);
-                                        let el = el
-                                            .max_h(px(ACCORDION_CONTENT_MAX_H * height_progress))
-                                            .opacity(progress);
-                                        if matches!(presence.phase, PresencePhase::Entering) {
-                                            el.translate_y(px(4.0 * (1.0 - delta)))
-                                        } else {
-                                            el
-                                        }
+                                        el.max_h(px(ACCORDION_CONTENT_MAX_H * height_progress))
+                                            .opacity(progress)
                                     })
                                     .into_any_element()
                                 } else {
                                     el.into_any_element()
+                                };
+
+                                if matches!(presence.phase, PresencePhase::Entering) {
+                                    if let Some(anim) = open_transform_anim {
+                                        return div()
+                                            .child(layout_animated)
+                                            .with_animation(
+                                                ElementId::NamedInteger(
+                                                    SharedString::from(format!(
+                                                        "accordion-expand-transform-{}",
+                                                        self.key_prefix
+                                                    )),
+                                                    self.index as u64,
+                                                ),
+                                                anim,
+                                                move |el, delta| {
+                                                    el.translate_y(px(4.0 * (1.0 - delta)))
+                                                },
+                                            )
+                                            .into_any_element();
+                                    }
                                 }
+
+                                layout_animated
                             }),
                     )
                 }),

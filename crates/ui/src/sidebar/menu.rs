@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme as _, Collapsible, Icon, IconName, Sizable as _, StyledExt,
+    ActiveTheme as _, Anchor, Collapsible, Icon, IconName, Selectable, Sizable as _, StyledExt,
     animation::{
         PresenceOptions, PresencePhase, keyed_presence, point_to_point_animation,
         spring_invoke_animation,
@@ -10,15 +10,13 @@ use crate::{
     menu::{ContextMenuExt, PopupMenu, PopupMenuItem},
     popover::Popover,
     sidebar::SidebarItem,
-    Anchor, Selectable,
     v_flex,
 };
 use gpui::{
     AnimationExt as _, AnyElement, App, ClickEvent, Context, DismissEvent, ElementId, Entity,
     Focusable, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, RenderOnce,
     SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
-    percentage,
-    prelude::FluentBuilder, px,
+    percentage, prelude::FluentBuilder, px,
 };
 use std::rc::Rc;
 use std::time::Duration;
@@ -129,7 +127,8 @@ fn build_collapsed_submenu(
 }
 
 fn collapsed_submenu_has_suffix(items: &[SidebarMenuItem]) -> bool {
-    items.iter()
+    items
+        .iter()
         .any(|item| item.suffix.is_some() || collapsed_submenu_has_suffix(&item.children))
 }
 
@@ -369,7 +368,8 @@ impl SidebarItem for SidebarMenuItem {
             cx,
         );
         let submenu_visible = submenu_presence.should_render();
-        let open_anim = spring_invoke_animation(&motion, reduced_motion);
+        let open_layout_anim = point_to_point_animation(&motion, reduced_motion);
+        let open_transform_anim = spring_invoke_animation(&motion, reduced_motion);
         let close_anim = point_to_point_animation(&motion, reduced_motion);
         let chevron_open_anim = spring_invoke_animation(&motion, reduced_motion);
         let chevron_close_anim = close_anim.clone();
@@ -421,7 +421,8 @@ impl SidebarItem for SidebarMenuItem {
                     )
                     .when(is_submenu, |this| {
                         let caret_base = Icon::new(IconName::ChevronRight).size_4();
-                        let caret_icon = if reduced_motion || !submenu_presence.transition_active() {
+                        let caret_icon = if reduced_motion || !submenu_presence.transition_active()
+                        {
                             let icon = if is_open {
                                 caret_base.rotate(percentage(0.25))
                             } else {
@@ -429,7 +430,8 @@ impl SidebarItem for SidebarMenuItem {
                             };
                             icon.into_any_element()
                         } else {
-                            let anim = if matches!(submenu_presence.phase, PresencePhase::Entering) {
+                            let anim = if matches!(submenu_presence.phase, PresencePhase::Entering)
+                            {
                                 chevron_open_anim
                             } else {
                                 chevron_close_anim
@@ -438,17 +440,21 @@ impl SidebarItem for SidebarMenuItem {
                                 let animation_id = SharedString::from(format!(
                                     "{}-submenu-caret-{}",
                                     id,
-                                    u8::from(matches!(submenu_presence.phase, PresencePhase::Entering))
+                                    u8::from(matches!(
+                                        submenu_presence.phase,
+                                        PresencePhase::Entering
+                                    ))
                                 ));
                                 caret_base
                                     .with_animation(animation_id, anim, move |icon, delta| {
-                                        let progress =
-                                            if matches!(submenu_presence.phase, PresencePhase::Entering)
-                                            {
-                                                delta
-                                            } else {
-                                                1.0 - delta
-                                            };
+                                        let progress = if matches!(
+                                            submenu_presence.phase,
+                                            PresencePhase::Entering
+                                        ) {
+                                            delta
+                                        } else {
+                                            1.0 - delta
+                                        };
                                         icon.rotate(percentage(0.25 * progress))
                                     })
                                     .into_any_element()
@@ -516,84 +522,82 @@ impl SidebarItem for SidebarMenuItem {
                 ))
             };
 
-            Popover::new(SharedString::from(format!("{}-collapsed-submenu-popover", id)))
-                .appearance(false)
-                .overlay_closable(has_suffix_controls)
-                .anchor(Anchor::TopRight)
-                .trigger(SidebarCollapsedSubmenuTrigger::new(item_element))
-                .content(move |_, window, cx| {
-                    if has_suffix_controls {
-                        let list_id = SharedString::from(format!(
-                            "{}-collapsed-submenu",
-                            collapsed_content_id
-                        ));
-                        return v_flex()
-                            .id(list_id.clone())
-                            .popover_style(cx)
-                            .p_1()
-                            .gap_1()
-                            .w(px(220.))
-                            .children(children.clone().into_iter().enumerate().map(
-                                |(ix, item)| {
-                                    let item_id =
-                                        SharedString::from(format!("{}-{}", list_id, ix));
-                                    item.collapsed(false)
-                                        .render(item_id, window, cx)
-                                        .into_any_element()
-                                },
-                            ))
-                            .into_any_element();
+            Popover::new(SharedString::from(format!(
+                "{}-collapsed-submenu-popover",
+                id
+            )))
+            .appearance(false)
+            .overlay_closable(has_suffix_controls)
+            .anchor(Anchor::TopRight)
+            .trigger(SidebarCollapsedSubmenuTrigger::new(item_element))
+            .content(move |_, window, cx| {
+                if has_suffix_controls {
+                    let list_id =
+                        SharedString::from(format!("{}-collapsed-submenu", collapsed_content_id));
+                    return v_flex()
+                        .id(list_id.clone())
+                        .popover_style(cx)
+                        .p_1()
+                        .gap_1()
+                        .w(px(220.))
+                        .children(children.clone().into_iter().enumerate().map(|(ix, item)| {
+                            let item_id = SharedString::from(format!("{}-{}", list_id, ix));
+                            item.collapsed(false)
+                                .render(item_id, window, cx)
+                                .into_any_element()
+                        }))
+                        .into_any_element();
+                }
+
+                let Some(menu_state) = menu_state.as_ref() else {
+                    return PopupMenu::build(window, cx, |menu, _, _| menu).into_any_element();
+                };
+                let menu = match menu_state.read(cx).menu.clone() {
+                    Some(menu) => menu,
+                    None => {
+                        let menu_items = children.clone();
+                        let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
+                            build_collapsed_submenu(menu, menu_items.clone(), window, cx)
+                        });
+                        menu_state.update(cx, |state, _| {
+                            state.menu = Some(menu.clone());
+                        });
+                        menu.focus_handle(cx).focus(window, cx);
+
+                        let popover_state = cx.entity();
+                        window
+                            .subscribe(&menu, cx, {
+                                let menu_state = menu_state.clone();
+                                move |_, _: &DismissEvent, window, cx| {
+                                    popover_state.update(cx, |state, cx| {
+                                        state.dismiss(window, cx);
+                                        let dismiss_duration = Duration::from_millis(u64::from(
+                                            cx.theme().motion.fade_duration_ms,
+                                        ));
+                                        cx.spawn({
+                                            let menu_state = menu_state.clone();
+                                            async move |_, cx| {
+                                                cx.background_executor()
+                                                    .timer(dismiss_duration)
+                                                    .await;
+                                                _ = menu_state.update(cx, |state, _| {
+                                                    state.menu = None;
+                                                });
+                                            }
+                                        })
+                                        .detach();
+                                    });
+                                }
+                            })
+                            .detach();
+
+                        menu.clone()
                     }
+                };
 
-                    let Some(menu_state) = menu_state.as_ref() else {
-                        return PopupMenu::build(window, cx, |menu, _, _| menu).into_any_element();
-                    };
-                    let menu = match menu_state.read(cx).menu.clone() {
-                        Some(menu) => menu,
-                        None => {
-                            let menu_items = children.clone();
-                            let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
-                                build_collapsed_submenu(menu, menu_items.clone(), window, cx)
-                            });
-                            menu_state.update(cx, |state, _| {
-                                state.menu = Some(menu.clone());
-                            });
-                            menu.focus_handle(cx).focus(window, cx);
-
-                            let popover_state = cx.entity();
-                            window
-                                .subscribe(&menu, cx, {
-                                    let menu_state = menu_state.clone();
-                                    move |_, _: &DismissEvent, window, cx| {
-                                        popover_state.update(cx, |state, cx| {
-                                            state.dismiss(window, cx);
-                                            let dismiss_duration = Duration::from_millis(u64::from(
-                                                cx.theme().motion.fade_duration_ms,
-                                            ));
-                                            cx.spawn({
-                                                let menu_state = menu_state.clone();
-                                                async move |_, cx| {
-                                                    cx.background_executor()
-                                                        .timer(dismiss_duration)
-                                                        .await;
-                                                    _ = menu_state.update(cx, |state, _| {
-                                                        state.menu = None;
-                                                    });
-                                                }
-                                            })
-                                            .detach();
-                                        });
-                                    }
-                                })
-                                .detach();
-
-                            menu.clone()
-                        }
-                    };
-
-                    menu.into_any_element()
-                })
-                .into_any_element()
+                menu.into_any_element()
+            })
+            .into_any_element()
         } else {
             item_element
         };
@@ -617,16 +621,17 @@ impl SidebarItem for SidebarMenuItem {
                             item.render(id, window, cx).into_any_element()
                         }))
                         .map(|el| {
-                            let anim = if submenu_presence.transition_active() {
+                            if !submenu_presence.transition_active() {
+                                return el.into_any_element();
+                            }
+
+                            let layout_anim =
                                 if matches!(submenu_presence.phase, PresencePhase::Entering) {
-                                    open_anim
+                                    open_layout_anim
                                 } else {
                                     close_anim
-                                }
-                            } else {
-                                None
-                            };
-                            if let Some(anim) = anim {
+                                };
+                            let layout_animated = if let Some(anim) = layout_anim {
                                 el.with_animation(
                                     SharedString::from(format!(
                                         "{}-submenu-expand-{}",
@@ -640,22 +645,35 @@ impl SidebarItem for SidebarMenuItem {
                                     move |el, delta| {
                                         let progress = submenu_presence.progress(delta);
                                         let clamped = progress.clamp(0.0, 1.0);
-                                        let el = el.max_h(px(
-                                            SUBMENU_CONTENT_MAX_H * submenu_height_progress(clamped),
-                                        ))
-                                        .opacity(clamped);
-                                        if matches!(submenu_presence.phase, PresencePhase::Entering)
-                                        {
-                                            el.translate_y(px(3.0 * (1.0 - delta)))
-                                        } else {
-                                            el
-                                        }
+                                        el.max_h(px(SUBMENU_CONTENT_MAX_H
+                                            * submenu_height_progress(clamped)))
+                                            .opacity(clamped)
                                     },
                                 )
                                 .into_any_element()
                             } else {
                                 el.into_any_element()
+                            };
+
+                            if matches!(submenu_presence.phase, PresencePhase::Entering) {
+                                if let Some(anim) = open_transform_anim {
+                                    return div()
+                                        .child(layout_animated)
+                                        .with_animation(
+                                            SharedString::from(format!(
+                                                "{}-submenu-open-transform",
+                                                id
+                                            )),
+                                            anim,
+                                            move |el, delta| {
+                                                el.translate_y(px(3.0 * (1.0 - delta)))
+                                            },
+                                        )
+                                        .into_any_element();
+                                }
                             }
+
+                            layout_animated
                         }),
                 )
             })
