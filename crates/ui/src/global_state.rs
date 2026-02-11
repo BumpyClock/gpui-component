@@ -1,4 +1,4 @@
-use gpui::{App, Entity, Global};
+use gpui::{App, Entity, Global, Pixels, px};
 
 use crate::text::TextViewState;
 
@@ -14,6 +14,8 @@ pub struct GlobalState {
     blur_enabled_stack: Vec<bool>,
     /// Stack for reduced_motion context values.
     reduced_motion_stack: Vec<bool>,
+    /// Stack for floating inset values.
+    floating_inset_stack: Vec<Pixels>,
 }
 
 impl GlobalState {
@@ -22,6 +24,7 @@ impl GlobalState {
             text_view_state_stack: Vec::new(),
             blur_enabled_stack: vec![true],    // Default to enabled
             reduced_motion_stack: vec![false], // Default to not reduced
+            floating_inset_stack: vec![px(4.0)],
         }
     }
 
@@ -85,6 +88,23 @@ impl GlobalState {
     pub fn set_reduced_motion(&mut self, reduced: bool) {
         if let Some(first) = self.reduced_motion_stack.first_mut() {
             *first = reduced;
+        }
+    }
+
+    /// Returns the current floating inset from the context stack.
+    pub fn floating_inset(&self) -> Pixels {
+        self.floating_inset_stack.last().copied().unwrap_or(px(4.0))
+    }
+
+    /// Push a floating inset value onto the context stack.
+    pub fn push_floating_inset(&mut self, inset: Pixels) {
+        self.floating_inset_stack.push(inset);
+    }
+
+    /// Pop a floating inset value from the context stack.
+    pub fn pop_floating_inset(&mut self) {
+        if self.floating_inset_stack.len() > 1 {
+            self.floating_inset_stack.pop();
         }
     }
 }

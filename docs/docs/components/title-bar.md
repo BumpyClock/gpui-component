@@ -95,11 +95,15 @@ TitleBar::new()
 
 ```rust
 use gpui::{WindowOptions, TitlebarOptions};
+use gpui_component::WindowShell;
 
 WindowOptions {
     titlebar: Some(TitleBar::title_bar_options()),
     ..Default::default()
 }
+
+// Equivalent helper
+let options = WindowShell::window_options();
 ```
 
 ## Platform Differences
@@ -109,7 +113,7 @@ WindowOptions {
 - Uses native traffic light buttons (minimize, maximize, close)
 - Traffic light position is automatically set to `(9px, 9px)`
 - Double-click behavior calls `window.titlebar_double_click()`
-- Left padding accounts for traffic light buttons (80px)
+- Default content left inset accounts for traffic light buttons (80px)
 - Appears transparent by default
 
 ### Windows
@@ -118,7 +122,7 @@ WindowOptions {
 - Uses `WindowControlArea` for proper window management
 - Control buttons have hover and active states
 - Fixed button width of 34px each
-- Left padding is 12px
+- Default content insets are left `8px`, right `12px`
 
 ### Linux
 
@@ -137,6 +141,11 @@ WindowOptions {
 | `new()`               | Create a new title bar                   |
 | `child(element)`      | Add child element to the title bar       |
 | `on_close_window(fn)` | Custom close window handler (Linux only) |
+| `content_insets(...)` | Set content insets for title bar content |
+| `content_inset_left(...)` | Set left content inset                |
+| `content_inset_right(...)` | Set right content inset              |
+| `safe_area_left(...)` | Add left safe-area offset                |
+| `safe_area_right(...)` | Add right safe-area offset              |
 | `title_bar_options()` | Get default titlebar options for window  |
 
 ### Window Configuration
@@ -153,10 +162,9 @@ The `TitleBarElement` provides window dragging functionality on Linux platforms.
 
 ### Constants
 
-| Constant                 | Value                           | Description               |
-| ------------------------ | ------------------------------- | ------------------------- |
-| `TITLE_BAR_HEIGHT`       | `34px`                          | Standard title bar height |
-| `TITLE_BAR_LEFT_PADDING` | `80px` (macOS), `12px` (others) | Left padding for content  |
+| Constant           | Value  | Description               |
+| ------------------ | ------ | ------------------------- |
+| `TITLE_BAR_HEIGHT` | `34px` | Standard title bar height |
 
 ## Examples
 

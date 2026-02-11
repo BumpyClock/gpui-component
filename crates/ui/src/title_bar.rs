@@ -2,9 +2,10 @@ use std::rc::Rc;
 
 use crate::{ActiveTheme, Icon, IconName, Sizable, StyledExt, h_flex};
 use gpui::{
-    AnyElement, App, ClickEvent, Context, Decorations, Hsla, InteractiveElement, IntoElement,
-    MouseButton, ParentElement, Pixels, Render, RenderOnce, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, TitlebarOptions, Window, WindowControlArea, div,
+    AnyElement, App, ClickEvent, Context, Decorations, Edges, Hsla, InteractiveElement,
+    IntoElement, MouseButton, ParentElement, Pixels, Render, RenderOnce,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, TitlebarOptions, Window,
+    WindowControlArea, div,
     prelude::FluentBuilder as _, px,
 };
 #[cfg(target_os = "windows")]
@@ -21,9 +22,10 @@ use windows::Win32::{
 
 pub const TITLE_BAR_HEIGHT: Pixels = px(34.);
 #[cfg(target_os = "macos")]
-const TITLE_BAR_LEFT_PADDING: Pixels = px(80.);
+const DEFAULT_CONTENT_INSET_LEFT: Pixels = px(80.);
 #[cfg(not(target_os = "macos"))]
-const TITLE_BAR_LEFT_PADDING: Pixels = px(12.);
+const DEFAULT_CONTENT_INSET_LEFT: Pixels = px(8.);
+const DEFAULT_CONTENT_INSET_RIGHT: Pixels = px(12.);
 
 /// TitleBar used to customize the appearance of the title bar.
 ///
@@ -33,6 +35,9 @@ pub struct TitleBar {
     style: StyleRefinement,
     children: SmallVec<[AnyElement; 1]>,
     on_close_window: Option<Rc<Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>>>,
+    content_insets: Option<Edges<Pixels>>,
+    safe_area_left: Pixels,
+    safe_area_right: Pixels,
 }
 
 impl TitleBar {
@@ -42,6 +47,9 @@ impl TitleBar {
             style: StyleRefinement::default(),
             children: SmallVec::new(),
             on_close_window: None,
+            content_insets: None,
+            safe_area_left: px(0.0),
+            safe_area_right: px(0.0),
         }
     }
 
@@ -63,6 +71,40 @@ impl TitleBar {
         if cfg!(target_os = "linux") {
             self.on_close_window = Some(Rc::new(Box::new(f)));
         }
+        self
+    }
+
+    /// Set content insets for title bar content area.
+    pub fn content_insets(mut self, insets: Edges<Pixels>) -> Self {
+        self.content_insets = Some(insets);
+        self
+    }
+
+    /// Set left content inset for title bar content area.
+    pub fn content_inset_left(mut self, inset: impl Into<Pixels>) -> Self {
+        let mut insets = self.content_insets.unwrap_or_else(|| Edges::all(px(0.0)));
+        insets.left = inset.into();
+        self.content_insets = Some(insets);
+        self
+    }
+
+    /// Set right content inset for title bar content area.
+    pub fn content_inset_right(mut self, inset: impl Into<Pixels>) -> Self {
+        let mut insets = self.content_insets.unwrap_or_else(|| Edges::all(px(0.0)));
+        insets.right = inset.into();
+        self.content_insets = Some(insets);
+        self
+    }
+
+    /// Set additional left safe-area offset for title bar content.
+    pub fn safe_area_left(mut self, inset: impl Into<Pixels>) -> Self {
+        self.safe_area_left = inset.into();
+        self
+    }
+
+    /// Set additional right safe-area offset for title bar content.
+    pub fn safe_area_right(mut self, inset: impl Into<Pixels>) -> Self {
+        self.safe_area_right = inset.into();
         self
     }
 }
@@ -297,6 +339,25 @@ impl RenderOnce for TitleBar {
 
         let state = window.use_state(cx, |_, _| TitleBarState { should_move: false });
 
+        let default_insets = if window.is_fullscreen() {
+            Edges {
+                left: px(8.0),
+                right: DEFAULT_CONTENT_INSET_RIGHT,
+                top: px(0.0),
+                bottom: px(0.0),
+            }
+        } else {
+            Edges {
+                left: DEFAULT_CONTENT_INSET_LEFT,
+                right: DEFAULT_CONTENT_INSET_RIGHT,
+                top: px(0.0),
+                bottom: px(0.0),
+            }
+        };
+        let mut content_insets = self.content_insets.unwrap_or(default_insets);
+        content_insets.left += self.safe_area_left;
+        content_insets.right += self.safe_area_right;
+
         // Match Zed's title bar structure exactly:
         // h_flex() with window_control_area(Drag) applied first
         h_flex()
@@ -371,16 +432,6 @@ impl RenderOnce for TitleBar {
                         })
                     })
             })
-            // Padding based on platform and fullscreen state
-            .map(|this| {
-                if window.is_fullscreen() {
-                    this.pl_2()
-                } else if is_macos {
-                    this.pl(TITLE_BAR_LEFT_PADDING)
-                } else {
-                    this.pl_2()
-                }
-            })
             // Styling
             .border_b_1()
             .border_color(cx.theme().title_bar_border)
@@ -397,6 +448,8 @@ impl RenderOnce for TitleBar {
                     .justify_between()
                     .overflow_x_hidden()
                     .w_full()
+                    .pl(content_insets.left)
+                    .pr(content_insets.right)
                     .when(is_linux && is_client_decorated, |this| {
                         this.on_mouse_down(MouseButton::Right, move |ev, window, _| {
                             window.show_window_menu(ev.position)

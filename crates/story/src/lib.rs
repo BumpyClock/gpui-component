@@ -6,7 +6,7 @@ use gpui::{
     size,
 };
 use gpui_component::{
-    ActiveTheme, IconName, Root, TitleBar, WindowExt,
+    ActiveTheme, IconName, Root, WindowExt, WindowShell,
     button::Button,
     dock::{Panel, PanelControl, PanelEvent, PanelInfo, PanelState, TitleStyle, register_panel},
     group_box::{GroupBox, GroupBoxVariants as _},
@@ -108,7 +108,6 @@ pub fn create_new_window_with_size<F, E>(
     cx.spawn(async move |cx| {
         let options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(window_bounds)),
-            titlebar: Some(TitleBar::title_bar_options()),
             window_min_size: Some(gpui::Size {
                 width: px(480.),
                 height: px(320.),
@@ -118,7 +117,7 @@ pub fn create_new_window_with_size<F, E>(
             window_background: gpui::WindowBackgroundAppearance::Transparent,
             #[cfg(target_os = "linux")]
             window_decorations: Some(gpui::WindowDecorations::Client),
-            ..Default::default()
+            ..WindowShell::window_options()
         };
 
         let window = cx

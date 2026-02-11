@@ -126,6 +126,15 @@ What worked:
 Outcome: spring feel on open with stable visibility lifecycle and no opacity bounce artifacts.
 Next time: avoid feeding unbounded spring progress directly into visibility/height/opacity properties.
 
+## 2026-02-11
+Context: WindowShell/TitleBar/SidebarShell API cleanup for safe areas and floating insets.
+What worked:
+- Add `FloatingInsetScope` context from `WindowShell` and let `SidebarShell` inherit inset when unset.
+- Add `TitleBar` content inset API plus safe-area offsets, then apply `WindowShell` safe-area values through it.
+- Add `SidebarShell::top_inset` and `on_mouse_up_out` resize-end callback to complete drag lifecycle.
+Outcome: app-level hacks for shell/titlebar/sidebar spacing are no longer required for common layouts.
+Next time: keep inset defaults contextual (scope first, explicit override second) to avoid prop-drilling.
+
 ## 2026-02-10
 Context: collapsed sidebar items with children were not navigable.
 What worked: wrap collapsed parent in `Popover` and render children via `PopupMenu` (recursive submenu builder); cache menu entity with keyed state and clear on dismiss.

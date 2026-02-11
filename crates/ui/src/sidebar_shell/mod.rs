@@ -55,7 +55,6 @@ use crate::{
 const DEFAULT_MIN_WIDTH: f32 = 200.0;
 const DEFAULT_MAX_WIDTH: f32 = 400.0;
 const DEFAULT_RESIZER_WIDTH: f32 = 6.0;
-const DEFAULT_INSET: f32 = 4.0;
 
 /// Creates a 3-layer shadow effect for elevated sidebar panels.
 ///
@@ -140,8 +139,10 @@ pub struct SidebarShell {
     elevation: ElevationToken,
     /// Placement side (left or right).
     side: Side,
-    /// Inset from window edges in pixels.
-    inset: Pixels,
+    /// Inset from window edges in pixels. If `None`, inherits from context.
+    inset: Option<Pixels>,
+    /// Additional top inset applied above the inherited/explicit inset.
+    top_inset: Pixels,
     /// Whether blur effects are enabled for the glass surface.
     /// If `None`, the value is inherited from the parent context (e.g., WindowShell).
     /// If `Some(value)`, the explicit value is used.
@@ -194,7 +195,8 @@ impl SidebarShell {
             on_resize_end: None,
             elevation: ElevationToken::Lg,
             side,
-            inset: px(DEFAULT_INSET),
+            inset: None,
+            top_inset: px(0.0),
             blur_enabled: None, // Inherit from context by default
             children: SmallVec::new(),
             style: StyleRefinement::default(),
@@ -276,9 +278,17 @@ impl SidebarShell {
     /// Sets the inset from window edges.
     ///
     /// This creates space between the sidebar and the window bounds.
-    /// Default: 4px.
+    /// Default: inherited from context (4px when no parent scope provides a value).
     pub fn inset(mut self, inset: impl Into<Pixels>) -> Self {
-        self.inset = inset.into();
+        self.inset = Some(inset.into());
+        self
+    }
+
+    /// Sets additional top inset on top of the base inset.
+    ///
+    /// Default: 0px.
+    pub fn top_inset(mut self, inset: impl Into<Pixels>) -> Self {
+        self.top_inset = inset.into();
         self
     }
 
@@ -348,7 +358,12 @@ impl RenderOnce for SidebarShell {
 
         let window_bounds = window.window_bounds().get_bounds();
         let window_height = window_bounds.size.height;
-        let sidebar_height = window_height - self.inset * 2.0;
+        let inset = self
+            .inset
+            .unwrap_or_else(|| GlobalState::global(cx).floating_inset());
+        let top = inset + self.top_inset;
+        let bottom = inset;
+        let sidebar_height = (window_height - (top + bottom)).max(px(0.0));
         let sidebar_width = self.width;
 
         // Use explicit value if set, otherwise inherit from context
@@ -383,14 +398,14 @@ impl RenderOnce for SidebarShell {
         let outer = div()
             .id("sidebar-shell")
             .absolute()
-            .top(self.inset)
-            .bottom(self.inset)
+            .top(top)
+            .bottom(bottom)
             .w(self.width)
             .map(|el| {
                 if is_left {
-                    el.left(self.inset)
+                    el.left(inset)
                 } else {
-                    el.right(self.inset)
+                    el.right(inset)
                 }
             })
             .child(
@@ -417,7 +432,11 @@ impl RenderOnce for SidebarShell {
                         })
                     })
                     .when_some(on_resize_end, move |el, callback| {
+                        let callback_mouse_up = callback.clone();
                         el.on_mouse_up(gpui::MouseButton::Left, move |_event, window, cx| {
+                            callback_mouse_up(window, cx);
+                        })
+                        .on_mouse_up_out(gpui::MouseButton::Left, move |_event, window, cx| {
                             callback(window, cx);
                         })
                     }),

@@ -31,31 +31,26 @@
 //!   underlying content from intercepting clicks in the title bar region.
 
 mod blur_scope;
+mod floating_inset_scope;
 mod reduced_motion_scope;
 
 pub use blur_scope::BlurEnabledScope;
+pub use floating_inset_scope::FloatingInsetScope;
 pub use reduced_motion_scope::ReducedMotionScope;
 
 use std::rc::Rc;
 
 use gpui::{
     AnyElement, App, Hsla, InteractiveElement, IntoElement, MouseButton, MouseMoveEvent,
-    MouseUpEvent, ParentElement, Pixels, RenderOnce, StyleRefinement, Styled, Window, div,
+    MouseUpEvent, ParentElement, Pixels, RenderOnce, StyleRefinement, Styled, Window,
+    WindowOptions, div,
     prelude::FluentBuilder as _, px, transparent_black,
 };
 
 use crate::{ActiveTheme, StyledExt, TITLE_BAR_HEIGHT, TitleBar};
 
-/// Default safe area left padding for macOS traffic lights.
-#[cfg(target_os = "macos")]
-const DEFAULT_SAFE_AREA_LEFT: Pixels = px(80.0);
-#[cfg(not(target_os = "macos"))]
+/// Default additional safe area offsets for title bar content.
 const DEFAULT_SAFE_AREA_LEFT: Pixels = px(0.0);
-
-/// Default safe area right padding (for Windows caption buttons).
-#[cfg(target_os = "windows")]
-const DEFAULT_SAFE_AREA_RIGHT: Pixels = px(138.0); // 3 buttons × 46px
-#[cfg(not(target_os = "windows"))]
 const DEFAULT_SAFE_AREA_RIGHT: Pixels = px(0.0);
 
 /// Default splitter width for Split layout mode.
@@ -159,8 +154,8 @@ impl WindowShell {
     /// - `inset`: 4.0px
     /// - `blur_enabled`: true
     /// - `reduced_motion`: false
-    /// - `safe_area_left`: 80px on macOS, 0 otherwise
-    /// - `safe_area_right`: 138px on Windows, 0 otherwise
+    /// - `safe_area_left`: 0px (additional offset)
+    /// - `safe_area_right`: 0px (additional offset)
     pub fn new() -> Self {
         Self {
             layout_mode: WindowLayoutMode::default(),
@@ -185,6 +180,16 @@ impl WindowShell {
             splitter_width: DEFAULT_SPLITTER_WIDTH,
             splitter_style: StyleRefinement::default(),
             style: StyleRefinement::default(),
+        }
+    }
+
+    /// Returns default `WindowOptions` compatible with `WindowShell` + `TitleBar`.
+    ///
+    /// This keeps app setup consistent and avoids hand-rolling titlebar defaults.
+    pub fn window_options() -> WindowOptions {
+        WindowOptions {
+            titlebar: Some(TitleBar::title_bar_options()),
+            ..WindowOptions::default()
         }
     }
 
@@ -428,14 +433,18 @@ impl WindowShell {
         sidebar_left: Option<AnyElement>,
         sidebar_right: Option<AnyElement>,
         main: Option<AnyElement>,
+        title_bar_height: Pixels,
     ) -> impl IntoElement {
         // In FloatingPanels mode, sidebars are expected to be SidebarShell instances
         // which handle their own absolute positioning and insets.
         div()
             .id("window-shell-floating-layout")
             .absolute()
-            .inset_0()
-            .when_some(main, |el, main| el.child(main))
+            .top(title_bar_height)
+            .left_0()
+            .right_0()
+            .bottom_0()
+            .when_some(main, |el, main| el.child(div().size_full().child(main)))
             .when_some(sidebar_left, |el, sidebar| el.child(sidebar))
             .when_some(sidebar_right, |el, sidebar| el.child(sidebar))
     }
@@ -561,7 +570,11 @@ impl RenderOnce for WindowShell {
         let titlebar_bg = cx.theme().transparent;
 
         // Build the title bar
-        let mut title_bar = TitleBar::new().bg(transparent_black()).border_b_0();
+        let mut title_bar = TitleBar::new()
+            .bg(transparent_black())
+            .border_b_0()
+            .safe_area_left(self.safe_area_left)
+            .safe_area_right(self.safe_area_right);
 
         if let Some(left) = self.title_bar_left {
             title_bar = title_bar.child(left);
@@ -592,6 +605,7 @@ impl RenderOnce for WindowShell {
                 self.sidebar_left,
                 self.sidebar_right,
                 self.main,
+                title_bar_height,
             )
             .into_any_element(),
 
@@ -619,6 +633,7 @@ impl RenderOnce for WindowShell {
         // Wrap content layer with blur and reduced motion context so child components can inherit
         let content_layer = BlurEnabledScope::new(self.blur_enabled, content_layer);
         let content_layer = ReducedMotionScope::new(self.reduced_motion, content_layer);
+        let content_layer = FloatingInsetScope::new(self.inset, content_layer);
 
         // Clone handlers for use in closures
         let on_mouse_move = self.on_mouse_move.clone();
