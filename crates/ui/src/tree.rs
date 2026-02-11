@@ -87,8 +87,9 @@ impl TreeEntry {
         self.depth
     }
 
+    /// Whether this entry is a root-level item (depth 0).
     #[inline]
-    fn is_root(&self) -> bool {
+    pub fn is_root(&self) -> bool {
         self.depth == 0
     }
 
@@ -294,11 +295,28 @@ impl TreeState {
             return;
         }
 
+        // Expand each ancestor incrementally
         for ancestor in ancestors {
+            if ancestor.is_expanded() {
+                continue;
+            }
             ancestor.state.borrow_mut().expanded = true;
-        }
 
-        self.rebuild_entries();
+            // Find this ancestor in the current entries and splice in its children
+            if let Some(ix) = self.entries.iter().position(|e| e.item.id == ancestor.id) {
+                let depth = self.entries[ix].depth;
+                let children = Self::flatten_children(&ancestor, depth + 1);
+                let inserted = children.len();
+                self.entries.splice(ix + 1..ix + 1, children);
+
+                // Adjust selection
+                if let Some(sel) = self.selected_ix {
+                    if sel > ix {
+                        self.selected_ix = Some(sel + inserted);
+                    }
+                }
+            }
+        }
     }
 
     fn add_entry(&mut self, item: &TreeItem, depth: usize) {
@@ -378,19 +396,6 @@ impl TreeState {
                     self.selected_ix = Some(sel + inserted);
                 }
             }
-        }
-    }
-
-    fn rebuild_entries(&mut self) {
-        let root_items: Vec<TreeItem> = self
-            .entries
-            .iter()
-            .filter(|e| e.is_root())
-            .map(|e| e.item.clone())
-            .collect();
-        self.entries.clear();
-        for item in &root_items {
-            self.add_entry(item, 0);
         }
     }
 
@@ -649,6 +654,100 @@ mod tests {
                 "#
                 },
             );
+        })
+    }
+
+    #[gpui::test]
+    fn test_selection_adjustment_on_collapse(cx: &mut gpui::TestAppContext) {
+        use super::TreeItem;
+
+        // Tree:
+        //  0: src (expanded)
+        //  1:   ui (expanded)
+        //  2:     button.rs
+        //  3:     icon.rs
+        //  4:   lib.rs
+        //  5: README.md
+        let items = vec![
+            TreeItem::new("src", "src")
+                .expanded(true)
+                .child(
+                    TreeItem::new("ui", "ui")
+                        .expanded(true)
+                        .child(TreeItem::new("button.rs", "button.rs"))
+                        .child(TreeItem::new("icon.rs", "icon.rs")),
+                )
+                .child(TreeItem::new("lib.rs", "lib.rs")),
+            TreeItem::new("README.md", "README.md"),
+        ];
+
+        let state = cx.new(|cx| TreeState::new(cx).items(items));
+        state.update(cx, |state, _| {
+            assert_eq!(state.entries.len(), 6);
+
+            // Select "README.md" at index 5, collapse "ui" at index 1
+            // Removes button.rs + icon.rs (2 items), README moves to index 3
+            state.selected_ix = Some(5);
+            state.toggle_expand(1);
+            assert_eq!(state.selected_ix, Some(3));
+            assert_eq!(state.entries[3].item.label.as_ref(), "README.md");
+
+            // Re-expand "ui", README should shift back
+            state.toggle_expand(1);
+            assert_eq!(state.selected_ix, Some(5));
+            assert_eq!(state.entries[5].item.label.as_ref(), "README.md");
+        })
+    }
+
+    #[gpui::test]
+    fn test_selection_inside_collapsed_subtree(cx: &mut gpui::TestAppContext) {
+        use super::TreeItem;
+
+        let items = vec![
+            TreeItem::new("src", "src")
+                .expanded(true)
+                .child(
+                    TreeItem::new("ui", "ui")
+                        .expanded(true)
+                        .child(TreeItem::new("button.rs", "button.rs"))
+                        .child(TreeItem::new("icon.rs", "icon.rs")),
+                )
+                .child(TreeItem::new("lib.rs", "lib.rs")),
+        ];
+
+        let state = cx.new(|cx| TreeState::new(cx).items(items));
+        state.update(cx, |state, _| {
+            // Select "icon.rs" at index 3, then collapse parent "ui" at index 1
+            // Selected item is inside collapsed subtree → selection moves to parent
+            state.selected_ix = Some(3);
+            state.toggle_expand(1);
+            assert_eq!(state.selected_ix, Some(1));
+            assert_eq!(state.entries[1].item.label.as_ref(), "ui");
+        })
+    }
+
+    #[gpui::test]
+    fn test_selection_before_expanded_node(cx: &mut gpui::TestAppContext) {
+        use super::TreeItem;
+
+        let items = vec![
+            TreeItem::new("a", "a"),
+            TreeItem::new("b", "b")
+                .child(TreeItem::new("b1", "b1"))
+                .child(TreeItem::new("b2", "b2")),
+            TreeItem::new("c", "c"),
+        ];
+
+        let state = cx.new(|cx| TreeState::new(cx).items(items));
+        state.update(cx, |state, _| {
+            // Select "a" at index 0, expand "b" at index 1
+            // Selection at index 0 should stay unchanged
+            state.selected_ix = Some(0);
+            state.toggle_expand(1);
+            assert_eq!(state.selected_ix, Some(0));
+            assert_eq!(state.entries[0].item.label.as_ref(), "a");
+            // "c" moved from index 2 to index 4
+            assert_eq!(state.entries[4].item.label.as_ref(), "c");
         })
     }
 }

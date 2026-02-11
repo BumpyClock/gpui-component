@@ -363,7 +363,7 @@ where
             self.bounds.size.width - self.fixed_head_cols_bounds.size.width;
 
         if viewport_width <= px(0.) {
-            return (0..col_sizes.len(), col_origins);
+            return (0..0, col_origins);
         }
 
         let viewport_start = -scroll_offset_x;
