@@ -233,26 +233,37 @@ impl VirtualList {
         self
     }
 
-    /// Specify for table.
-    ///
-    /// Table is special, because the `scroll_handle` is based on Table head (That is not a virtual list).
-    pub(crate) fn with_scroll_handle(mut self, scroll_handle: &VirtualListScrollHandle) -> Self {
-        self.base = div().id(self.id.clone()).size_full();
-        self.scroll_handle = scroll_handle.clone();
-        self
+    fn compute_item_bounds(
+        &self,
+        ix: usize,
+        item_origins: &[Pixels],
+        item_sizes: &[Pixels],
+        content_bounds: &Bounds<Pixels>,
+    ) -> Option<Bounds<Pixels>> {
+        let &origin = item_origins.get(ix)?;
+        let &item_size = item_sizes.get(ix)?;
+        Some(Bounds {
+            origin: match self.axis {
+                Axis::Horizontal => point(content_bounds.left() + origin, px(0.)),
+                Axis::Vertical => point(px(0.), content_bounds.top() + origin),
+            },
+            size: match self.axis {
+                Axis::Horizontal => size(item_size, content_bounds.size.height),
+                Axis::Vertical => size(content_bounds.size.width, item_size),
+            },
+        })
     }
 
     fn scroll_to_deferred_item(
         &self,
         scroll_offset: Point<Pixels>,
-        items_bounds: &[Bounds<Pixels>],
+        item_origins: &[Pixels],
+        item_sizes: &[Pixels],
         content_bounds: &Bounds<Pixels>,
         scroll_to_item: DeferredScrollToItem,
     ) -> Point<Pixels> {
-        let Some(bounds) = items_bounds
-            .get(scroll_to_item.item_index + scroll_to_item.offset)
-            .cloned()
-        else {
+        let target_ix = scroll_to_item.item_index + scroll_to_item.offset;
+        let Some(bounds) = self.compute_item_bounds(target_ix, item_origins, item_sizes, content_bounds) else {
             return scroll_offset;
         };
 
@@ -398,21 +409,14 @@ impl Element for VirtualList {
                                 })
                                 .collect::<Vec<_>>();
 
-                            // Prepare each item's origin by axis
+                            // Prepare each item's origin by axis (prefix sums)
                             state.origins = state
                                 .sizes
                                 .iter()
-                                .scan(px(0.), |cumulative, size| match self.axis {
-                                    Axis::Horizontal => {
-                                        let x = *cumulative;
-                                        *cumulative += *size;
-                                        Some(x)
-                                    }
-                                    Axis::Vertical => {
-                                        let y = *cumulative;
-                                        *cumulative += *size;
-                                        Some(y)
-                                    }
+                                .scan(px(0.), |cumulative, size| {
+                                    let pos = *cumulative;
+                                    *cumulative += *size;
+                                    Some(pos)
                                 })
                                 .collect::<Vec<_>>();
 
@@ -551,26 +555,6 @@ impl Element for VirtualList {
                 ),
         );
 
-        // Update scroll_handle with the item bounds
-        let items_bounds = item_origins
-            .iter()
-            .enumerate()
-            .map(|(i, &origin)| {
-                let item_size = item_sizes[i];
-
-                Bounds {
-                    origin: match self.axis {
-                        Axis::Horizontal => point(content_bounds.left() + origin, px(0.)),
-                        Axis::Vertical => point(px(0.), content_bounds.top() + origin),
-                    },
-                    size: match self.axis {
-                        Axis::Horizontal => size(item_size, content_bounds.size.height),
-                        Axis::Vertical => size(content_bounds.size.width, item_size),
-                    },
-                }
-            })
-            .collect::<Vec<_>>();
-
         let axis = self.axis;
 
         let mut scroll_state = self.scroll_handle.state.borrow_mut();
@@ -581,7 +565,8 @@ impl Element for VirtualList {
         if let Some(scroll_to_item) = scroll_state.deferred_scroll_to_item.take() {
             scroll_offset = self.scroll_to_deferred_item(
                 scroll_offset,
-                &items_bounds,
+                item_origins,
+                item_sizes,
                 &content_bounds,
                 scroll_to_item,
             );
@@ -624,64 +609,26 @@ impl Element for VirtualList {
                         }
                     }
 
-                    let (first_visible_element_ix, last_visible_element_ix) = match self.axis {
-                        Axis::Horizontal => {
-                            let mut cumulative_size = px(0.);
-                            let mut first_visible_element_ix = 0;
-                            for (i, &size) in item_sizes.iter().enumerate() {
-                                cumulative_size += size;
-                                if cumulative_size > -(scroll_offset.x + paddings.left) {
-                                    first_visible_element_ix = i;
-                                    break;
-                                }
-                            }
-
-                            cumulative_size = px(0.);
-                            let mut last_visible_element_ix = 0;
-                            for (i, &size) in item_sizes.iter().enumerate() {
-                                cumulative_size += size;
-                                if cumulative_size > (-scroll_offset.x + content_bounds.size.width)
-                                {
-                                    last_visible_element_ix = i + 1;
-                                    break;
-                                }
-                            }
-                            if last_visible_element_ix == 0 {
-                                last_visible_element_ix = self.items_count;
-                            } else {
-                                last_visible_element_ix += 1;
-                            }
-                            (first_visible_element_ix, last_visible_element_ix)
-                        }
-                        Axis::Vertical => {
-                            let mut cumulative_size = px(0.);
-                            let mut first_visible_element_ix = 0;
-                            for (i, &size) in item_sizes.iter().enumerate() {
-                                cumulative_size += size;
-                                if cumulative_size > -(scroll_offset.y + paddings.top) {
-                                    first_visible_element_ix = i;
-                                    break;
-                                }
-                            }
-
-                            cumulative_size = px(0.);
-                            let mut last_visible_element_ix = 0;
-                            for (i, &size) in item_sizes.iter().enumerate() {
-                                cumulative_size += size;
-                                if cumulative_size > (-scroll_offset.y + content_bounds.size.height)
-                                {
-                                    last_visible_element_ix = i + 1;
-                                    break;
-                                }
-                            }
-                            if last_visible_element_ix == 0 {
-                                last_visible_element_ix = self.items_count;
-                            } else {
-                                last_visible_element_ix += 1;
-                            }
-                            (first_visible_element_ix, last_visible_element_ix)
-                        }
+                    // Binary search on pre-computed origins for O(log N) visible range
+                    let scroll_along = scroll_offset.along(self.axis);
+                    let padding_start = match self.axis {
+                        Axis::Horizontal => paddings.left,
+                        Axis::Vertical => paddings.top,
                     };
+                    let viewport_start = -(scroll_along + padding_start);
+                    let viewport_end =
+                        -scroll_along + content_bounds.size.along(self.axis);
+
+                    // First visible: last item whose origin <= viewport_start
+                    let first_visible_element_ix = item_origins
+                        .partition_point(|&origin| origin <= viewport_start)
+                        .saturating_sub(1);
+
+                    // Last visible: first item whose origin >= viewport_end, +1 buffer
+                    let last_visible_element_ix = cmp::min(
+                        item_origins.partition_point(|&origin| origin < viewport_end) + 1,
+                        self.items_count,
+                    );
 
                     let visible_range = first_visible_element_ix
                         ..cmp::min(last_visible_element_ix, self.items_count);
@@ -691,27 +638,27 @@ impl Element for VirtualList {
                     let content_mask = ContentMask { bounds };
                     window.with_content_mask(Some(content_mask), |window| {
                         for (mut item, ix) in items.into_iter().zip(visible_range.clone()) {
-                            let item_origin = match self.axis {
-                                Axis::Horizontal => {
-                                    content_bounds.origin
-                                        + point(item_origins[ix] + scroll_offset.x, scroll_offset.y)
-                                }
-                                Axis::Vertical => {
-                                    content_bounds.origin
-                                        + point(scroll_offset.x, item_origins[ix] + scroll_offset.y)
-                                }
-                            };
+                            let item_origin = content_bounds.origin
+                                + scroll_offset.apply_along(self.axis, |v| {
+                                    v + item_origins[ix]
+                                });
 
-                            let available_space = match self.axis {
-                                Axis::Horizontal => size(
-                                    AvailableSpace::Definite(item_sizes[ix]),
-                                    AvailableSpace::Definite(content_bounds.size.height),
+                            let available_space = size(
+                                AvailableSpace::Definite(
+                                    if self.axis.is_horizontal() {
+                                        item_sizes[ix]
+                                    } else {
+                                        content_bounds.size.width
+                                    },
                                 ),
-                                Axis::Vertical => size(
-                                    AvailableSpace::Definite(content_bounds.size.width),
-                                    AvailableSpace::Definite(item_sizes[ix]),
+                                AvailableSpace::Definite(
+                                    if self.axis.is_vertical() {
+                                        item_sizes[ix]
+                                    } else {
+                                        content_bounds.size.height
+                                    },
                                 ),
-                            };
+                            );
 
                             item.layout_as_root(available_space, window, cx);
                             item.prepaint_at(item_origin, window, cx);

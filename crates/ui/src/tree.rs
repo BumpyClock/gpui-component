@@ -215,7 +215,7 @@ impl TreeState {
     pub fn items(mut self, items: impl Into<Vec<TreeItem>>) -> Self {
         let items = items.into();
         self.entries.clear();
-        for item in items.into_iter() {
+        for item in &items {
             self.add_entry(item, 0);
         }
         self
@@ -225,7 +225,7 @@ impl TreeState {
     pub fn set_items(&mut self, items: impl Into<Vec<TreeItem>>, cx: &mut Context<Self>) {
         let items = items.into();
         self.entries.clear();
-        for item in items.into_iter() {
+        for item in &items {
             self.add_entry(item, 0);
         }
         self.selected_ix = None;
@@ -301,28 +301,84 @@ impl TreeState {
         self.rebuild_entries();
     }
 
-    fn add_entry(&mut self, item: TreeItem, depth: usize) {
+    fn add_entry(&mut self, item: &TreeItem, depth: usize) {
         self.entries.push(TreeEntry {
             item: item.clone(),
             depth,
         });
         if item.is_expanded() {
             for child in &item.children {
-                self.add_entry(child.clone(), depth + 1);
+                self.add_entry(child, depth + 1);
             }
         }
     }
 
+    /// Find the index of the next entry at the same or shallower depth (end of subtree).
+    fn find_subtree_end(&self, ix: usize) -> usize {
+        let depth = self.entries[ix].depth;
+        self.entries[ix + 1..]
+            .iter()
+            .position(|e| e.depth <= depth)
+            .map(|pos| ix + 1 + pos)
+            .unwrap_or(self.entries.len())
+    }
+
+    /// Flatten expanded children of a tree item into a Vec of entries.
+    fn flatten_children(item: &TreeItem, depth: usize) -> Vec<TreeEntry> {
+        let mut result = Vec::new();
+        for child in &item.children {
+            result.push(TreeEntry {
+                item: child.clone(),
+                depth,
+            });
+            if child.is_expanded() {
+                result.extend(Self::flatten_children(child, depth + 1));
+            }
+        }
+        result
+    }
+
     fn toggle_expand(&mut self, ix: usize) {
-        let Some(entry) = self.entries.get_mut(ix) else {
+        let Some(entry) = self.entries.get(ix) else {
             return;
         };
         if !entry.is_folder() {
             return;
         }
 
-        entry.item.state.borrow_mut().expanded = !entry.is_expanded();
-        self.rebuild_entries();
+        let was_expanded = entry.is_expanded();
+        entry.item.state.borrow_mut().expanded = !was_expanded;
+
+        if was_expanded {
+            // Collapse: drain descendants
+            let end = self.find_subtree_end(ix);
+            let removed = end - (ix + 1);
+            self.entries.drain(ix + 1..end);
+
+            // Adjust selection
+            if let Some(sel) = self.selected_ix {
+                if sel > ix && sel < end {
+                    // Selected item was in the collapsed subtree
+                    self.selected_ix = Some(ix);
+                } else if sel >= end {
+                    self.selected_ix = Some(sel - removed);
+                }
+            }
+        } else {
+            // Expand: splice in children
+            let depth = self.entries[ix].depth;
+            let item = self.entries[ix].item.clone();
+            let children = Self::flatten_children(&item, depth + 1);
+            let inserted = children.len();
+            self.entries.splice(ix + 1..ix + 1, children);
+
+            // Adjust selection
+            if let Some(sel) = self.selected_ix {
+                if sel > ix {
+                    self.selected_ix = Some(sel + inserted);
+                }
+            }
+        }
     }
 
     fn rebuild_entries(&mut self) {
@@ -333,7 +389,7 @@ impl TreeState {
             .map(|e| e.item.clone())
             .collect();
         self.entries.clear();
-        for item in root_items.into_iter() {
+        for item in &root_items {
             self.add_entry(item, 0);
         }
     }

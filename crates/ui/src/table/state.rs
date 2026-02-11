@@ -1,4 +1,4 @@
-use std::{ops::Range, rc::Rc, time::Duration};
+use std::{cmp, ops::Range, rc::Rc, time::Duration};
 
 use crate::{
     ActiveTheme, ElementExt, Icon, IconName, StyleSized as _, StyledExt, VirtualListScrollHandle,
@@ -335,6 +335,50 @@ where
             .iter()
             .filter(|col| col.column.fixed == Some(ColumnFixed::Left))
             .count()
+    }
+
+    /// Compute the visible column range using binary search on column origins.
+    /// Returns (visible_range, col_origins) where col_origins are prefix sums
+    /// of non-fixed column widths.
+    fn compute_visible_col_range(
+        &self,
+        col_sizes: &[gpui::Size<Pixels>],
+    ) -> (Range<usize>, Vec<Pixels>) {
+        if col_sizes.is_empty() {
+            return (0..0, Vec::new());
+        }
+
+        // Compute prefix sums of column widths
+        let col_origins: Vec<Pixels> = col_sizes
+            .iter()
+            .scan(px(0.), |acc, s| {
+                let origin = *acc;
+                *acc += s.width;
+                Some(origin)
+            })
+            .collect();
+
+        let scroll_offset_x = self.horizontal_scroll_handle.offset().x;
+        let viewport_width =
+            self.bounds.size.width - self.fixed_head_cols_bounds.size.width;
+
+        if viewport_width <= px(0.) {
+            return (0..col_sizes.len(), col_origins);
+        }
+
+        let viewport_start = -scroll_offset_x;
+        let viewport_end = -scroll_offset_x + viewport_width;
+
+        let first_visible = col_origins
+            .partition_point(|&origin| origin <= viewport_start)
+            .saturating_sub(1);
+
+        let last_visible = cmp::min(
+            col_origins.partition_point(|&origin| origin < viewport_end) + 1,
+            col_sizes.len(),
+        );
+
+        (first_visible..last_visible, col_origins)
     }
 
     fn page_item_count(&self) -> usize {
@@ -1038,7 +1082,8 @@ where
         row_ix: usize,
         rows_count: usize,
         left_columns_count: usize,
-        col_sizes: Rc<Vec<gpui::Size<Pixels>>>,
+        visible_col_range: Range<usize>,
+        col_origins: Rc<Vec<Pixels>>,
         columns_count: usize,
         is_filled: bool,
         window: &mut Window,
@@ -1047,7 +1092,6 @@ where
         let horizontal_scroll_handle = self.horizontal_scroll_handle.clone();
         let is_stripe_row = self.options.stripe && row_ix % 2 != 0;
         let is_selected = self.selected_row == Some(row_ix);
-        let view = cx.entity();
         let row_height = self.options.size.table_row_height();
 
         if row_ix < rows_count {
@@ -1111,45 +1155,32 @@ where
                         .h_full()
                         .overflow_hidden()
                         .relative()
-                        .child(
-                            crate::virtual_list::virtual_list(
-                                view,
-                                row_ix,
-                                Axis::Horizontal,
-                                col_sizes,
-                                {
-                                    move |table, visible_range: Range<usize>, window, cx| {
-                                        table.update_visible_range_if_need(
-                                            visible_range.clone(),
-                                            Axis::Horizontal,
-                                            window,
-                                            cx,
-                                        );
+                        .child({
+                            let scroll_offset_x = self.horizontal_scroll_handle.offset().x;
+                            let first_col_origin = col_origins
+                                .get(visible_col_range.start)
+                                .copied()
+                                .unwrap_or(px(0.));
 
-                                        let mut items = Vec::with_capacity(
-                                            visible_range.end - visible_range.start,
-                                        );
+                            let mut row_cols = h_flex()
+                                .h_full()
+                                .left(first_col_origin + scroll_offset_x);
 
-                                        visible_range.for_each(|col_ix| {
-                                            let col_ix = col_ix + left_columns_count;
-                                            let el =
-                                                table.render_col_wrap(col_ix, window, cx).child(
-                                                    table.render_cell(col_ix, window, cx).child(
-                                                        table.measure_render_td(
-                                                            row_ix, col_ix, window, cx,
-                                                        ),
-                                                    ),
-                                                );
+                            for col_ix in visible_col_range.clone() {
+                                let actual_col_ix = col_ix + left_columns_count;
+                                row_cols = row_cols.child(
+                                    self.render_col_wrap(actual_col_ix, window, cx).child(
+                                        self.render_cell(actual_col_ix, window, cx).child(
+                                            self.measure_render_td(
+                                                row_ix, actual_col_ix, window, cx,
+                                            ),
+                                        ),
+                                    ),
+                                );
+                            }
 
-                                            items.push(el);
-                                        });
-
-                                        items
-                                    }
-                                },
-                            )
-                            .with_scroll_handle(&self.horizontal_scroll_handle),
-                        )
+                            row_cols
+                        })
                         .child(self.delegate.render_last_empty_col(window, cx)),
                 )
                 // Row selected style
@@ -1418,6 +1449,18 @@ where
                                                 .collect(),
                                         );
 
+                                        // Compute visible column range once per frame
+                                        let (visible_col_range, col_origins) =
+                                            table.compute_visible_col_range(&col_sizes);
+                                        let col_origins = Rc::new(col_origins);
+
+                                        table.update_visible_range_if_need(
+                                            visible_col_range.clone(),
+                                            Axis::Horizontal,
+                                            window,
+                                            cx,
+                                        );
+
                                         table.load_more_if_need(
                                             rows_count,
                                             visible_range.end,
@@ -1452,7 +1495,8 @@ where
                                                 row_ix,
                                                 rows_count,
                                                 left_columns_count,
-                                                col_sizes.clone(),
+                                                visible_col_range.clone(),
+                                                col_origins.clone(),
                                                 columns_count,
                                                 is_filled,
                                                 window,
