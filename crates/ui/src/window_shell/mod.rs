@@ -43,8 +43,7 @@ use std::rc::Rc;
 use gpui::{
     AnyElement, App, Hsla, InteractiveElement, IntoElement, MouseButton, MouseMoveEvent,
     MouseUpEvent, ParentElement, Pixels, RenderOnce, StyleRefinement, Styled, Window,
-    WindowOptions, div,
-    prelude::FluentBuilder as _, px, transparent_black,
+    WindowOptions, div, prelude::FluentBuilder as _, px, transparent_black,
 };
 
 use crate::{ActiveTheme, StyledExt, TITLE_BAR_HEIGHT, TitleBar};

@@ -436,9 +436,12 @@ impl RenderOnce for SidebarShell {
                         el.on_mouse_up(gpui::MouseButton::Left, move |_event, window, cx| {
                             callback_mouse_up(window, cx);
                         })
-                        .on_mouse_up_out(gpui::MouseButton::Left, move |_event, window, cx| {
-                            callback(window, cx);
-                        })
+                        .on_mouse_up_out(
+                            gpui::MouseButton::Left,
+                            move |_event, window, cx| {
+                                callback(window, cx);
+                            },
+                        )
                     }),
             )
             .refine_style(&self.style);

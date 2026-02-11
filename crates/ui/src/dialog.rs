@@ -13,8 +13,8 @@ use crate::{
     TITLE_BAR_HEIGHT, WindowExt as _,
     actions::{Cancel, Confirm},
     animation::{
-        PresenceOptions, PresencePhase, animation_with_theme_easing, keyed_presence,
-        point_to_point_animation, spring_invoke_animation,
+        PresenceOptions, PresencePhase, SpringPreset, animation_with_theme_easing, keyed_presence,
+        point_to_point_animation, spring_preset_animation,
     },
     button::{Button, ButtonVariant, ButtonVariants as _},
     global_state::GlobalState,
@@ -474,7 +474,8 @@ impl RenderOnce for Dialog {
                     motion.fast_invoke_easing.as_ref(),
                 )
             });
-        let open_panel_transform_animation = spring_invoke_animation(motion, reduced_motion);
+        let open_panel_transform_animation =
+            spring_preset_animation(motion, reduced_motion, SpringPreset::Medium);
         let close_panel_animation = animation_with_theme_easing(
             Animation::new(Duration::from_millis(u64::from(
                 motion.soft_dismiss_duration_ms,

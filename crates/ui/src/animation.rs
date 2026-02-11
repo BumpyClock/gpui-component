@@ -23,7 +23,11 @@ pub fn cubic_bezier(x1: f32, y1: f32, x2: f32, y2: f32) -> impl Fn(f32) -> f32 {
         let _x = 3.0 * x1 * one_t2 * t + 3.0 * x2 * one_t * t2 + t3;
         let y = 3.0 * y1 * one_t2 * t + 3.0 * y2 * one_t * t2 + t3;
 
-        if y.is_finite() { y.clamp(0.0, 1.0) } else { 0.0 }
+        if y.is_finite() {
+            y.clamp(0.0, 1.0)
+        } else {
+            0.0
+        }
     }
 }
 
@@ -131,15 +135,44 @@ pub fn strong_invoke_animation(motion: &ThemeMotion, reduced_motion: bool) -> Op
 pub const DEFAULT_SPRING_DAMPING_RATIO: f32 = 0.75;
 pub const DEFAULT_SPRING_FREQUENCY: f32 = 1.8;
 
-/// Spring invoke animation (uses unbounded easing, transform-only).
-pub fn spring_invoke_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpringPreset {
+    Mild,
+    Medium,
+}
+
+/// Spring animation preset for transform-only motion.
+pub fn spring_preset_animation(
+    motion: &ThemeMotion,
+    reduced_motion: bool,
+    preset: SpringPreset,
+) -> Option<Animation> {
     if reduced_motion {
         return None;
     }
+
+    let (duration_ms, damping_ratio, frequency) = match preset {
+        SpringPreset::Mild => (
+            motion.spring_mild_duration_ms,
+            motion.spring_mild_damping_ratio,
+            motion.spring_mild_frequency,
+        ),
+        SpringPreset::Medium => (
+            motion.spring_medium_duration_ms,
+            motion.spring_medium_damping_ratio,
+            motion.spring_medium_frequency,
+        ),
+    };
+
     Some(
-        Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms)))
-            .with_unbounded_easing(spring(DEFAULT_SPRING_DAMPING_RATIO, DEFAULT_SPRING_FREQUENCY)),
+        Animation::new(Duration::from_millis(u64::from(duration_ms)))
+            .with_unbounded_easing(spring(damping_ratio, frequency)),
     )
+}
+
+/// Spring invoke animation (uses unbounded easing, transform-only).
+pub fn spring_invoke_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
+    spring_preset_animation(motion, reduced_motion, SpringPreset::Mild)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -283,7 +316,9 @@ pub fn keyed_presence(
 
 #[cfg(test)]
 mod tests {
-    use super::{cubic_bezier, cubic_bezier_unbounded, parse_cubic_bezier_easing, spring_invoke_animation};
+    use super::{
+        cubic_bezier, cubic_bezier_unbounded, parse_cubic_bezier_easing, spring_invoke_animation,
+    };
     use crate::ThemeMotion;
 
     #[test]
@@ -328,7 +363,10 @@ mod tests {
             Some((0.13, 1.62, 0.0, 0.92))
         );
         assert_eq!(parse_cubic_bezier_easing("linear"), None);
-        assert_eq!(parse_cubic_bezier_easing("cubic-bezier(0.1, 0.2, 0.3)"), None);
+        assert_eq!(
+            parse_cubic_bezier_easing("cubic-bezier(0.1, 0.2, 0.3)"),
+            None
+        );
     }
 
     #[test]

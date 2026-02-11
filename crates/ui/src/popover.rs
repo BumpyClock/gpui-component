@@ -11,8 +11,8 @@ use crate::{
     actions::Cancel,
     anchored,
     animation::{
-        PresenceOptions, PresencePhase, keyed_presence, point_to_point_animation,
-        spring_invoke_animation,
+        PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
+        spring_preset_animation,
     },
     global_state::GlobalState,
     v_flex,
@@ -409,7 +409,8 @@ impl RenderOnce for Popover {
         }
 
         let open_fade_anim = point_to_point_animation(&motion, reduced_motion);
-        let open_transform_anim = spring_invoke_animation(&motion, reduced_motion);
+        let open_transform_anim =
+            spring_preset_animation(&motion, reduced_motion, SpringPreset::Medium);
         let close_anim = point_to_point_animation(&motion, reduced_motion);
         let vertical_direction = if matches!(
             self.anchor,

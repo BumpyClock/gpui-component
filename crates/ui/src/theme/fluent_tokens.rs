@@ -11,6 +11,13 @@ pub(crate) fn theme_motion_defaults() -> ThemeMotion {
         strong_invoke_duration_ms: 667,
         soft_dismiss_duration_ms: 167,
         fade_duration_ms: 83,
+        // Spring presets for transform-only open motion.
+        spring_mild_duration_ms: 187,
+        spring_medium_duration_ms: 240,
+        spring_mild_damping_ratio: 0.78,
+        spring_medium_damping_ratio: 0.70,
+        spring_mild_frequency: 2.0,
+        spring_medium_frequency: 1.6,
         fast_invoke_easing: "cubic-bezier(0, 0, 0, 1)".into(),
         strong_invoke_easing: "cubic-bezier(0.13, 1.62, 0, 0.92)".into(),
         fast_dismiss_easing: "cubic-bezier(0, 0, 0, 1)".into(),

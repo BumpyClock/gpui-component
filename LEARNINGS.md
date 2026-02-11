@@ -158,3 +158,12 @@ What worked:
 - For collapsed sidebar flyouts, render live sidebar rows (not popup command rows) when suffix controls exist.
 Outcome: smoother menu motion; suffix controls like `Switch` keep normal interaction/animation behavior.
 Next time: use `PopupMenu` for command rows, but switch to live popover content for embedded interactive controls.
+
+## 2026-02-11
+Context: spring motion consistency across high-traffic components.
+What worked:
+- Added tokenized spring presets in `ThemeMotion` and `ThemeMotionConfig` (`mild`, `medium` duration/damping/frequency).
+- Added `spring_preset_animation(..., SpringPreset)` and kept `spring_invoke_animation` as `Mild` alias for compatibility.
+- Applied explicit preset mapping: mild for Accordion + sidebar submenu; medium for Sidebar container + Dialog + Popover + PopupMenu submenu.
+Outcome: component motion is centrally tuned and easier to adjust without per-component constants.
+Next time: keep springs transform-only; keep opacity/layout monotonic via non-spring curves.

@@ -300,47 +300,45 @@ impl Render for CommandPaletteStory {
                                     })),
                             ),
                     )
-                    .child(section("Last Selected").child(
-                        h_flex()
-                            .gap_2()
-                            .child(
-                                div()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Last selected item:"),
-                            )
-                            .child(
-                                div()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .child(
+                    .child(
+                        section("Last Selected").child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    div()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Last selected item:"),
+                                )
+                                .child(
+                                    div().font_weight(gpui::FontWeight::SEMIBOLD).child(
                                         self.last_selected
                                             .as_ref()
                                             .map(|s| s.to_string())
                                             .unwrap_or_else(|| "None".to_string()),
                                     ),
-                            ),
-                    ))
-                    .child(
-                        section("Features")
-                            .child(
-                                v_flex()
-                                    .gap_2()
-                                    .child("Fuzzy search with highlighted matches")
-                                    .child("Keyboard navigation (Up/Down, Enter, Escape)")
-                                    .child("Categories and icons")
-                                    .child("Keyboard shortcuts display")
-                                    .child("Static and async item providers")
-                                    .child("Customizable appearance"),
-                            )
+                                ),
+                        ),
                     )
                     .child(
-                        section("Keyboard Shortcuts")
-                            .child(
-                                v_flex()
-                                    .gap_2()
-                                    .child("Up/Down: Navigate items")
-                                    .child("Enter: Select item")
-                                    .child("Escape: Close palette"),
-                            )
+                        section("Features").child(
+                            v_flex()
+                                .gap_2()
+                                .child("Fuzzy search with highlighted matches")
+                                .child("Keyboard navigation (Up/Down, Enter, Escape)")
+                                .child("Categories and icons")
+                                .child("Keyboard shortcuts display")
+                                .child("Static and async item providers")
+                                .child("Customizable appearance"),
+                        ),
+                    )
+                    .child(
+                        section("Keyboard Shortcuts").child(
+                            v_flex()
+                                .gap_2()
+                                .child("Up/Down: Navigate items")
+                                .child("Enter: Select item")
+                                .child("Escape: Close palette"),
+                        ),
                     ),
             )
     }

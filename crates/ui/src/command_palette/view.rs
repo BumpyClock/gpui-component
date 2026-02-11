@@ -4,8 +4,8 @@ use super::provider::CommandPaletteProvider;
 use super::state::{CommandPaletteEvent, CommandPaletteState};
 use super::types::{CommandPaletteConfig, MatchedItem};
 use super::{reveal_animation_duration, reveal_delay};
-use crate::animation::spring_invoke_animation;
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
+use crate::animation::spring_invoke_animation;
 use crate::global_state::GlobalState;
 use crate::input::{Input, InputEvent, InputState};
 use crate::kbd::Kbd;
@@ -530,8 +530,8 @@ impl Render for CommandPaletteView {
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
         let reveal_animation_duration = reveal_animation_duration(cx);
-        let expand_animation =
-            (!reduced_motion).then(|| Animation::new(reveal_animation_duration).with_easing(gentle_spring));
+        let expand_animation = (!reduced_motion)
+            .then(|| Animation::new(reveal_animation_duration).with_easing(gentle_spring));
         let list_reveal_animation = spring_invoke_animation(&motion, reduced_motion);
 
         // Focus input once after opening to avoid render jitter
@@ -630,8 +630,11 @@ impl Render for CommandPaletteView {
                                                 let row = rows.get(ix)?;
                                                 match row {
                                                     CommandPaletteRow::Header(title) => Some(
-                                                        view.render_section_header(title.clone(), cx)
-                                                            .into_any_element(),
+                                                        view.render_section_header(
+                                                            title.clone(),
+                                                            cx,
+                                                        )
+                                                        .into_any_element(),
                                                     ),
                                                     CommandPaletteRow::Item(item_index) => {
                                                         matched_items.get(*item_index).map(|item| {

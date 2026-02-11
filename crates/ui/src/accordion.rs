@@ -9,8 +9,8 @@ use gpui::{
 use crate::{
     ActiveTheme as _, Icon, IconName, Sizable, Size,
     animation::{
-        PresenceOptions, PresencePhase, keyed_presence, point_to_point_animation,
-        spring_invoke_animation,
+        PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
+        spring_preset_animation,
     },
     global_state::GlobalState,
     h_flex, v_flex,
@@ -253,8 +253,10 @@ impl RenderOnce for AccordionItem {
         let motion = cx.theme().motion.clone();
         let close_anim = point_to_point_animation(&motion, reduced_motion);
         let open_layout_anim = point_to_point_animation(&motion, reduced_motion);
-        let open_transform_anim = spring_invoke_animation(&motion, reduced_motion);
-        let chevron_open_anim = spring_invoke_animation(&motion, reduced_motion);
+        let open_transform_anim =
+            spring_preset_animation(&motion, reduced_motion, SpringPreset::Mild);
+        let chevron_open_anim =
+            spring_preset_animation(&motion, reduced_motion, SpringPreset::Mild);
         let chevron_close_anim = close_anim.clone();
         let presence_key = SharedString::from(format!("accordion-presence-{}", self.key_prefix));
         let open_duration = Duration::from_millis(u64::from(motion.fast_duration_ms));

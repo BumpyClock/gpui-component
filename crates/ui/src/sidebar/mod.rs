@@ -1,8 +1,8 @@
 use crate::{
     ActiveTheme, Collapsible, Icon, IconName, PixelsExt, Side, Sizable, StyledExt,
     animation::{
-        PresenceOptions, PresencePhase, keyed_presence, point_to_point_animation,
-        spring_invoke_animation,
+        PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
+        spring_preset_animation,
     },
     button::{Button, ButtonVariants},
     global_state::GlobalState,
@@ -356,7 +356,9 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                 );
 
                 if matches!(presence.phase, PresencePhase::Entering) {
-                    if let Some(transform_anim) = spring_invoke_animation(&motion, reduced_motion) {
+                    if let Some(transform_anim) =
+                        spring_preset_animation(&motion, reduced_motion, SpringPreset::Medium)
+                    {
                         return div()
                             .child(width_animated)
                             .with_animation(

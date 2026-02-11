@@ -263,7 +263,9 @@ impl VirtualList {
         scroll_to_item: DeferredScrollToItem,
     ) -> Point<Pixels> {
         let target_ix = scroll_to_item.item_index + scroll_to_item.offset;
-        let Some(bounds) = self.compute_item_bounds(target_ix, item_origins, item_sizes, content_bounds) else {
+        let Some(bounds) =
+            self.compute_item_bounds(target_ix, item_origins, item_sizes, content_bounds)
+        else {
             return scroll_offset;
         };
 
@@ -616,8 +618,7 @@ impl Element for VirtualList {
                         Axis::Vertical => paddings.top,
                     };
                     let viewport_start = -(scroll_along + padding_start);
-                    let viewport_end =
-                        -scroll_along + content_bounds.size.along(self.axis);
+                    let viewport_end = -scroll_along + content_bounds.size.along(self.axis);
 
                     // First visible: last item whose origin <= viewport_start
                     let first_visible_element_ix = item_origins
@@ -639,25 +640,19 @@ impl Element for VirtualList {
                     window.with_content_mask(Some(content_mask), |window| {
                         for (mut item, ix) in items.into_iter().zip(visible_range.clone()) {
                             let item_origin = content_bounds.origin
-                                + scroll_offset.apply_along(self.axis, |v| {
-                                    v + item_origins[ix]
-                                });
+                                + scroll_offset.apply_along(self.axis, |v| v + item_origins[ix]);
 
                             let available_space = size(
-                                AvailableSpace::Definite(
-                                    if self.axis.is_horizontal() {
-                                        item_sizes[ix]
-                                    } else {
-                                        content_bounds.size.width
-                                    },
-                                ),
-                                AvailableSpace::Definite(
-                                    if self.axis.is_vertical() {
-                                        item_sizes[ix]
-                                    } else {
-                                        content_bounds.size.height
-                                    },
-                                ),
+                                AvailableSpace::Definite(if self.axis.is_horizontal() {
+                                    item_sizes[ix]
+                                } else {
+                                    content_bounds.size.width
+                                }),
+                                AvailableSpace::Definite(if self.axis.is_vertical() {
+                                    item_sizes[ix]
+                                } else {
+                                    content_bounds.size.height
+                                }),
                             );
 
                             item.layout_as_root(available_space, window, cx);

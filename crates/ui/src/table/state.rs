@@ -359,8 +359,7 @@ where
             .collect();
 
         let scroll_offset_x = self.horizontal_scroll_handle.offset().x;
-        let viewport_width =
-            self.bounds.size.width - self.fixed_head_cols_bounds.size.width;
+        let viewport_width = self.bounds.size.width - self.fixed_head_cols_bounds.size.width;
 
         if viewport_width <= px(0.) {
             return (0..0, col_origins);
@@ -1162,9 +1161,8 @@ where
                                 .copied()
                                 .unwrap_or(px(0.));
 
-                            let mut row_cols = h_flex()
-                                .h_full()
-                                .left(first_col_origin + scroll_offset_x);
+                            let mut row_cols =
+                                h_flex().h_full().left(first_col_origin + scroll_offset_x);
 
                             for col_ix in visible_col_range.clone() {
                                 let actual_col_ix = col_ix + left_columns_count;
@@ -1172,7 +1170,10 @@ where
                                     self.render_col_wrap(actual_col_ix, window, cx).child(
                                         self.render_cell(actual_col_ix, window, cx).child(
                                             self.measure_render_td(
-                                                row_ix, actual_col_ix, window, cx,
+                                                row_ix,
+                                                actual_col_ix,
+                                                window,
+                                                cx,
                                             ),
                                         ),
                                     ),

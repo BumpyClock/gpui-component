@@ -5,8 +5,7 @@ use gpui::{
     AnyElement, App, ClickEvent, Context, Decorations, Edges, Hsla, InteractiveElement,
     IntoElement, MouseButton, ParentElement, Pixels, Render, RenderOnce,
     StatefulInteractiveElement as _, StyleRefinement, Styled, TitlebarOptions, Window,
-    WindowControlArea, div,
-    prelude::FluentBuilder as _, px,
+    WindowControlArea, div, prelude::FluentBuilder as _, px,
 };
 #[cfg(target_os = "windows")]
 use raw_window_handle::{HasWindowHandle, RawWindowHandle};

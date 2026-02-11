@@ -12,12 +12,12 @@ Date: 2026-02-10
 ## Implementation
 
 - Popover:
-  - Enter uses `spring_invoke_animation` for transform only.
+  - Enter uses `spring_preset_animation(..., SpringPreset::Medium)` for transform only.
   - Exit uses `point_to_point` curve.
   - Visuals: monotonic opacity + anchor-aware `translate_y` spring offset.
 
 - PopupMenu:
-  - Submenu open uses spring transform; close remains monotonic.
+  - Submenu open uses `SpringPreset::Medium` transform; close remains monotonic.
   - Submenu visuals: monotonic opacity + side-aware `translate_x` spring offset.
 
 - Dropdown menu lifecycle:

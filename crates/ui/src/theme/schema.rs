@@ -87,6 +87,12 @@ pub struct ThemeMotionConfig {
     pub strong_invoke_duration_ms: Option<u16>,
     pub soft_dismiss_duration_ms: Option<u16>,
     pub fade_duration_ms: Option<u16>,
+    pub spring_mild_duration_ms: Option<u16>,
+    pub spring_medium_duration_ms: Option<u16>,
+    pub spring_mild_damping_ratio: Option<f32>,
+    pub spring_medium_damping_ratio: Option<f32>,
+    pub spring_mild_frequency: Option<f32>,
+    pub spring_medium_frequency: Option<f32>,
     pub fast_invoke_easing: Option<SharedString>,
     pub strong_invoke_easing: Option<SharedString>,
     pub fast_dismiss_easing: Option<SharedString>,
@@ -161,6 +167,24 @@ impl ThemeMotion {
             self.fade_duration_ms = config
                 .fade_duration_ms
                 .unwrap_or(default_theme.fade_duration_ms);
+            self.spring_mild_duration_ms = config
+                .spring_mild_duration_ms
+                .unwrap_or(default_theme.spring_mild_duration_ms);
+            self.spring_medium_duration_ms = config
+                .spring_medium_duration_ms
+                .unwrap_or(default_theme.spring_medium_duration_ms);
+            self.spring_mild_damping_ratio = config
+                .spring_mild_damping_ratio
+                .unwrap_or(default_theme.spring_mild_damping_ratio);
+            self.spring_medium_damping_ratio = config
+                .spring_medium_damping_ratio
+                .unwrap_or(default_theme.spring_medium_damping_ratio);
+            self.spring_mild_frequency = config
+                .spring_mild_frequency
+                .unwrap_or(default_theme.spring_mild_frequency);
+            self.spring_medium_frequency = config
+                .spring_medium_frequency
+                .unwrap_or(default_theme.spring_medium_frequency);
             self.fast_invoke_easing = config
                 .fast_invoke_easing
                 .as_ref()

@@ -123,7 +123,8 @@ where
                                 move |_, _: &DismissEvent, window, cx| {
                                     popover_state.update(cx, |state, cx| {
                                         state.dismiss(window, cx);
-                                        let reduced_motion = GlobalState::global(cx).reduced_motion();
+                                        let reduced_motion =
+                                            GlobalState::global(cx).reduced_motion();
                                         let dismiss_duration = if reduced_motion {
                                             std::time::Duration::ZERO
                                         } else {
@@ -135,7 +136,9 @@ where
                                             let menu_state = menu_state.clone();
                                             async move |_, cx| {
                                                 if !dismiss_duration.is_zero() {
-                                                    cx.background_executor().timer(dismiss_duration).await;
+                                                    cx.background_executor()
+                                                        .timer(dismiss_duration)
+                                                        .await;
                                                 }
                                                 _ = menu_state.update(cx, |state, _| {
                                                     state.menu = None;

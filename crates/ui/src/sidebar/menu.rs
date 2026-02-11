@@ -1,8 +1,8 @@
 use crate::{
     ActiveTheme as _, Anchor, Collapsible, Icon, IconName, Selectable, Sizable as _, StyledExt,
     animation::{
-        PresenceOptions, PresencePhase, keyed_presence, point_to_point_animation,
-        spring_invoke_animation,
+        PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
+        spring_preset_animation,
     },
     button::{Button, ButtonVariants as _},
     global_state::GlobalState,
@@ -369,9 +369,11 @@ impl SidebarItem for SidebarMenuItem {
         );
         let submenu_visible = submenu_presence.should_render();
         let open_layout_anim = point_to_point_animation(&motion, reduced_motion);
-        let open_transform_anim = spring_invoke_animation(&motion, reduced_motion);
+        let open_transform_anim =
+            spring_preset_animation(&motion, reduced_motion, SpringPreset::Mild);
         let close_anim = point_to_point_animation(&motion, reduced_motion);
-        let chevron_open_anim = spring_invoke_animation(&motion, reduced_motion);
+        let chevron_open_anim =
+            spring_preset_animation(&motion, reduced_motion, SpringPreset::Mild);
         let chevron_close_anim = close_anim.clone();
 
         let item_element = h_flex()

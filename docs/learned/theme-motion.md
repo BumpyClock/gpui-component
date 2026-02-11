@@ -7,6 +7,9 @@ Date: 2026-02-10
 - `ThemeMotion` tokens: durations + easing strings. `crates/ui/src/theme/mod.rs`
 - Defaults in `crates/ui/src/theme/fluent_tokens.rs` and `crates/ui/src/theme/default-theme.json`.
 - Theme overrides in `crates/ui/src/theme/schema.rs` (`ThemeMotionConfig`).
+- Spring presets in `ThemeMotion`:
+  - `spring_mild_duration_ms`, `spring_mild_damping_ratio`, `spring_mild_frequency`
+  - `spring_medium_duration_ms`, `spring_medium_damping_ratio`, `spring_medium_frequency`
 
 ## Fluent token values (animation.md)
 
@@ -28,6 +31,7 @@ Date: 2026-02-10
 - `gentle_spring` easing in command palette. `crates/ui/src/command_palette/view.rs`
 - `strong_invoke_easing` is overshoot (cubic-bezier y>1). `crates/ui/src/theme/fluent_tokens.rs`
 - `bounce(ease_in_out)` used for skeleton shimmer. `crates/ui/src/skeleton.rs`
+- Preset API: `spring_preset_animation(..., SpringPreset::{Mild, Medium})`. `crates/ui/src/animation.rs`
 
 ## Doc mismatch
 
