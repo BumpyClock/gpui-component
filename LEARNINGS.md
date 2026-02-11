@@ -135,6 +135,15 @@ What worked:
 Outcome: app-level hacks for shell/titlebar/sidebar spacing are no longer required for common layouts.
 Next time: keep inset defaults contextual (scope first, explicit override second) to avoid prop-drilling.
 
+## 2026-02-11
+Context: GPUI transform fidelity for spring motion on non-text primitives.
+What worked:
+- Store local bounds plus `TransformationMatrix` on `Quad`, `PolychromeSprite`, and `PaintSurface`.
+- Compute transformed AABB only for scene clipping/order (`Primitive::bounds()`), not for shader-space geometry.
+- Use transformed vertex position + transformed clip test, but keep fragment SDF/gradient math in local space.
+Outcome: affine transforms now apply consistently to quads/images/surfaces across Blade/Metal/DirectX shader paths.
+Next time: if adding new primitive types, include transform field + local-position varyings from the start.
+
 ## 2026-02-10
 Context: collapsed sidebar items with children were not navigable.
 What worked: wrap collapsed parent in `Popover` and render children via `PopupMenu` (recursive submenu builder); cache menu entity with keyed state and clear on dismiss.
