@@ -9,8 +9,8 @@ use std::rc::Rc;
 use crate::{
     ActiveTheme, Anchor, ElementExt, Selectable, StyledExt as _, actions::Cancel, anchored,
     animation::{
-        PresenceOptions, PresencePhase, fast_invoke_animation, keyed_presence,
-        point_to_point_animation,
+        PresenceOptions, PresencePhase, keyed_presence, point_to_point_animation,
+        spring_invoke_animation,
     },
     global_state::GlobalState,
     v_flex,
@@ -406,7 +406,7 @@ impl RenderOnce for Popover {
             return el;
         }
 
-        let open_anim = fast_invoke_animation(&motion, reduced_motion);
+        let open_anim = spring_invoke_animation(&motion, reduced_motion);
         let close_anim = point_to_point_animation(&motion, reduced_motion);
         let vertical_direction = if matches!(
             self.anchor,
@@ -457,9 +457,19 @@ impl RenderOnce for Popover {
                                 )),
                                 anim,
                                 move |el, delta| {
-                                    let progress = presence.progress(delta);
-                                    let offset = px(4.0 * (1.0 - progress) * vertical_direction);
-                                    el.opacity(progress).translate_y(offset)
+                                    let opacity = presence.progress(delta);
+                                    // Keep opacity monotonic while allowing spring overshoot on transform.
+                                    let transform_progress = if matches!(
+                                        presence.phase,
+                                        PresencePhase::Entering
+                                    ) {
+                                        delta
+                                    } else {
+                                        opacity
+                                    };
+                                    let offset =
+                                        px(6.0 * (1.0 - transform_progress) * vertical_direction);
+                                    el.opacity(opacity).translate_y(offset)
                                 },
                             )
                             .into_any_element()

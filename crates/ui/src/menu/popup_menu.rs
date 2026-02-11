@@ -1,7 +1,8 @@
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::actions::{SelectLeft, SelectRight};
 use crate::animation::{
-    PresenceOptions, PresencePhase, fast_invoke_animation, keyed_presence, point_to_point_animation,
+    PresenceOptions, PresencePhase, keyed_presence, point_to_point_animation,
+    spring_invoke_animation,
 };
 use crate::global_state::GlobalState;
 use crate::menu::menu_item::MenuItemElement;
@@ -1085,7 +1086,7 @@ impl PopupMenu {
                 cx,
             )
         });
-        let submenu_open_anim = fast_invoke_animation(&motion, reduced_motion);
+        let submenu_open_anim = spring_invoke_animation(&motion, reduced_motion);
         let submenu_close_anim = point_to_point_animation(&motion, reduced_motion);
         let group_name = format!("{}:item-{}", cx.entity().entity_id(), ix);
 
@@ -1293,9 +1294,17 @@ impl PopupMenu {
                                         )),
                                         anim,
                                         move |el, delta| {
-                                            let progress = submenu_presence.progress(delta);
-                                            el.opacity(progress).translate_x(px(
-                                                direction * 4.0 * (1.0 - progress),
+                                            let opacity = submenu_presence.progress(delta);
+                                            let transform_progress = if matches!(
+                                                submenu_presence.phase,
+                                                PresencePhase::Entering
+                                            ) {
+                                                delta
+                                            } else {
+                                                opacity
+                                            };
+                                            el.opacity(opacity).translate_x(px(
+                                                direction * 6.0 * (1.0 - transform_progress),
                                             ))
                                         },
                                     )

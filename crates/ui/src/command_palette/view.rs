@@ -4,6 +4,7 @@ use super::provider::CommandPaletteProvider;
 use super::state::{CommandPaletteEvent, CommandPaletteState};
 use super::types::{CommandPaletteConfig, MatchedItem};
 use super::{reveal_animation_duration, reveal_delay};
+use crate::animation::spring_invoke_animation;
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::global_state::GlobalState;
 use crate::input::{Input, InputEvent, InputState};
@@ -527,9 +528,11 @@ impl Render for CommandPaletteView {
             .and_then(|provider| provider(&state.query));
         let max_height = px(config.max_height);
         let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let motion = cx.theme().motion.clone();
         let reveal_animation_duration = reveal_animation_duration(cx);
         let expand_animation =
             (!reduced_motion).then(|| Animation::new(reveal_animation_duration).with_easing(gentle_spring));
+        let list_reveal_animation = spring_invoke_animation(&motion, reduced_motion);
 
         // Focus input once after opening to avoid render jitter
         if !self.did_focus {
@@ -610,8 +613,8 @@ impl Render for CommandPaletteView {
             )
             // Results list
             .when(self.list_revealed, |this| {
-                this.child(
-                    div()
+                this.child({
+                    let list = div()
                         .w_full()
                         .h(list_height)
                         .overflow_hidden()
@@ -651,8 +654,24 @@ impl Render for CommandPaletteView {
                                 .track_scroll(&self.scroll_handle)
                                 .py_1(),
                             )
-                        }),
-                )
+                        });
+
+                    if let Some(anim) = list_reveal_animation {
+                        list.with_animation(
+                            ElementId::NamedInteger("command-palette-list-reveal".into(), 1),
+                            anim,
+                            move |el, delta| {
+                                let opacity = delta.clamp(0.0, 1.0);
+                                let transform_progress = delta.max(0.0);
+                                el.opacity(opacity)
+                                    .translate_y(px(6.0 * (1.0 - transform_progress)))
+                            },
+                        )
+                        .into_any_element()
+                    } else {
+                        list.into_any_element()
+                    }
+                })
             })
             // Footer
             .when(show_footer && self.list_revealed, |this| {

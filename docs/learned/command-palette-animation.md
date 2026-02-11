@@ -14,7 +14,7 @@ Date: 2026-02-10
 - Added per-dialog animation toggle (`Dialog::animate(bool)`).
 - Command palette opens dialog with `animate(false)` so shell appears instantly.
 - Kept delayed reveal + expand animation for list area.
-- Added list children fade reveal animation.
+- Added list reveal spring transform (`translate_y`) with monotonic opacity.
 - Row layout: category text then shortcut in trailing right group.
 
 ## Result

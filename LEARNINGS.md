@@ -117,6 +117,15 @@ What worked:
 Outcome: transform context now survives prepaint/paint flow and pointer hit testing remains stable under transforms.
 Next time: if visual fidelity for rotated/scaled quads/images is needed, add true shader-space transform for those primitives.
 
+## 2026-02-11
+Context: spring open motion for popovers/menus without reopen-collapse glitches.
+What worked:
+- Use `spring_invoke_animation` only for entering transform (translate), keep close with monotonic easing.
+- Keep opacity derived from clamped `presence.progress(delta)` while transform uses raw spring delta.
+- Align dropdown cached-menu cleanup delay to popover fade close duration.
+Outcome: spring feel on open with stable visibility lifecycle and no opacity bounce artifacts.
+Next time: avoid feeding unbounded spring progress directly into visibility/height/opacity properties.
+
 ## 2026-02-10
 Context: collapsed sidebar items with children were not navigable.
 What worked: wrap collapsed parent in `Popover` and render children via `PopupMenu` (recursive submenu builder); cache menu entity with keyed state and clear on dismiss.

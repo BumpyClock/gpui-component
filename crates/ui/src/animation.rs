@@ -283,7 +283,8 @@ pub fn keyed_presence(
 
 #[cfg(test)]
 mod tests {
-    use super::cubic_bezier;
+    use super::{cubic_bezier, cubic_bezier_unbounded, parse_cubic_bezier_easing, spring_invoke_animation};
+    use crate::ThemeMotion;
 
     #[test]
     fn strong_invoke_curve_is_bounded() {
@@ -304,5 +305,36 @@ mod tests {
         assert_eq!(easing(f32::NAN), 0.0);
         assert_eq!(easing(f32::INFINITY), 0.0);
         assert_eq!(easing(f32::NEG_INFINITY), 0.0);
+    }
+
+    #[test]
+    fn strong_invoke_curve_is_unbounded_for_transform_use() {
+        let easing = cubic_bezier_unbounded(0.13, 1.62, 0.0, 0.92);
+        let mut peak = f32::MIN;
+        for i in 0..=1_000 {
+            let t = i as f32 / 1_000.0;
+            peak = peak.max(easing(t));
+        }
+        assert!(
+            peak > 1.0,
+            "expected overshoot above 1.0 for unbounded curve, got peak={peak}"
+        );
+    }
+
+    #[test]
+    fn parse_cubic_bezier_validation() {
+        assert_eq!(
+            parse_cubic_bezier_easing("cubic-bezier(0.13, 1.62, 0, 0.92)"),
+            Some((0.13, 1.62, 0.0, 0.92))
+        );
+        assert_eq!(parse_cubic_bezier_easing("linear"), None);
+        assert_eq!(parse_cubic_bezier_easing("cubic-bezier(0.1, 0.2, 0.3)"), None);
+    }
+
+    #[test]
+    fn spring_invoke_respects_reduced_motion() {
+        let motion = ThemeMotion::default();
+        assert!(spring_invoke_animation(&motion, true).is_none());
+        assert!(spring_invoke_animation(&motion, false).is_some());
     }
 }

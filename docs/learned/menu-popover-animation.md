@@ -12,16 +12,16 @@ Date: 2026-02-10
 ## Implementation
 
 - Popover:
-  - Enter uses `fast_invoke` curve.
+  - Enter uses `spring_invoke_animation` for transform only.
   - Exit uses `point_to_point` curve.
-  - Visuals: opacity + small anchor-aware `translate_y`.
+  - Visuals: monotonic opacity + anchor-aware `translate_y` spring offset.
 
 - PopupMenu:
-  - Root menu enter animation: opacity + small `translate_y`.
-  - Submenu open/close uses `keyed_presence` with side-aware `translate_x`.
+  - Submenu open uses spring transform; close remains monotonic.
+  - Submenu visuals: monotonic opacity + side-aware `translate_x` spring offset.
 
 - Dropdown menu lifecycle:
-  - Menu cache cleanup delay now matches dismiss animation timing.
+  - Menu cache cleanup delay now matches popover fade dismiss timing.
   - Reduced-motion path clears immediately.
 
 - Sidebar collapsed flyout:
@@ -30,5 +30,6 @@ Date: 2026-02-10
 
 ## Caveats
 
-- Avoid overshoot/bounce easing for opacity/size/visibility transitions; use monotonic curves only.
-- For transform-heavy effects, prefer bounded distances (`~4px`) to avoid blur jitter.
+- Keep overshoot/spring easing on transform properties only.
+- Keep opacity/size/visibility monotonic via clamped progress (`presence.progress`).
+- For transform-heavy effects, prefer bounded distances (`~6px`) to avoid blur jitter.

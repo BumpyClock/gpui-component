@@ -128,7 +128,7 @@ where
                                             std::time::Duration::ZERO
                                         } else {
                                             std::time::Duration::from_millis(u64::from(
-                                                cx.theme().motion.fast_duration_ms,
+                                                cx.theme().motion.fade_duration_ms,
                                             ))
                                         };
                                         cx.spawn({
