@@ -10,7 +10,7 @@ use crate::{
     ActiveTheme as _, Icon, IconName, Sizable, Size,
     animation::{
         PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
-        spring_preset_animation,
+        spring_preset_animation, spring_preset_duration_ms,
     },
     global_state::GlobalState,
     h_flex, v_flex,
@@ -251,16 +251,21 @@ impl RenderOnce for AccordionItem {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
-        let close_anim = point_to_point_animation(&motion, reduced_motion);
-        let open_layout_anim = point_to_point_animation(&motion, reduced_motion);
-        let open_transform_anim =
-            spring_preset_animation(&motion, reduced_motion, SpringPreset::Mild);
-        let chevron_open_anim =
-            spring_preset_animation(&motion, reduced_motion, SpringPreset::Mild);
-        let chevron_close_anim = close_anim.clone();
+        let spring_preset = SpringPreset::Mild;
+        let layout_anim = point_to_point_animation(&motion, reduced_motion);
+        let close_anim = layout_anim.clone();
+        let open_layout_anim = layout_anim.clone();
+        let open_transform_anim = spring_preset_animation(&motion, reduced_motion, spring_preset);
+        let chevron_open_anim = spring_preset_animation(&motion, reduced_motion, spring_preset);
+        let chevron_close_anim = spring_preset_animation(&motion, reduced_motion, spring_preset);
         let presence_key = SharedString::from(format!("accordion-presence-{}", self.key_prefix));
-        let open_duration = Duration::from_millis(u64::from(motion.fast_duration_ms));
-        let close_duration = Duration::from_millis(u64::from(motion.fast_duration_ms));
+        let presence_duration_ms = if reduced_motion {
+            motion.fast_duration_ms
+        } else {
+            spring_preset_duration_ms(&motion, spring_preset).max(motion.fast_duration_ms)
+        };
+        let open_duration = Duration::from_millis(u64::from(presence_duration_ms));
+        let close_duration = Duration::from_millis(u64::from(presence_duration_ms));
         let presence = keyed_presence(
             presence_key,
             self.open,
@@ -307,7 +312,8 @@ impl RenderOnce for AccordionItem {
                             delta
                         } else {
                             1.0 - delta
-                        };
+                        }
+                        .clamp(0.0, 1.0);
                         icon.rotate(percentage(0.5 * progress))
                     })
                     .into_any_element()
@@ -416,7 +422,7 @@ impl RenderOnce for AccordionItem {
                                             )),
                                     );
                                     el.with_animation(animation_id, anim, move |el, delta| {
-                                        let progress = presence.progress(delta);
+                                        let progress = presence.progress(delta).clamp(0.0, 1.0);
                                         let height_progress = accordion_height_progress(progress);
                                         el.max_h(px(ACCORDION_CONTENT_MAX_H * height_progress))
                                             .opacity(progress)

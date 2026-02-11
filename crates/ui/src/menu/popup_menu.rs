@@ -2,7 +2,7 @@ use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::actions::{SelectLeft, SelectRight};
 use crate::animation::{
     PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
-    spring_preset_animation,
+    spring_preset_animation, spring_preset_duration_ms,
 };
 use crate::global_state::GlobalState;
 use crate::menu::menu_item::MenuItemElement;
@@ -1071,6 +1071,12 @@ impl PopupMenu {
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
         let submenu_presence = is_submenu.then(|| {
+            let open_duration_ms = if reduced_motion {
+                motion.fast_duration_ms
+            } else {
+                spring_preset_duration_ms(&motion, SpringPreset::Medium)
+                    .max(motion.fast_duration_ms)
+            };
             keyed_presence(
                 SharedString::from(format!(
                     "popup-menu-submenu-presence-{}-{}",
@@ -1079,7 +1085,7 @@ impl PopupMenu {
                 )),
                 selected,
                 !reduced_motion,
-                Duration::from_millis(u64::from(motion.fast_duration_ms)),
+                Duration::from_millis(u64::from(open_duration_ms)),
                 Duration::from_millis(u64::from(motion.fade_duration_ms)),
                 PresenceOptions::default(),
                 window,

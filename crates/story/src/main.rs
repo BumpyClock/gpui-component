@@ -169,76 +169,79 @@ impl Render for Gallery {
                             .w(relative(1.))
                             .border_0()
                             .collapsed(self.collapsed)
-                            .header(
-                                v_flex()
-                                    .w_full()
-                                    .gap_4()
-                                    .child(
-                                        SidebarHeader::new()
-                                            .w_full()
-                                            .child(
-                                                div()
-                                                    .flex()
-                                                    .items_center()
-                                                    .justify_center()
-                                                    .rounded(cx.theme().radius)
-                                                    .bg(cx.theme().primary)
-                                                    .text_color(cx.theme().primary_foreground)
-                                                    .size_8()
-                                                    .flex_shrink_0()
-                                                    .when(!self.collapsed, |this| {
-                                                        this.child(Icon::new(
-                                                            IconName::GalleryVerticalEnd,
-                                                        ))
-                                                    })
-                                                    .when(self.collapsed, |this| {
-                                                        this.size_4()
-                                                            .bg(cx.theme().transparent)
-                                                            .text_color(cx.theme().foreground)
-                                                            .child(Icon::new(
+                            .header_with({
+                                let search_input = self.search_input.clone();
+                                move |collapsed, _, cx| {
+                                    v_flex()
+                                        .w_full()
+                                        .gap_4()
+                                        .child(
+                                            SidebarHeader::new()
+                                                .w_full()
+                                                .child(
+                                                    div()
+                                                        .flex()
+                                                        .items_center()
+                                                        .justify_center()
+                                                        .rounded(cx.theme().radius)
+                                                        .bg(cx.theme().primary)
+                                                        .text_color(cx.theme().primary_foreground)
+                                                        .size_8()
+                                                        .flex_shrink_0()
+                                                        .when(!collapsed, |this| {
+                                                            this.child(Icon::new(
                                                                 IconName::GalleryVerticalEnd,
                                                             ))
-                                                    })
-                                                    .rounded_lg(),
-                                            )
-                                            .when(!self.collapsed, |this| {
-                                                this.child(
-                                                    v_flex()
-                                                        .gap_0()
-                                                        .text_sm()
-                                                        .flex_1()
-                                                        .line_height(relative(1.25))
-                                                        .overflow_hidden()
-                                                        .text_ellipsis()
-                                                        .child("GPUI Component")
-                                                        .child(
-                                                            div()
-                                                                .text_color(
-                                                                    cx.theme().muted_foreground,
-                                                                )
-                                                                .child("Gallery")
-                                                                .text_xs(),
-                                                        ),
+                                                        })
+                                                        .when(collapsed, |this| {
+                                                            this.size_4()
+                                                                .bg(cx.theme().transparent)
+                                                                .text_color(cx.theme().foreground)
+                                                                .child(Icon::new(
+                                                                    IconName::GalleryVerticalEnd,
+                                                                ))
+                                                        })
+                                                        .rounded_lg(),
                                                 )
-                                            }),
-                                    )
-                                    .child(
-                                        div()
-                                            .bg(cx.theme().sidebar_accent)
-                                            .rounded_full()
-                                            .px_1()
-                                            .when(cx.theme().radius.is_zero(), |this| {
-                                                this.rounded(px(0.))
-                                            })
-                                            .flex_1()
-                                            .mx_1()
-                                            .child(
-                                                Input::new(&self.search_input)
-                                                    .appearance(false)
-                                                    .cleanable(true),
-                                            ),
-                                    ),
-                            )
+                                                .when(!collapsed, |this| {
+                                                    this.child(
+                                                        v_flex()
+                                                            .gap_0()
+                                                            .text_sm()
+                                                            .flex_1()
+                                                            .line_height(relative(1.25))
+                                                            .overflow_hidden()
+                                                            .text_ellipsis()
+                                                            .child("GPUI Component")
+                                                            .child(
+                                                                div()
+                                                                    .text_color(
+                                                                        cx.theme().muted_foreground,
+                                                                    )
+                                                                    .child("Gallery")
+                                                                    .text_xs(),
+                                                            ),
+                                                    )
+                                                }),
+                                        )
+                                        .child(
+                                            div()
+                                                .bg(cx.theme().sidebar_accent)
+                                                .rounded_full()
+                                                .px_1()
+                                                .when(cx.theme().radius.is_zero(), |this| {
+                                                    this.rounded(px(0.))
+                                                })
+                                                .flex_1()
+                                                .mx_1()
+                                                .child(
+                                                    Input::new(&search_input)
+                                                        .appearance(false)
+                                                        .cleanable(true),
+                                                ),
+                                        )
+                                }
+                            })
                             .children(stories.clone().into_iter().enumerate().map(
                                 |(group_ix, (group_name, sub_stories))| {
                                     SidebarGroup::new(*group_name).child(

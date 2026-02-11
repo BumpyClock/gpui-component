@@ -2,7 +2,7 @@ use crate::{
     ActiveTheme, Collapsible, Icon, IconName, PixelsExt, Side, Sizable, StyledExt,
     animation::{
         PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
-        spring_preset_animation,
+        spring_preset_duration_ms,
     },
     button::{Button, ButtonVariants},
     global_state::GlobalState,
@@ -40,6 +40,11 @@ pub trait SidebarItem: Collapsible + Clone {
     ) -> impl IntoElement;
 }
 
+enum SidebarSlot {
+    Static(AnyElement),
+    Dynamic(Rc<dyn Fn(bool, &mut Window, &mut App) -> AnyElement>),
+}
+
 /// A Sidebar element that can contain collapsible child elements.
 #[derive(IntoElement)]
 pub struct Sidebar<E: SidebarItem + 'static> {
@@ -47,9 +52,9 @@ pub struct Sidebar<E: SidebarItem + 'static> {
     style: StyleRefinement,
     content: Vec<E>,
     /// header view
-    header: Option<AnyElement>,
+    header: Option<SidebarSlot>,
     /// footer view
-    footer: Option<AnyElement>,
+    footer: Option<SidebarSlot>,
     /// The side of the sidebar
     side: Side,
     collapsible: bool,
@@ -101,13 +106,37 @@ impl<E: SidebarItem> Sidebar<E> {
 
     /// Set the header of the sidebar.
     pub fn header(mut self, header: impl IntoElement) -> Self {
-        self.header = Some(header.into_any_element());
+        self.header = Some(SidebarSlot::Static(header.into_any_element()));
+        self
+    }
+
+    /// Set a dynamic header that receives the visual collapsed state.
+    pub fn header_with<F, H>(mut self, builder: F) -> Self
+    where
+        F: Fn(bool, &mut Window, &mut App) -> H + 'static,
+        H: IntoElement,
+    {
+        self.header = Some(SidebarSlot::Dynamic(Rc::new(move |collapsed, window, cx| {
+            builder(collapsed, window, cx).into_any_element()
+        })));
         self
     }
 
     /// Set the footer of the sidebar.
     pub fn footer(mut self, footer: impl IntoElement) -> Self {
-        self.footer = Some(footer.into_any_element());
+        self.footer = Some(SidebarSlot::Static(footer.into_any_element()));
+        self
+    }
+
+    /// Set a dynamic footer that receives the visual collapsed state.
+    pub fn footer_with<F, H>(mut self, builder: F) -> Self
+    where
+        F: Fn(bool, &mut Window, &mut App) -> H + 'static,
+        H: IntoElement,
+    {
+        self.footer = Some(SidebarSlot::Dynamic(Rc::new(move |collapsed, window, cx| {
+            builder(collapsed, window, cx).into_any_element()
+        })));
         self
     }
 
@@ -213,17 +242,38 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         let sidebar_id = self.id.clone();
         let expanded_width = self.width;
         let collapsed_width = COLLAPSED_WIDTH;
+        let width_spring_preset = SpringPreset::Medium;
+        let width_spring_duration_ms = spring_preset_duration_ms(&motion, width_spring_preset);
+        let open_duration_ms = if reduced_motion {
+            motion.fast_duration_ms
+        } else {
+            width_spring_duration_ms.max(motion.fast_duration_ms)
+        };
+        let close_duration_ms = if reduced_motion {
+            motion.soft_dismiss_duration_ms
+        } else {
+            width_spring_duration_ms.max(motion.soft_dismiss_duration_ms)
+        };
         let presence = keyed_presence(
             SharedString::from(format!("{}-collapsed-presence", sidebar_id)),
             !target_collapsed,
             !reduced_motion,
-            Duration::from_millis(u64::from(motion.fast_duration_ms)),
-            Duration::from_millis(u64::from(motion.soft_dismiss_duration_ms)),
+            Duration::from_millis(u64::from(open_duration_ms)),
+            Duration::from_millis(u64::from(close_duration_ms)),
             PresenceOptions::default(),
             window,
             cx,
         );
-        let visual_collapsed = matches!(presence.phase, PresencePhase::Exited);
+        // Mirror close/open semantics:
+        // - Closing: keep expanded visuals during `Exiting`, switch to collapsed at `Exited`.
+        // - Opening: keep collapsed visuals during `Entering`, switch to expanded at `Entered`.
+        let visual_collapsed = if reduced_motion {
+            target_collapsed
+        } else if target_collapsed {
+            matches!(presence.phase, PresencePhase::Exited)
+        } else {
+            matches!(presence.phase, PresencePhase::Entering)
+        };
         let transition_active = !reduced_motion && presence.transition_active();
         let from_width = if target_collapsed {
             expanded_width
@@ -235,7 +285,6 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         } else {
             expanded_width
         };
-        let open_slide_direction = if self.side.is_left() { -1.0 } else { 1.0 };
         let base_width = if transition_active {
             from_width
         } else if target_collapsed {
@@ -246,12 +295,17 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
 
         let content_len = self.content.len();
         let overdraw = px(window.viewport_size().height.as_f32() * 0.3);
+        // Keep separate virtual-list layout state for collapsed and expanded modes.
+        // Reusing measurements across modes causes visible snap/pop on toggle.
+        let list_state_key = SharedString::from(format!(
+            "{}-list-state-{}",
+            sidebar_id,
+            u8::from(visual_collapsed)
+        ));
         let list_state = window
-            .use_keyed_state(
-                SharedString::from(format!("{}-list-state", sidebar_id)),
-                cx,
-                |_, _| ListState::new(content_len, ListAlignment::Top, overdraw),
-            )
+            .use_keyed_state(list_state_key, cx, |_, _| {
+                ListState::new(content_len, ListAlignment::Top, overdraw)
+            })
             .read(cx)
             .clone();
         if list_state.item_count() != content_len {
@@ -259,6 +313,17 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         }
 
         let item_id_prefix = sidebar_id.clone();
+        let header = match self.header.take() {
+            Some(SidebarSlot::Dynamic(builder)) => Some(builder(visual_collapsed, window, cx)),
+            Some(SidebarSlot::Static(header)) => Some(header),
+            None => None,
+        };
+        let footer = match self.footer.take() {
+            Some(SidebarSlot::Dynamic(builder)) => Some(builder(visual_collapsed, window, cx)),
+            Some(SidebarSlot::Static(footer)) => Some(footer),
+            None => None,
+        };
+
         let sidebar = v_flex()
             .id(sidebar_id.clone())
             .w(base_width)
@@ -273,9 +338,14 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                 Side::Left => this.border_r_1(),
                 Side::Right => this.border_l_1(),
             })
-            .refine_style(&self.style)
+            .refine_style(&self.style);
+
+        let content = self.content;
+        let inner = v_flex()
+            .id("sidebar-inner")
+            .size_full()
             .when(visual_collapsed, |this| this.gap_2())
-            .when_some(self.header.take(), |this, header| {
+            .when_some(header, |this, header| {
                 this.child(
                     h_flex()
                         .id("header")
@@ -297,7 +367,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                         .child(
                             list(list_state.clone(), {
                                 move |ix, window, cx| {
-                                    let group = self.content.get(ix).cloned();
+                                    let group = content.get(ix).cloned();
                                     let is_first = ix == 0;
                                     let is_last =
                                         content_len > 0 && ix == content_len.saturating_sub(1);
@@ -328,7 +398,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                         .vertical_scrollbar(&list_state),
                 ),
             )
-            .when_some(self.footer.take(), |this, footer| {
+            .when_some(footer, |this, footer| {
                 this.child(
                     h_flex()
                         .id("footer")
@@ -340,42 +410,24 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
                 )
             });
 
+        let sidebar = sidebar.child(inner);
+
         if !transition_active {
             sidebar.into_any_element()
         } else {
             let width_anim = point_to_point_animation(&motion, reduced_motion);
             if let Some(width_anim) = width_anim {
-                let width_animated = sidebar.with_animation(
-                    SharedString::from(format!(
-                        "{}-sidebar-width-{}",
-                        sidebar_id,
-                        u8::from(target_collapsed)
-                    )),
-                    width_anim,
-                    move |this, delta| this.w(from_width + (to_width - from_width) * delta),
-                );
-
-                if matches!(presence.phase, PresencePhase::Entering) {
-                    if let Some(transform_anim) =
-                        spring_preset_animation(&motion, reduced_motion, SpringPreset::Medium)
-                    {
-                        return div()
-                            .child(width_animated)
-                            .with_animation(
-                                SharedString::from(format!(
-                                    "{}-sidebar-open-transform",
-                                    sidebar_id
-                                )),
-                                transform_anim,
-                                move |this, delta| {
-                                    this.translate_x(px(open_slide_direction * 6.0 * (1.0 - delta)))
-                                },
-                            )
-                            .into_any_element();
-                    }
-                }
-
-                width_animated.into_any_element()
+                sidebar
+                    .with_animation(
+                        SharedString::from(format!(
+                            "{}-sidebar-width-{}",
+                            sidebar_id,
+                            u8::from(target_collapsed)
+                        )),
+                        width_anim,
+                        move |this, delta| this.w(from_width + (to_width - from_width) * delta),
+                    )
+                    .into_any_element()
             } else {
                 sidebar.into_any_element()
             }

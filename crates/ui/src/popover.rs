@@ -12,7 +12,7 @@ use crate::{
     anchored,
     animation::{
         PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
-        spring_preset_animation,
+        spring_preset_animation, spring_preset_duration_ms,
     },
     global_state::GlobalState,
     v_flex,
@@ -392,11 +392,17 @@ impl RenderOnce for Popover {
 
         let motion = cx.theme().motion.clone();
         let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let open_duration_ms = if reduced_motion {
+            motion.fast_duration_ms
+        } else {
+            spring_preset_duration_ms(&motion, SpringPreset::Medium)
+                .max(motion.fast_duration_ms)
+        };
         let presence = keyed_presence(
             SharedString::from(format!("popover-presence-{}", popover_id)),
             open,
             !reduced_motion,
-            std::time::Duration::from_millis(u64::from(motion.fast_duration_ms)),
+            std::time::Duration::from_millis(u64::from(open_duration_ms)),
             std::time::Duration::from_millis(u64::from(motion.fade_duration_ms)),
             PresenceOptions {
                 animate_on_mount: true,

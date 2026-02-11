@@ -14,7 +14,7 @@ use crate::{
     actions::{Cancel, Confirm},
     animation::{
         PresenceOptions, PresencePhase, SpringPreset, animation_with_theme_easing, keyed_presence,
-        point_to_point_animation, spring_preset_animation,
+        point_to_point_animation, spring_preset_animation, spring_preset_duration_ms,
     },
     button::{Button, ButtonVariant, ButtonVariants as _},
     global_state::GlobalState,
@@ -450,7 +450,12 @@ impl RenderOnce for Dialog {
             paddings.top -= px(6.);
         }
 
-        let open_duration = Duration::from_millis(u64::from(cx.theme().motion.fast_duration_ms));
+        let open_duration = Duration::from_millis(u64::from(if reduced_motion {
+            cx.theme().motion.fast_duration_ms
+        } else {
+            spring_preset_duration_ms(&cx.theme().motion, SpringPreset::Medium)
+                .max(cx.theme().motion.fast_duration_ms)
+        }));
         let close_duration = close_animation_duration(cx);
         let presence = keyed_presence(
             SharedString::from(format!("dialog-{}-presence", dialog_id)),

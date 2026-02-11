@@ -292,7 +292,7 @@ impl Render for SidebarStory {
                     .collapsed(self.collapsed)
                     .width(px(220.))
                     .gap_0()
-                    .header(
+                    .header_with(|collapsed, _, cx| {
                         SidebarHeader::new()
                             .child(
                                 div()
@@ -304,17 +304,17 @@ impl Render for SidebarStory {
                                     .text_color(cx.theme().success_foreground)
                                     .size_8()
                                     .flex_shrink_0()
-                                    .when(!self.collapsed, |this| {
+                                    .when(!collapsed, |this| {
                                         this.child(Icon::new(IconName::GalleryVerticalEnd))
                                     })
-                                    .when(self.collapsed, |this| {
+                                    .when(collapsed, |this| {
                                         this.size_4()
                                             .bg(cx.theme().transparent)
                                             .text_color(cx.theme().foreground)
                                             .child(Icon::new(IconName::GalleryVerticalEnd))
                                     }),
                             )
-                            .when(!self.collapsed, |this| {
+                            .when(!collapsed, |this| {
                                 this.child(
                                     v_flex()
                                         .gap_0()
@@ -327,7 +327,7 @@ impl Render for SidebarStory {
                                         .child(div().child("Enterprise").text_xs()),
                                 )
                             })
-                            .when(!self.collapsed, |this| {
+                            .when(!collapsed, |this| {
                                 this.child(
                                     Icon::new(IconName::ChevronsUpDown).size_4().flex_shrink_0(),
                                 )
@@ -345,8 +345,8 @@ impl Render for SidebarStory {
                                     "Google Inc.",
                                     Box::new(SelectCompany(SharedString::from("google"))),
                                 )
-                            }),
-                    )
+                            })
+                    })
                     .child(
                         SidebarGroup::new("Platform").child(SidebarMenu::new().children(
                             groups[0].iter().enumerate().map(|(ix, item)| {
@@ -423,19 +423,19 @@ impl Render for SidebarStory {
                             }),
                         )),
                     )
-                    .footer(
+                    .footer_with(|collapsed, _, _| {
                         SidebarFooter::new()
                             .justify_between()
                             .child(
                                 h_flex()
                                     .gap_2()
                                     .child(IconName::CircleUser)
-                                    .when(!self.collapsed, |this| this.child("Jason Lee")),
+                                    .when(!collapsed, |this| this.child("Jason Lee")),
                             )
-                            .when(!self.collapsed, |this| {
+                            .when(!collapsed, |this| {
                                 this.child(Icon::new(IconName::ChevronsUpDown).size_4())
-                            }),
-                    ),
+                            })
+                    }),
             )
             .child(
                 v_flex()

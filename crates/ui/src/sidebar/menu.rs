@@ -2,7 +2,7 @@ use crate::{
     ActiveTheme as _, Anchor, Collapsible, Icon, IconName, Selectable, Sizable as _, StyledExt,
     animation::{
         PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
-        spring_preset_animation,
+        spring_preset_animation, spring_preset_duration_ms,
     },
     button::{Button, ButtonVariants as _},
     global_state::GlobalState,
@@ -357,11 +357,17 @@ impl SidebarItem for SidebarMenuItem {
         let show_collapsed_submenu = is_submenu && is_collapsed;
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
+        let open_duration = if reduced_motion {
+            motion.fast_duration_ms
+        } else {
+            spring_preset_duration_ms(&motion, SpringPreset::Mild)
+                .max(motion.fast_duration_ms)
+        };
         let submenu_presence = keyed_presence(
             SharedString::from(format!("{}-submenu-presence", state_key)),
             is_open,
             !reduced_motion,
-            Duration::from_millis(u64::from(motion.fast_duration_ms)),
+            Duration::from_millis(u64::from(open_duration)),
             Duration::from_millis(u64::from(motion.fast_duration_ms)),
             PresenceOptions::default(),
             window,

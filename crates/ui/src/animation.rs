@@ -141,6 +141,14 @@ pub enum SpringPreset {
     Medium,
 }
 
+/// Duration (ms) for a spring preset.
+pub fn spring_preset_duration_ms(motion: &ThemeMotion, preset: SpringPreset) -> u16 {
+    match preset {
+        SpringPreset::Mild => motion.spring_mild_duration_ms,
+        SpringPreset::Medium => motion.spring_medium_duration_ms,
+    }
+}
+
 /// Spring animation preset for transform-only motion.
 pub fn spring_preset_animation(
     motion: &ThemeMotion,
