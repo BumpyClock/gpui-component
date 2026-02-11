@@ -1,7 +1,7 @@
 use std::{rc::Rc, time::Duration};
 
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent, Edges, ElementId,
+    AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent, Edges, ElementId,
     FocusHandle, Hsla, InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement,
     Pixels, Point, RenderOnce, SharedString, StyleRefinement, Styled, Window, WindowControlArea,
     anchored, div, hsla, point, prelude::FluentBuilder, px, relative,
@@ -13,8 +13,9 @@ use crate::{
     TITLE_BAR_HEIGHT, WindowExt as _,
     actions::{Cancel, Confirm},
     animation::{
-        PresenceOptions, PresencePhase, SpringPreset, animation_with_theme_easing, keyed_presence,
-        point_to_point_animation, spring_preset_animation, spring_preset_duration_ms,
+        PresenceOptions, PresencePhase, SpringPreset, fade_animation, fast_invoke_animation,
+        keyed_presence, point_to_point_animation, soft_dismiss_animation,
+        spring_preset_animation, spring_preset_duration_ms,
     },
     button::{Button, ButtonVariant, ButtonVariants as _},
     global_state::GlobalState,
@@ -473,28 +474,30 @@ impl RenderOnce for Dialog {
 
         let motion = &cx.theme().motion;
         let open_panel_layout_animation = point_to_point_animation(motion, reduced_motion)
+            .or_else(|| fast_invoke_animation(motion, reduced_motion))
             .unwrap_or_else(|| {
-                animation_with_theme_easing(
-                    Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms))),
-                    motion.fast_invoke_easing.as_ref(),
-                )
+                gpui::Animation::new(std::time::Duration::from_millis(u64::from(
+                    motion.fast_duration_ms,
+                )))
             });
         let open_panel_transform_animation =
             spring_preset_animation(motion, reduced_motion, SpringPreset::Medium);
-        let close_panel_animation = animation_with_theme_easing(
-            Animation::new(Duration::from_millis(u64::from(
-                motion.soft_dismiss_duration_ms,
-            ))),
-            motion.soft_dismiss_easing.as_ref(),
-        );
-        let fade_in_animation = animation_with_theme_easing(
-            Animation::new(Duration::from_millis(u64::from(motion.fade_duration_ms))),
-            motion.fade_easing.as_ref(),
-        );
-        let fade_out_animation = animation_with_theme_easing(
-            Animation::new(Duration::from_millis(u64::from(motion.fade_duration_ms))),
-            motion.fade_easing.as_ref(),
-        );
+        let close_panel_animation = soft_dismiss_animation(motion, reduced_motion)
+            .unwrap_or_else(|| {
+                gpui::Animation::new(std::time::Duration::from_millis(u64::from(
+                    motion.soft_dismiss_duration_ms,
+                )))
+            });
+        let fade_in_animation = fade_animation(motion, reduced_motion).unwrap_or_else(|| {
+            gpui::Animation::new(std::time::Duration::from_millis(u64::from(
+                motion.fade_duration_ms,
+            )))
+        });
+        let fade_out_animation = fade_animation(motion, reduced_motion).unwrap_or_else(|| {
+            gpui::Animation::new(std::time::Duration::from_millis(u64::from(
+                motion.fade_duration_ms,
+            )))
+        });
 
         anchored()
             .position(point(window_paddings.left, window_paddings.top))

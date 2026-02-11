@@ -1,7 +1,7 @@
-use std::{rc::Rc, time::Duration};
+use std::rc::Rc;
 
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, ClickEvent, DefiniteLength, DismissEvent, Edges,
+    AnimationExt as _, AnyElement, App, ClickEvent, DefiniteLength, DismissEvent, Edges,
     EventEmitter, FocusHandle, InteractiveElement as _, IntoElement, KeyBinding, MouseButton,
     ParentElement, Pixels, RenderOnce, StyleRefinement, Styled, Window, WindowControlArea,
     anchored, div, point, prelude::FluentBuilder as _, px,
@@ -13,7 +13,7 @@ use crate::{
     ActiveTheme, FocusTrapElement as _, IconName, Placement, Sizable, StyledExt as _,
     WindowExt as _,
     actions::Cancel,
-    animation::animation_with_theme_easing,
+    animation::fast_invoke_animation,
     button::{Button, ButtonVariants as _},
     dialog::overlay_color,
     global_state::GlobalState,
@@ -147,10 +147,7 @@ impl RenderOnce for Sheet {
         let top = cx.theme().sheet.margin_top;
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = &cx.theme().motion;
-        let slide_animation = animation_with_theme_easing(
-            Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms))),
-            motion.fast_invoke_easing.as_ref(),
-        );
+        let slide_animation = fast_invoke_animation(motion, reduced_motion);
         let on_close = self.on_close.clone();
 
         let base_size = window.text_style().font_size;
@@ -282,13 +279,11 @@ impl RenderOnce for Sheet {
                                     cx.stop_propagation();
                                 }
                             })
-                            .map(move |this| {
-                                if reduced_motion {
-                                    this.into_any_element()
-                                } else {
-                                    this.with_animation(
+                            .map(move |this| match slide_animation {
+                                Some(anim) => this
+                                    .with_animation(
                                         "slide",
-                                        slide_animation,
+                                        anim,
                                         move |this, delta| {
                                             let y = px(-100.) + delta * px(100.);
                                             this.map(|this| match placement {
@@ -299,8 +294,8 @@ impl RenderOnce for Sheet {
                                             })
                                         },
                                     )
-                                    .into_any_element()
-                                }
+                                    .into_any_element(),
+                                None => this.into_any_element(),
                             }),
                     ),
             )

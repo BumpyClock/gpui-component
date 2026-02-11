@@ -3,11 +3,11 @@ use std::time::Duration;
 
 use crate::{
     ActiveTheme, Icon, IconName, Selectable, Sizable, Size, StyledExt,
-    animation::animation_with_theme_easing, global_state::GlobalState, h_flex,
+    animation::fade_animation, global_state::GlobalState, h_flex,
 };
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    Animation, AnimationExt as _, AnyElement, App, ClickEvent, Div, Edges, ElementId, Hsla,
+    AnimationExt as _, AnyElement, App, ClickEvent, Div, Edges, ElementId, Hsla,
     InteractiveElement, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, SharedString,
     StatefulInteractiveElement, Styled, Window, div, px, relative,
 };
@@ -646,13 +646,12 @@ impl RenderOnce for Tab {
             changed && !reduced_motion
         };
 
-        let fade_animation = became_selected.then(|| {
+        let tab_fade_animation = if became_selected {
             let motion = &cx.theme().motion;
-            animation_with_theme_easing(
-                Animation::new(Duration::from_millis(u64::from(motion.fade_duration_ms))),
-                &motion.fade_easing,
-            )
-        });
+            fade_animation(motion, reduced_motion)
+        } else {
+            None
+        };
 
         self.base
             .id(self.ix)
@@ -734,7 +733,7 @@ impl RenderOnce for Tab {
                     this.on_click(move |event, window, cx| on_click(event, window, cx))
                 })
             })
-            .map(|this| match fade_animation {
+            .map(|this| match tab_fade_animation {
                 Some(anim) => this
                     .with_animation(
                         ElementId::NamedInteger("tab-fade".into(), self.ix as u64),

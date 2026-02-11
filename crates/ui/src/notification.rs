@@ -8,7 +8,7 @@ use std::{
 };
 
 use gpui::{
-    Animation, AnimationExt, AnyElement, App, AppContext, ClickEvent, Context, DismissEvent,
+    AnimationExt, AnyElement, App, AppContext, ClickEvent, Context, DismissEvent,
     ElementId, Entity, EventEmitter, InteractiveElement as _, IntoElement, ParentElement as _,
     Pixels, Render, SharedString, StatefulInteractiveElement, StyleRefinement, Styled,
     Subscription, Window, div, prelude::FluentBuilder, px,
@@ -19,7 +19,7 @@ use smol::Timer;
 
 use crate::{
     ActiveTheme as _, Anchor, Edges, Icon, IconName, Sizable as _, StyledExt, TITLE_BAR_HEIGHT,
-    animation::animation_with_theme_easing,
+    animation::{fast_invoke_animation, soft_dismiss_animation},
     button::{Button, ButtonVariants as _},
     global_state::GlobalState,
     h_flex, v_flex,
@@ -310,21 +310,11 @@ impl Render for Notification {
         let placement = cx.theme().notification.placement;
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = &cx.theme().motion;
-        let animation = (!reduced_motion).then(|| {
-            if closing {
-                animation_with_theme_easing(
-                    Animation::new(Duration::from_millis(u64::from(
-                        motion.soft_dismiss_duration_ms,
-                    ))),
-                    motion.soft_dismiss_easing.as_ref(),
-                )
-            } else {
-                animation_with_theme_easing(
-                    Animation::new(Duration::from_millis(u64::from(motion.fast_duration_ms))),
-                    motion.fast_invoke_easing.as_ref(),
-                )
-            }
-        });
+        let animation = if closing {
+            soft_dismiss_animation(motion, reduced_motion)
+        } else {
+            fast_invoke_animation(motion, reduced_motion)
+        };
 
         let notification = h_flex()
             .id(notification_element_id(&self.id))
