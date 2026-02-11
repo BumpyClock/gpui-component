@@ -108,6 +108,15 @@ What worked: path override does not work here because `gpui` uses workspace-inhe
 Outcome: proper flow is commit/push submodule changes, then bump `Cargo.toml` `gpui` `rev` to the new commit.
 Next time: skip `[patch]` path attempts for this repo; use git `rev` updates only.
 
+## 2026-02-11
+Context: implementing GPUI transform foundation for spring-style motion.
+What worked:
+- Added `Window::with_element_transform(...)` stack and carried it through deferred draw replay.
+- Added transformed hitbox insertion + inverse-mapped hit testing (`insert_hitbox_transformed`, `contains_window_point`, `window_to_local`).
+- Applied transform-aware bounds/content-mask handling in paint paths and render transform composition for glyph/SVG.
+Outcome: transform context now survives prepaint/paint flow and pointer hit testing remains stable under transforms.
+Next time: if visual fidelity for rotated/scaled quads/images is needed, add true shader-space transform for those primitives.
+
 ## 2026-02-10
 Context: collapsed sidebar items with children were not navigable.
 What worked: wrap collapsed parent in `Popover` and render children via `PopupMenu` (recursive submenu builder); cache menu entity with keyed state and clear on dismiss.

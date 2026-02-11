@@ -27,7 +27,7 @@ gpui-component-macros = { path = "crates/macros", version = "0.5.1" }
 gpui-component-assets = { path = "crates/assets", version = "0.5.1" }
 story = { path = "crates/story" }
 
-gpui = { git = "https://github.com/BumpyClock/zed", rev = "0336a2af282ba17bbc64cbab7e6c61e8f9c1682e" }
+gpui = { git = "https://github.com/BumpyClock/zed", rev = "24d37811765511efd6d7dc6ec3c7934795dfed2d" }
 gpui-macros = "0.2.2"
 sum-tree = { version = "0.2.0", package = "zed-sum-tree" }
 # reqwest = { version = "0.12.15-zed", package = "zed-reqwest" }
