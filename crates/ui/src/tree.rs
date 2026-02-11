@@ -295,21 +295,20 @@ impl TreeState {
             return;
         }
 
-        // Expand each ancestor incrementally
+        ancestors.reverse();
+
         for ancestor in ancestors {
             if ancestor.is_expanded() {
                 continue;
             }
             ancestor.state.borrow_mut().expanded = true;
 
-            // Find this ancestor in the current entries and splice in its children
             if let Some(ix) = self.entries.iter().position(|e| e.item.id == ancestor.id) {
                 let depth = self.entries[ix].depth;
                 let children = Self::flatten_children(&ancestor, depth + 1);
                 let inserted = children.len();
                 self.entries.splice(ix + 1..ix + 1, children);
 
-                // Adjust selection
                 if let Some(sel) = self.selected_ix {
                     if sel > ix {
                         self.selected_ix = Some(sel + inserted);
@@ -368,29 +367,24 @@ impl TreeState {
         entry.item.state.borrow_mut().expanded = !was_expanded;
 
         if was_expanded {
-            // Collapse: drain descendants
             let end = self.find_subtree_end(ix);
             let removed = end - (ix + 1);
             self.entries.drain(ix + 1..end);
 
-            // Adjust selection
             if let Some(sel) = self.selected_ix {
                 if sel > ix && sel < end {
-                    // Selected item was in the collapsed subtree
                     self.selected_ix = Some(ix);
                 } else if sel >= end {
                     self.selected_ix = Some(sel - removed);
                 }
             }
         } else {
-            // Expand: splice in children
             let depth = self.entries[ix].depth;
             let item = self.entries[ix].item.clone();
             let children = Self::flatten_children(&item, depth + 1);
             let inserted = children.len();
             self.entries.splice(ix + 1..ix + 1, children);
 
-            // Adjust selection
             if let Some(sel) = self.selected_ix {
                 if sel > ix {
                     self.selected_ix = Some(sel + inserted);
@@ -657,17 +651,12 @@ mod tests {
         })
     }
 
+    /// Collapsing a subtree shifts selection indices past the subtree down,
+    /// and re-expanding shifts them back up.
     #[gpui::test]
     fn test_selection_adjustment_on_collapse(cx: &mut gpui::TestAppContext) {
         use super::TreeItem;
 
-        // Tree:
-        //  0: src (expanded)
-        //  1:   ui (expanded)
-        //  2:     button.rs
-        //  3:     icon.rs
-        //  4:   lib.rs
-        //  5: README.md
         let items = vec![
             TreeItem::new("src", "src")
                 .expanded(true)
@@ -685,20 +674,19 @@ mod tests {
         state.update(cx, |state, _| {
             assert_eq!(state.entries.len(), 6);
 
-            // Select "README.md" at index 5, collapse "ui" at index 1
-            // Removes button.rs + icon.rs (2 items), README moves to index 3
             state.selected_ix = Some(5);
             state.toggle_expand(1);
             assert_eq!(state.selected_ix, Some(3));
             assert_eq!(state.entries[3].item.label.as_ref(), "README.md");
 
-            // Re-expand "ui", README should shift back
             state.toggle_expand(1);
             assert_eq!(state.selected_ix, Some(5));
             assert_eq!(state.entries[5].item.label.as_ref(), "README.md");
         })
     }
 
+    /// Collapsing a subtree that contains the selected item moves selection
+    /// to the collapsed parent node.
     #[gpui::test]
     fn test_selection_inside_collapsed_subtree(cx: &mut gpui::TestAppContext) {
         use super::TreeItem;
@@ -717,8 +705,6 @@ mod tests {
 
         let state = cx.new(|cx| TreeState::new(cx).items(items));
         state.update(cx, |state, _| {
-            // Select "icon.rs" at index 3, then collapse parent "ui" at index 1
-            // Selected item is inside collapsed subtree → selection moves to parent
             state.selected_ix = Some(3);
             state.toggle_expand(1);
             assert_eq!(state.selected_ix, Some(1));
@@ -726,6 +712,7 @@ mod tests {
         })
     }
 
+    /// Expanding a node after the selected item does not change selection.
     #[gpui::test]
     fn test_selection_before_expanded_node(cx: &mut gpui::TestAppContext) {
         use super::TreeItem;
@@ -740,13 +727,10 @@ mod tests {
 
         let state = cx.new(|cx| TreeState::new(cx).items(items));
         state.update(cx, |state, _| {
-            // Select "a" at index 0, expand "b" at index 1
-            // Selection at index 0 should stay unchanged
             state.selected_ix = Some(0);
             state.toggle_expand(1);
             assert_eq!(state.selected_ix, Some(0));
             assert_eq!(state.entries[0].item.label.as_ref(), "a");
-            // "c" moved from index 2 to index 4
             assert_eq!(state.entries[4].item.label.as_ref(), "c");
         })
     }
