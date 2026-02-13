@@ -26,7 +26,7 @@
 //!
 //! # Platform Considerations
 //!
-//! - **macOS**: Native title bar with traffic lights. Default safe_area_left is 80px.
+//! - **macOS**: Native title bar with traffic lights.
 //! - **Windows/Linux**: Custom title bar with window controls. Uses `.occlude()` to prevent
 //!   underlying content from intercepting clicks in the title bar region.
 
@@ -43,7 +43,7 @@ use std::rc::Rc;
 use gpui::{
     AnyElement, App, Hsla, InteractiveElement, IntoElement, MouseButton, MouseMoveEvent,
     MouseUpEvent, ParentElement, Pixels, RenderOnce, StyleRefinement, Styled, Window,
-    WindowOptions, div, prelude::FluentBuilder as _, px, transparent_black,
+    WindowDecorations, WindowOptions, div, prelude::FluentBuilder as _, px, transparent_black,
 };
 
 use crate::{ActiveTheme, StyledExt, TITLE_BAR_HEIGHT, TitleBar};
@@ -186,10 +186,14 @@ impl WindowShell {
     ///
     /// This keeps app setup consistent and avoids hand-rolling titlebar defaults.
     pub fn window_options() -> WindowOptions {
-        WindowOptions {
+        let mut options = WindowOptions {
             titlebar: Some(TitleBar::title_bar_options()),
             ..WindowOptions::default()
+        };
+        if cfg!(not(target_os = "macos")) {
+            options.window_decorations = Some(WindowDecorations::Client);
         }
+        options
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -432,14 +436,14 @@ impl WindowShell {
         sidebar_left: Option<AnyElement>,
         sidebar_right: Option<AnyElement>,
         main: Option<AnyElement>,
-        title_bar_height: Pixels,
+        _title_bar_height: Pixels,
     ) -> impl IntoElement {
         // In FloatingPanels mode, sidebars are expected to be SidebarShell instances
         // which handle their own absolute positioning and insets.
         div()
             .id("window-shell-floating-layout")
             .absolute()
-            .top(title_bar_height)
+            .top_0()
             .left_0()
             .right_0()
             .bottom_0()

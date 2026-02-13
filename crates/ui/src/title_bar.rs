@@ -35,6 +35,8 @@ pub struct TitleBar {
     children: SmallVec<[AnyElement; 1]>,
     on_close_window: Option<Rc<Box<dyn Fn(&ClickEvent, &mut Window, &mut App)>>>,
     content_insets: Option<Edges<Pixels>>,
+    content_inset_left: Option<Pixels>,
+    content_inset_right: Option<Pixels>,
     safe_area_left: Pixels,
     safe_area_right: Pixels,
 }
@@ -47,6 +49,8 @@ impl TitleBar {
             children: SmallVec::new(),
             on_close_window: None,
             content_insets: None,
+            content_inset_left: None,
+            content_inset_right: None,
             safe_area_left: px(0.0),
             safe_area_right: px(0.0),
         }
@@ -76,22 +80,20 @@ impl TitleBar {
     /// Set content insets for title bar content area.
     pub fn content_insets(mut self, insets: Edges<Pixels>) -> Self {
         self.content_insets = Some(insets);
+        self.content_inset_left = None;
+        self.content_inset_right = None;
         self
     }
 
     /// Set left content inset for title bar content area.
     pub fn content_inset_left(mut self, inset: impl Into<Pixels>) -> Self {
-        let mut insets = self.content_insets.unwrap_or_else(|| Edges::all(px(0.0)));
-        insets.left = inset.into();
-        self.content_insets = Some(insets);
+        self.content_inset_left = Some(inset.into());
         self
     }
 
     /// Set right content inset for title bar content area.
     pub fn content_inset_right(mut self, inset: impl Into<Pixels>) -> Self {
-        let mut insets = self.content_insets.unwrap_or_else(|| Edges::all(px(0.0)));
-        insets.right = inset.into();
-        self.content_insets = Some(insets);
+        self.content_inset_right = Some(inset.into());
         self
     }
 
@@ -354,6 +356,12 @@ impl RenderOnce for TitleBar {
             }
         };
         let mut content_insets = self.content_insets.unwrap_or(default_insets);
+        if let Some(left) = self.content_inset_left {
+            content_insets.left = left;
+        }
+        if let Some(right) = self.content_inset_right {
+            content_insets.right = right;
+        }
         content_insets.left += self.safe_area_left;
         content_insets.right += self.safe_area_right;
 
