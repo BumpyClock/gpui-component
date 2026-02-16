@@ -221,15 +221,9 @@ impl DockItem {
         window: &mut Window,
         cx: &mut App,
     ) -> Self {
-        let mut items = items;
+        let items = items;
         let stack_panel = cx.new(|cx| {
             let mut stack_panel = StackPanel::new(axis, window, cx);
-            for (i, item) in items.iter_mut().enumerate() {
-                let view = item.view();
-                let size = sizes.get(i).copied().flatten();
-                stack_panel.add_panel(view.clone(), size, dock_area.clone(), window, cx)
-            }
-
             for (i, item) in items.iter().enumerate() {
                 let view = item.view();
                 let size = sizes.get(i).copied().flatten();

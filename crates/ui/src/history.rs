@@ -1,4 +1,5 @@
 use std::{
+    collections::VecDeque,
     fmt::Debug,
     time::{Duration, Instant},
 };
@@ -22,8 +23,8 @@ pub trait HistoryItem: Clone + PartialEq {
 /// - Tracking tab history for prev/next features
 #[derive(Debug)]
 pub struct History<I: HistoryItem> {
-    undos: Vec<I>,
-    redos: Vec<I>,
+    undos: VecDeque<I>,
+    redos: VecDeque<I>,
     last_changed_at: Instant,
     version: usize,
     pub(crate) ignore: bool,
@@ -101,7 +102,7 @@ where
         let version = self.inc_version();
 
         if self.undos.len() >= self.max_undos {
-            self.undos.remove(0);
+            self.undos.pop_front();
         }
 
         if self.unique {
@@ -111,16 +112,16 @@ where
 
         let mut item = item;
         item.set_version(version);
-        self.undos.push(item);
+        self.undos.push_back(item);
     }
 
     /// Get the undo stack.
-    pub fn undos(&self) -> &Vec<I> {
+    pub fn undos(&self) -> &VecDeque<I> {
         &self.undos
     }
 
     /// Get the redo stack.
-    pub fn redos(&self) -> &Vec<I> {
+    pub fn redos(&self) -> &VecDeque<I> {
         &self.redos
     }
 
@@ -132,18 +133,15 @@ where
 
     /// Undo the last change and return the changes that were undone.
     pub fn undo(&mut self) -> Option<Vec<I>> {
-        if let Some(first_change) = self.undos.pop() {
+        if let Some(first_change) = self.undos.pop_back() {
             let mut changes = vec![first_change.clone()];
-            // pick the next all changes with the same version
-            while self
-                .undos
-                .iter()
-                .filter(|c| c.version() == first_change.version())
-                .count()
-                > 0
-            {
-                let change = self.undos.pop().unwrap();
-                changes.push(change);
+            while let Some(next) = self.undos.back() {
+                if next.version() == first_change.version() {
+                    let change = self.undos.pop_back().unwrap();
+                    changes.push(change);
+                } else {
+                    break;
+                }
             }
 
             self.redos.extend(changes.clone());
@@ -155,18 +153,15 @@ where
 
     /// Redo the last undone change and return the changes that were redone.
     pub fn redo(&mut self) -> Option<Vec<I>> {
-        if let Some(first_change) = self.redos.pop() {
+        if let Some(first_change) = self.redos.pop_back() {
             let mut changes = vec![first_change.clone()];
-            // pick the next all changes with the same version
-            while self
-                .redos
-                .iter()
-                .filter(|c| c.version() == first_change.version())
-                .count()
-                > 0
-            {
-                let change = self.redos.pop().unwrap();
-                changes.push(change);
+            while let Some(next) = self.redos.back() {
+                if next.version() == first_change.version() {
+                    let change = self.redos.pop_back().unwrap();
+                    changes.push(change);
+                } else {
+                    break;
+                }
             }
             self.undos.extend(changes.clone());
             Some(changes)
@@ -267,7 +262,7 @@ mod tests {
         // Check the version and undo stack
         assert_eq!(history.version(), 5);
         assert_eq!(history.undos().len(), 3);
-        assert_eq!(history.undos().last().unwrap().tab_index, 1);
+        assert_eq!(history.undos().back().unwrap().tab_index, 1);
 
         // Undo the last change
         let changes = history.undo().unwrap();

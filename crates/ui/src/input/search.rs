@@ -1,6 +1,6 @@
 use aho_corasick::AhoCorasick;
 use rust_i18n::t;
-use std::{ops::Range, rc::Rc};
+use std::{io::Read, ops::Range, rc::Rc};
 
 use gpui::{
     App, AppContext as _, Context, Empty, Entity, FocusHandle, Focusable, Half,
@@ -21,6 +21,51 @@ use crate::{
     label::Label,
     v_flex,
 };
+
+struct RopeReader<'a> {
+    chunks: ropey::iter::Chunks<'a>,
+    current: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> RopeReader<'a> {
+    fn new(rope: &'a Rope) -> Self {
+        let mut chunks = rope.chunks();
+        let current = chunks
+            .next()
+            .map(|s| s.as_bytes())
+            .unwrap_or_default();
+        Self {
+            chunks,
+            current,
+            offset: 0,
+        }
+    }
+}
+
+impl Read for RopeReader<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let mut total = 0;
+        while total < buf.len() {
+            let remaining = &self.current[self.offset..];
+            if remaining.is_empty() {
+                match self.chunks.next() {
+                    Some(chunk) => {
+                        self.current = chunk.as_bytes();
+                        self.offset = 0;
+                        continue;
+                    }
+                    None => break,
+                }
+            }
+            let n = remaining.len().min(buf.len() - total);
+            buf[total..total + n].copy_from_slice(&remaining[..n]);
+            self.offset += n;
+            total += n;
+        }
+        Ok(total)
+    }
+}
 
 const CONTEXT: &'static str = "SearchPanel";
 
@@ -69,9 +114,9 @@ impl SearchMatcher {
     fn update_matches(&mut self) {
         let mut new_ranges = Vec::new();
         if let Some(query) = &self.query {
-            let text = self.text.to_string();
-            // FIXME: Use stream find
-            let matches = query.stream_find_iter(text.as_bytes());
+            let reader = RopeReader::new(&self.text);
+
+            let matches = query.stream_find_iter(reader);
 
             for query_match in matches.into_iter() {
                 let query_match = query_match.expect("query match for select all action");

@@ -1023,14 +1023,18 @@ where
                         .relative()
                         .h_full()
                         .bg(cx.theme().table_head)
-                        .children(
-                            self.col_groups
-                                .clone()
-                                .into_iter()
-                                .filter(|col| col.column.fixed == Some(ColumnFixed::Left))
+                        .children({
+                            let left_col_indices: Vec<usize> = self
+                                .col_groups
+                                .iter()
                                 .enumerate()
-                                .map(|(col_ix, _)| self.render_th(col_ix, window, cx)),
-                        )
+                                .filter(|(_, col)| col.column.fixed == Some(ColumnFixed::Left))
+                                .map(|(i, _)| i)
+                                .collect();
+                            left_col_indices
+                                .into_iter()
+                                .map(|col_ix| self.render_th(col_ix, window, cx))
+                        })
                         .child(
                             // Fixed columns border
                             div()
@@ -1060,16 +1064,13 @@ where
                     .child(
                         h_flex()
                             .relative()
-                            .children(
-                                self.col_groups
-                                    .clone()
+                            .children({
+                                let col_indices: Vec<usize> =
+                                    (left_columns_count..self.col_groups.len()).collect();
+                                col_indices
                                     .into_iter()
-                                    .skip(left_columns_count)
-                                    .enumerate()
-                                    .map(|(col_ix, _)| {
-                                        self.render_th(left_columns_count + col_ix, window, cx)
-                                    }),
-                            )
+                                    .map(|col_ix| self.render_th(col_ix, window, cx))
+                            })
                             .child(self.delegate.render_last_empty_col(window, cx)),
                     ),
             )

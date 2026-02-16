@@ -347,23 +347,27 @@ impl RopeExt for Rope {
             return None;
         }
 
-        let mut left = String::new();
         let offset = self.clip_offset(offset, Bias::Left);
+
+        let mut left_bytes = 0usize;
         for c in self.chars_at(offset).reversed() {
             if c.is_alphanumeric() || c == '_' {
-                left.insert(0, c);
+                left_bytes += c.len_utf8();
             } else {
                 break;
             }
         }
-        let start = offset.saturating_sub(left.len());
+        let start = offset.saturating_sub(left_bytes);
 
-        let right = self
-            .chars_at(offset)
-            .take_while(|c| c.is_alphanumeric() || *c == '_')
-            .collect::<String>();
-
-        let end = offset + right.len();
+        let mut right_bytes = 0usize;
+        for c in self.chars_at(offset) {
+            if c.is_alphanumeric() || c == '_' {
+                right_bytes += c.len_utf8();
+            } else {
+                break;
+            }
+        }
+        let end = offset + right_bytes;
 
         if start == end { None } else { Some(start..end) }
     }

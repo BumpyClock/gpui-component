@@ -1522,18 +1522,19 @@ impl InputState {
         }
     }
 
-    fn push_history(&mut self, text: &Rope, range: &Range<usize>, new_text: &str) {
+    fn push_history_with_old_text(
+        &mut self,
+        old_text: &str,
+        range: &Range<usize>,
+        new_text: &str,
+    ) {
         if self.history.ignore {
             return;
         }
 
-        let range =
-            text.clip_offset(range.start, Bias::Left)..text.clip_offset(range.end, Bias::Right);
-        let old_text = text.slice(range.clone()).to_string();
         let new_range = range.start..range.start + new_text.len();
-
         self.history
-            .push(Change::new(range, &old_text, new_range, new_text));
+            .push(Change::new(range.clone(), old_text, new_range, new_text));
     }
 
     pub(super) fn undo(&mut self, _: &Undo, window: &mut Window, cx: &mut Context<Self>) {
@@ -2033,16 +2034,17 @@ impl EntityInputHandler for InputState {
             }))
             .unwrap_or(self.selected_range.into());
 
-        let old_text = self.text.clone();
+        let clipped_range = self.text.clip_offset(range.start, Bias::Left)
+            ..self.text.clip_offset(range.end, Bias::Right);
+        let old_slice = self.text.slice(clipped_range.clone()).to_string();
         self.text.replace(range.clone(), new_text);
 
         let mut new_offset = (range.start + new_text.len()).min(self.text.len());
 
         if self.mode.is_single_line() {
             let pending_text = self.text.to_string();
-            // Check if the new text is valid
             if !self.is_valid_input(&pending_text, cx) {
-                self.text = old_text;
+                self.text.replace(range.start..range.start + new_text.len(), &old_slice);
                 return;
             }
 
@@ -2055,7 +2057,7 @@ impl EntityInputHandler for InputState {
             }
         }
 
-        self.push_history(&old_text, &range, &new_text);
+        self.push_history_with_old_text(&old_slice, &clipped_range, &new_text);
         self.history.end_grouping();
         if let Some(diagnostics) = self.mode.diagnostics_mut() {
             diagnostics.reset(&self.text)
@@ -2101,13 +2103,15 @@ impl EntityInputHandler for InputState {
             }))
             .unwrap_or(self.selected_range.into());
 
-        let old_text = self.text.clone();
+        let clipped_range = self.text.clip_offset(range.start, Bias::Left)
+            ..self.text.clip_offset(range.end, Bias::Right);
+        let old_slice = self.text.slice(clipped_range.clone()).to_string();
         self.text.replace(range.clone(), new_text);
 
         if self.mode.is_single_line() {
             let pending_text = self.text.to_string();
             if !self.is_valid_input(&pending_text, cx) {
-                self.text = old_text;
+                self.text.replace(range.start..range.start + new_text.len(), &old_slice);
                 return;
             }
         }
@@ -2121,7 +2125,6 @@ impl EntityInputHandler for InputState {
             .update_highlighter(&range, &self.text, &new_text, true, cx);
         self.lsp.update(&self.text, window, cx);
         if new_text.is_empty() {
-            // Cancel selection, when cancel IME input.
             self.selected_range = (range.start..range.start).into();
             self.ime_marked_range = None;
         } else {
@@ -2135,7 +2138,7 @@ impl EntityInputHandler for InputState {
         }
         self.mode.update_auto_grow(&self.text_wrapper);
         self.history.start_grouping();
-        self.push_history(&old_text, &range, new_text);
+        self.push_history_with_old_text(&old_slice, &clipped_range, new_text);
         cx.notify();
     }
 

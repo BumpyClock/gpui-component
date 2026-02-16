@@ -108,9 +108,22 @@ impl TextElement {
         let mut cursor_start = None;
         let mut cursor_end = None;
 
-        let mut prev_lines_offset = 0;
-        let mut offset_y = px(0.);
-        for (ix, wrap_line) in text_wrapper.lines.iter().enumerate() {
+        let min_offset_needed = cursor
+            .min(selected_range.start)
+            .min(selected_range.end);
+
+        let (start_ix, mut prev_lines_offset, mut offset_y) =
+            if min_offset_needed >= last_layout.visible_range_offset.start {
+                (
+                    visible_range.start,
+                    last_layout.visible_range_offset.start,
+                    last_layout.visible_top,
+                )
+            } else {
+                (0, 0, px(0.))
+            };
+
+        for (ix, wrap_line) in text_wrapper.lines.iter().enumerate().skip(start_ix) {
             let row = ix;
             let line_origin = point(px(0.), offset_y);
 
