@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme, Collapsible, Icon, IconName, PixelsExt, Side, Sizable, StyledExt,
+    ActiveTheme, Collapsible, Icon, IconName, Side, Sizable, StyledExt,
     animation::{
         PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
         spring_preset_duration_ms,

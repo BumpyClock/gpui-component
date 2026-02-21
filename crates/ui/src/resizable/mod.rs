@@ -4,8 +4,6 @@ use gpui::{
     Along, App, Axis, Bounds, Context, ElementId, EventEmitter, IsZero, Pixels, Window, px,
 };
 
-use crate::PixelsExt;
-
 mod panel;
 mod resize_handle;
 pub use panel::*;

@@ -1,5 +1,5 @@
 use crate::{
-    ActiveTheme, PixelsExt, Sizable, Size, StyledExt, animation::animation_with_theme_easing,
+    ActiveTheme, Sizable, Size, StyledExt, animation::animation_with_theme_easing,
     global_state::GlobalState,
 };
 use gpui::prelude::FluentBuilder as _;
