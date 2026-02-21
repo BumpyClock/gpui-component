@@ -7,4 +7,4 @@ index.scip
 *.log
 node_modules/
 .ai_agents/
-tasque/specs
+.tasque/specs
