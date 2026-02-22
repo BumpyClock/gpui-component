@@ -108,9 +108,7 @@ impl TextElement {
         let mut cursor_start = None;
         let mut cursor_end = None;
 
-        let min_offset_needed = cursor
-            .min(selected_range.start)
-            .min(selected_range.end);
+        let min_offset_needed = cursor.min(selected_range.start).min(selected_range.end);
 
         let (start_ix, mut prev_lines_offset, mut offset_y) =
             if min_offset_needed >= last_layout.visible_range_offset.start {

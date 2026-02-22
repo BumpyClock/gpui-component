@@ -1,21 +1,23 @@
 use std::path::PathBuf;
 
 use gpui::{Action, App, SharedString};
-use gpui_component::{ActiveTheme, Theme, ThemeMode, ThemeRegistry, scroll::ScrollbarShow};
+use gpui_component::{ActiveTheme, Theme, ThemeModePreference, ThemeRegistry, scroll::ScrollbarShow};
 use serde::{Deserialize, Serialize};
 
 const STATE_FILE: &str = "target/state.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct State {
-    theme: SharedString,
+    theme_set: SharedString,
+    mode_preference: ThemeModePreference,
     scrollbar_show: Option<ScrollbarShow>,
 }
 
 impl Default for State {
     fn default() -> Self {
         Self {
-            theme: "Default Light".into(),
+            theme_set: "Default".into(),
+            mode_preference: ThemeModePreference::System,
             scrollbar_show: None,
         }
     }
@@ -27,12 +29,12 @@ pub fn init(cx: &mut App) {
     tracing::info!("Load themes...");
     let state = serde_json::from_str::<State>(&json).unwrap_or_default();
     if let Err(err) = ThemeRegistry::watch_dir(PathBuf::from("./themes"), cx, move |cx| {
-        if let Some(theme) = ThemeRegistry::global(cx)
-            .themes()
-            .get(&state.theme)
+        if let Some(set) = ThemeRegistry::global(cx)
+            .theme_sets()
+            .get(&state.theme_set)
             .cloned()
         {
-            Theme::global_mut(cx).apply_config(&theme);
+            Theme::apply_theme_set(&set, state.mode_preference, None, cx);
         }
     }) {
         tracing::error!("Failed to watch themes directory: {}", err);
@@ -45,7 +47,8 @@ pub fn init(cx: &mut App) {
 
     cx.observe_global::<Theme>(|cx| {
         let state = State {
-            theme: cx.theme().theme_name().clone(),
+            theme_set: cx.theme().theme_set_name.clone(),
+            mode_preference: cx.theme().mode_preference,
             scrollbar_show: Some(cx.theme().scrollbar_show),
         };
 
@@ -57,15 +60,19 @@ pub fn init(cx: &mut App) {
     .detach();
 
     cx.on_action(|switch: &SwitchTheme, cx| {
-        let theme_name = switch.0.clone();
-        if let Some(theme_config) = ThemeRegistry::global(cx).themes().get(&theme_name).cloned() {
-            Theme::global_mut(cx).apply_config(&theme_config);
+        let set_name = switch.0.clone();
+        if let Some(set) = ThemeRegistry::global(cx).theme_sets().get(&set_name).cloned() {
+            let preference = Theme::global(cx).mode_preference;
+            Theme::apply_theme_set(&set, preference, None, cx);
         }
         cx.refresh_windows();
     });
     cx.on_action(|switch: &SwitchThemeMode, cx| {
-        let mode = switch.0;
-        Theme::change(mode, None, cx);
+        let preference = switch.0;
+        let set_name = Theme::global(cx).theme_set_name.clone();
+        if let Some(set) = ThemeRegistry::global(cx).theme_sets().get(&set_name).cloned() {
+            Theme::apply_theme_set(&set, preference, None, cx);
+        }
         cx.refresh_windows();
     });
 }
@@ -76,4 +83,4 @@ pub(crate) struct SwitchTheme(pub(crate) SharedString);
 
 #[derive(Action, Clone, PartialEq)]
 #[action(namespace = themes, no_json)]
-pub(crate) struct SwitchThemeMode(pub(crate) ThemeMode);
+pub(crate) struct SwitchThemeMode(pub(crate) ThemeModePreference);

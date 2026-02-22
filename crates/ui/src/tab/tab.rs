@@ -2,8 +2,8 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use crate::{
-    ActiveTheme, Icon, IconName, Selectable, Sizable, Size, StyledExt,
-    animation::fade_animation, global_state::GlobalState, h_flex,
+    ActiveTheme, Icon, IconName, Selectable, Sizable, Size, StyledExt, animation::fade_animation,
+    global_state::GlobalState, h_flex,
 };
 use gpui::prelude::FluentBuilder as _;
 use gpui::{

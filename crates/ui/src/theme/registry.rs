@@ -1,4 +1,7 @@
-use crate::{Theme, ThemeColor, ThemeConfig, ThemeMode, ThemeSet, highlighter::HighlightTheme};
+use crate::{
+    Theme, ThemeColor, ThemeConfig, ThemeMode, ThemeModePreference, ThemeSet,
+    highlighter::HighlightTheme,
+};
 use anyhow::Result;
 use gpui::{App, Global, SharedString};
 use notify::Watcher as _;
@@ -9,6 +12,15 @@ use std::{
     rc::Rc,
     sync::{Arc, LazyLock},
 };
+
+#[derive(Debug, Clone)]
+pub struct ThemeSetEntry {
+    pub name: SharedString,
+    pub author: Option<SharedString>,
+    pub url: Option<SharedString>,
+    pub light: Option<Rc<ThemeConfig>>,
+    pub dark: Option<Rc<ThemeConfig>>,
+}
 
 const DEFAULT_THEME: &str = include_str!("./default-theme.json");
 pub(crate) static DEFAULT_THEME_COLORS: LazyLock<
@@ -78,6 +90,7 @@ pub struct ThemeRegistry {
     themes_dir: PathBuf,
     default_themes: HashMap<ThemeMode, Rc<ThemeConfig>>,
     themes: HashMap<SharedString, Rc<ThemeConfig>>,
+    theme_sets: HashMap<SharedString, ThemeSetEntry>,
     has_custom_themes: bool,
 }
 
@@ -148,6 +161,48 @@ impl ThemeRegistry {
         &self.default_themes[&ThemeMode::Dark]
     }
 
+    pub fn theme_sets(&self) -> &HashMap<SharedString, ThemeSetEntry> {
+        &self.theme_sets
+    }
+
+    pub fn sorted_theme_sets(&self) -> Vec<&ThemeSetEntry> {
+        let mut sets = self.theme_sets.values().collect::<Vec<_>>();
+        sets.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        sets
+    }
+
+    pub fn resolve_theme(
+        set: &ThemeSetEntry,
+        preference: ThemeModePreference,
+        system_appearance: ThemeMode,
+    ) -> &Rc<ThemeConfig> {
+        match preference {
+            ThemeModePreference::Light => set
+                .light
+                .as_ref()
+                .or(set.dark.as_ref())
+                .expect("theme set must have at least one variant"),
+            ThemeModePreference::Dark => set
+                .dark
+                .as_ref()
+                .or(set.light.as_ref())
+                .expect("theme set must have at least one variant"),
+            ThemeModePreference::System => {
+                if system_appearance.is_dark() {
+                    set.dark
+                        .as_ref()
+                        .or(set.light.as_ref())
+                        .expect("theme set must have at least one variant")
+                } else {
+                    set.light
+                        .as_ref()
+                        .or(set.dark.as_ref())
+                        .expect("theme set must have at least one variant")
+                }
+            }
+        }
+    }
+
     fn init_default_themes(&mut self) {
         let default_themes: Vec<ThemeConfig> = serde_json::from_str::<ThemeSet>(DEFAULT_THEME)
             .expect("failed to parse default theme.")
@@ -167,6 +222,21 @@ impl ThemeRegistry {
                 (name, Rc::clone(theme))
             })
             .collect();
+
+        let mut default_set = ThemeSetEntry {
+            name: "Default".into(),
+            author: None,
+            url: None,
+            light: None,
+            dark: None,
+        };
+        if let Some(light) = self.default_themes.get(&ThemeMode::Light) {
+            default_set.light = Some(Rc::clone(light));
+        }
+        if let Some(dark) = self.default_themes.get(&ThemeMode::Dark) {
+            default_set.dark = Some(Rc::clone(dark));
+        }
+        self.theme_sets.insert("Default".into(), default_set);
     }
 
     fn _watch_themes_dir(themes_dir: PathBuf, cx: &mut App) -> anyhow::Result<()> {
@@ -219,6 +289,7 @@ impl ThemeRegistry {
     /// Reload themes from the `themes_dir`.
     fn reload(&mut self) -> Result<()> {
         let mut themes = vec![];
+        let mut loaded_sets: Vec<ThemeSet> = vec![];
 
         if self.themes_dir.exists() {
             for entry in fs::read_dir(&self.themes_dir)? {
@@ -229,7 +300,8 @@ impl ThemeRegistry {
 
                     match serde_json::from_str::<ThemeSet>(&file_content) {
                         Ok(theme_set) => {
-                            themes.extend(theme_set.themes);
+                            themes.extend(theme_set.themes.clone());
+                            loaded_sets.push(theme_set);
                         }
                         Err(e) => {
                             tracing::error!(
@@ -262,6 +334,45 @@ impl ThemeRegistry {
             self.has_custom_themes = true;
             self.themes
                 .insert(theme.name.clone(), Rc::new(theme.clone()));
+        }
+
+        // Rebuild theme_sets
+        self.theme_sets.clear();
+        // Re-add default set
+        let mut default_set = ThemeSetEntry {
+            name: "Default".into(),
+            author: None,
+            url: None,
+            light: None,
+            dark: None,
+        };
+        if let Some(light) = self.default_themes.get(&ThemeMode::Light) {
+            default_set.light = Some(Rc::clone(light));
+        }
+        if let Some(dark) = self.default_themes.get(&ThemeMode::Dark) {
+            default_set.dark = Some(Rc::clone(dark));
+        }
+        self.theme_sets.insert("Default".into(), default_set);
+
+        for set in &loaded_sets {
+            let entry = self
+                .theme_sets
+                .entry(set.name.clone())
+                .or_insert_with(|| ThemeSetEntry {
+                    name: set.name.clone(),
+                    author: set.author.clone(),
+                    url: set.url.clone(),
+                    light: None,
+                    dark: None,
+                });
+            for config in &set.themes {
+                let rc = Rc::new(config.clone());
+                if config.mode.is_dark() {
+                    entry.dark = Some(rc);
+                } else {
+                    entry.light = Some(rc);
+                }
+            }
         }
 
         Ok(())

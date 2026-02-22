@@ -14,8 +14,8 @@ use crate::{
     actions::{Cancel, Confirm},
     animation::{
         PresenceOptions, PresencePhase, SpringPreset, fade_animation, fast_invoke_animation,
-        keyed_presence, point_to_point_animation, soft_dismiss_animation,
-        spring_preset_animation, spring_preset_duration_ms,
+        keyed_presence, point_to_point_animation, soft_dismiss_animation, spring_preset_animation,
+        spring_preset_duration_ms,
     },
     button::{Button, ButtonVariant, ButtonVariants as _},
     global_state::GlobalState,
@@ -482,8 +482,8 @@ impl RenderOnce for Dialog {
             });
         let open_panel_transform_animation =
             spring_preset_animation(motion, reduced_motion, SpringPreset::Medium);
-        let close_panel_animation = soft_dismiss_animation(motion, reduced_motion)
-            .unwrap_or_else(|| {
+        let close_panel_animation =
+            soft_dismiss_animation(motion, reduced_motion).unwrap_or_else(|| {
                 gpui::Animation::new(std::time::Duration::from_millis(u64::from(
                     motion.soft_dismiss_duration_ms,
                 )))

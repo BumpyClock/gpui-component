@@ -395,8 +395,7 @@ impl RenderOnce for Popover {
         let open_duration_ms = if reduced_motion {
             motion.fast_duration_ms
         } else {
-            spring_preset_duration_ms(&motion, SpringPreset::Medium)
-                .max(motion.fast_duration_ms)
+            spring_preset_duration_ms(&motion, SpringPreset::Medium).max(motion.fast_duration_ms)
         };
         let presence = keyed_presence(
             SharedString::from(format!("popover-presence-{}", popover_id)),

@@ -116,9 +116,9 @@ impl<E: SidebarItem> Sidebar<E> {
         F: Fn(bool, &mut Window, &mut App) -> H + 'static,
         H: IntoElement,
     {
-        self.header = Some(SidebarSlot::Dynamic(Rc::new(move |collapsed, window, cx| {
-            builder(collapsed, window, cx).into_any_element()
-        })));
+        self.header = Some(SidebarSlot::Dynamic(Rc::new(
+            move |collapsed, window, cx| builder(collapsed, window, cx).into_any_element(),
+        )));
         self
     }
 
@@ -134,9 +134,9 @@ impl<E: SidebarItem> Sidebar<E> {
         F: Fn(bool, &mut Window, &mut App) -> H + 'static,
         H: IntoElement,
     {
-        self.footer = Some(SidebarSlot::Dynamic(Rc::new(move |collapsed, window, cx| {
-            builder(collapsed, window, cx).into_any_element()
-        })));
+        self.footer = Some(SidebarSlot::Dynamic(Rc::new(
+            move |collapsed, window, cx| builder(collapsed, window, cx).into_any_element(),
+        )));
         self
     }
 

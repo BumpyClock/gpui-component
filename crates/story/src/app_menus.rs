@@ -1,5 +1,5 @@
 use gpui::{App, Entity, Menu, MenuItem, SharedString};
-use gpui_component::{ActiveTheme as _, Theme, ThemeMode, ThemeRegistry, menu::AppMenuBar};
+use gpui_component::{ActiveTheme as _, Theme, ThemeModePreference, ThemeRegistry, menu::AppMenuBar};
 
 use crate::{
     About, Open, Quit, SelectLocale, ToggleSearch,
@@ -33,7 +33,7 @@ pub fn init(title: impl Into<SharedString>, cx: &mut App) -> Entity<AppMenuBar> 
 }
 
 fn update_app_menu(title: impl Into<SharedString>, app_menu_bar: Entity<AppMenuBar>, cx: &mut App) {
-    let mode = cx.theme().mode;
+    let preference = cx.theme().mode_preference;
     cx.set_menus(vec![
         Menu {
             name: title.into(),
@@ -45,10 +45,15 @@ fn update_app_menu(title: impl Into<SharedString>, app_menu_bar: Entity<AppMenuB
                 MenuItem::Submenu(Menu {
                     name: "Appearance".into(),
                     items: vec![
-                        MenuItem::action("Light", SwitchThemeMode(ThemeMode::Light))
-                            .checked(!mode.is_dark()),
-                        MenuItem::action("Dark", SwitchThemeMode(ThemeMode::Dark))
-                            .checked(mode.is_dark()),
+                        MenuItem::action(
+                            "System",
+                            SwitchThemeMode(ThemeModePreference::System),
+                        )
+                        .checked(preference == ThemeModePreference::System),
+                        MenuItem::action("Light", SwitchThemeMode(ThemeModePreference::Light))
+                            .checked(preference == ThemeModePreference::Light),
+                        MenuItem::action("Dark", SwitchThemeMode(ThemeModePreference::Dark))
+                            .checked(preference == ThemeModePreference::Dark),
                     ],
                 }),
                 theme_menu(cx),
@@ -109,16 +114,15 @@ fn language_menu(_: &App) -> MenuItem {
 }
 
 fn theme_menu(cx: &App) -> MenuItem {
-    let themes = ThemeRegistry::global(cx).sorted_themes();
-    let current_name = cx.theme().theme_name();
+    let sets = ThemeRegistry::global(cx).sorted_theme_sets();
+    let current_set = &cx.theme().theme_set_name;
     MenuItem::Submenu(Menu {
         name: "Theme".into(),
-        items: themes
+        items: sets
             .iter()
-            .map(|theme| {
-                let checked = current_name == &theme.name;
-                MenuItem::action(theme.name.clone(), SwitchTheme(theme.name.clone()))
-                    .checked(checked)
+            .map(|set| {
+                let checked = current_set == &set.name;
+                MenuItem::action(set.name.clone(), SwitchTheme(set.name.clone())).checked(checked)
             })
             .collect(),
     })

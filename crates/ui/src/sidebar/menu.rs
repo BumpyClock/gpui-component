@@ -360,8 +360,7 @@ impl SidebarItem for SidebarMenuItem {
         let open_duration = if reduced_motion {
             motion.fast_duration_ms
         } else {
-            spring_preset_duration_ms(&motion, SpringPreset::Mild)
-                .max(motion.fast_duration_ms)
+            spring_preset_duration_ms(&motion, SpringPreset::Mild).max(motion.fast_duration_ms)
         };
         let submenu_presence = keyed_presence(
             SharedString::from(format!("{}-submenu-presence", state_key)),

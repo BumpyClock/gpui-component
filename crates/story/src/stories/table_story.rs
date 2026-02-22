@@ -888,10 +888,20 @@ impl TableStory {
             TableEvent::SelectColumn(ix) => println!("Select col: {}", ix),
             TableEvent::DoubleClickedRow(ix) => println!("Double clicked row: {}", ix),
             TableEvent::SelectRow(ix) => println!("Select row: {}", ix),
+            TableEvent::SelectCell(row_ix, col_ix) => {
+                println!("Select cell: row={}, col={}", row_ix, col_ix)
+            }
+            TableEvent::DoubleClickedCell(row_ix, col_ix) => {
+                println!("Double clicked cell: row={}, col={}", row_ix, col_ix)
+            }
+            TableEvent::RightClickedCell(row_ix, col_ix) => {
+                println!("Right clicked cell: row={}, col={}", row_ix, col_ix)
+            }
             TableEvent::MoveColumn(origin_idx, target_idx) => {
                 println!("Move col index: {} -> {}", origin_idx, target_idx);
             }
             TableEvent::RightClickedRow(ix) => println!("Right clicked row: {:?}", ix),
+            TableEvent::ClearSelection => println!("Clear selection"),
         }
     }
 

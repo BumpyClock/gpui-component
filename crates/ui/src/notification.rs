@@ -8,10 +8,10 @@ use std::{
 };
 
 use gpui::{
-    AnimationExt, AnyElement, App, AppContext, ClickEvent, Context, DismissEvent,
-    ElementId, Entity, EventEmitter, InteractiveElement as _, IntoElement, ParentElement as _,
-    Pixels, Render, SharedString, StatefulInteractiveElement, StyleRefinement, Styled,
-    Subscription, Window, div, prelude::FluentBuilder, px,
+    AnimationExt, AnyElement, App, AppContext, ClickEvent, Context, DismissEvent, ElementId,
+    Entity, EventEmitter, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render,
+    SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Subscription, Window, div,
+    prelude::FluentBuilder, px,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

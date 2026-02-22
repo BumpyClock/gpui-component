@@ -151,6 +151,8 @@ pub struct Theme {
     pub dark_theme: Rc<ThemeConfig>,
 
     pub mode: ThemeMode,
+    pub mode_preference: ThemeModePreference,
+    pub theme_set_name: SharedString,
     /// The font family for the application, default is `.SystemUIFont`.
     pub font_family: SharedString,
     /// The base font size for the application, default is 16px.
@@ -239,14 +241,62 @@ impl Theme {
 
     /// Sync the theme with the system appearance
     pub fn sync_system_appearance(window: Option<&mut Window>, cx: &mut App) {
-        // Better use window.appearance() for avoid error on Linux.
-        // https://github.com/longbridge/gpui-component/issues/104
         let appearance = window
             .as_ref()
             .map(|window| window.appearance())
             .unwrap_or_else(|| cx.window_appearance());
 
-        Self::change(appearance, window, cx);
+        let mode = if cx.has_global::<Theme>() {
+            match cx.global::<Theme>().mode_preference {
+                ThemeModePreference::Light => ThemeMode::Light,
+                ThemeModePreference::Dark => ThemeMode::Dark,
+                ThemeModePreference::System => appearance.into(),
+            }
+        } else {
+            appearance.into()
+        };
+
+        Self::change(mode, window, cx);
+    }
+
+    /// Apply a theme set with the given mode preference.
+    pub fn apply_theme_set(
+        set: &ThemeSetEntry,
+        preference: ThemeModePreference,
+        window: Option<&mut Window>,
+        cx: &mut App,
+    ) {
+        let appearance = window
+            .as_ref()
+            .map(|w| w.appearance())
+            .unwrap_or_else(|| cx.window_appearance());
+        let system_mode: ThemeMode = appearance.into();
+
+        let resolved = ThemeRegistry::resolve_theme(set, preference, system_mode);
+
+        if !cx.has_global::<Theme>() {
+            let mut theme = Theme::default();
+            theme.light_theme = ThemeRegistry::global(cx).default_light_theme().clone();
+            theme.dark_theme = ThemeRegistry::global(cx).default_dark_theme().clone();
+            cx.set_global(theme);
+        }
+
+        let theme = cx.global_mut::<Theme>();
+        theme.theme_set_name = set.name.clone();
+        theme.mode_preference = preference;
+
+        if let Some(light) = &set.light {
+            theme.light_theme = light.clone();
+        }
+        if let Some(dark) = &set.dark {
+            theme.dark_theme = dark.clone();
+        }
+
+        theme.apply_config(resolved);
+
+        if let Some(window) = window {
+            window.refresh();
+        }
     }
 
     /// Sync the Scrollbar showing behavior with the system
@@ -295,6 +345,8 @@ impl From<&ThemeColor> for Theme {
     fn from(colors: &ThemeColor) -> Self {
         Theme {
             mode: ThemeMode::default(),
+            mode_preference: ThemeModePreference::default(),
+            theme_set_name: "Default".into(),
             transparent: Hsla::transparent_black(),
             font_family: ".SystemUIFont".into(),
             font_size: px(16.),
@@ -372,4 +424,13 @@ impl From<WindowAppearance> for ThemeMode {
             WindowAppearance::Light | WindowAppearance::VibrantLight => Self::Light,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ThemeModePreference {
+    #[default]
+    System,
+    Light,
+    Dark,
 }
