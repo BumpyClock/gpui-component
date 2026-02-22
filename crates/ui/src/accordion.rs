@@ -254,7 +254,7 @@ impl RenderOnce for AccordionItem {
         let spring_preset = SpringPreset::Mild;
         let layout_anim = point_to_point_animation(&motion, reduced_motion);
         let close_anim = layout_anim.clone();
-        let open_layout_anim = layout_anim.clone();
+        let open_layout_anim = layout_anim;
         let open_transform_anim = spring_preset_animation(&motion, reduced_motion, spring_preset);
         let chevron_open_anim = spring_preset_animation(&motion, reduced_motion, spring_preset);
         let chevron_close_anim = spring_preset_animation(&motion, reduced_motion, spring_preset);

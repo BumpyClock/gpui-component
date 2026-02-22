@@ -226,6 +226,7 @@ pub struct PresenceOptions {
 /// - `target_open=true` moves to Entering/Entered
 /// - `target_open=false` moves to Exiting/Exited
 /// - stale async timers are ignored via generation guard
+#[allow(clippy::too_many_arguments)]
 pub fn keyed_presence(
     key_base: SharedString,
     target_open: bool,

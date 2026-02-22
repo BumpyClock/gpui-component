@@ -564,7 +564,7 @@ impl SidebarItem for SidebarMenuItem {
                     None => {
                         let menu_items = children.clone();
                         let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
-                            build_collapsed_submenu(menu, menu_items.clone(), window, cx)
+                            build_collapsed_submenu(menu, menu_items, window, cx)
                         });
                         menu_state.update(cx, |state, _| {
                             state.menu = Some(menu.clone());

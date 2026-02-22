@@ -30,11 +30,6 @@ enum SelectionMode {
 
 impl SelectionMode {
     #[inline(always)]
-    fn is_row(&self) -> bool {
-        matches!(self, SelectionMode::Row)
-    }
-
-    #[inline(always)]
     fn is_column(&self) -> bool {
         matches!(self, SelectionMode::Column)
     }
@@ -1480,7 +1475,7 @@ where
                             let mut row_cols =
                                 h_flex().h_full().left(first_col_origin + scroll_offset_x);
 
-                            for col_ix in visible_col_range.clone() {
+                            for col_ix in visible_col_range {
                                 let actual_col_ix = col_ix + left_columns_count;
 
                                 let is_cell_selected = self.selected_cell
