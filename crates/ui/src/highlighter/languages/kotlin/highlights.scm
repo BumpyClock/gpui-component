@@ -23,10 +23,9 @@
 	(unsigned_literal)
 ] @number
 
-[
-	(null_literal)
-	(boolean_literal)
-] @boolean
+(null_literal) @constant.builtin
+
+(boolean_literal) @boolean
 
 (character_literal) @string
 
