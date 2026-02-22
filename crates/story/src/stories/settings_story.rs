@@ -4,7 +4,7 @@ use gpui::{
 };
 
 use gpui_component::{
-    ActiveTheme, Icon, IconName, Sizable, Size, Theme, ThemeMode,
+    ActiveTheme, Icon, IconName, Sizable, Size, Theme, ThemeModePreference, ThemeRegistry,
     button::Button,
     group_box::GroupBoxVariant,
     h_flex,
@@ -18,7 +18,6 @@ use gpui_component::{
 };
 
 struct AppSettings {
-    auto_switch_theme: bool,
     cli_path: SharedString,
     font_family: SharedString,
     font_size: f64,
@@ -31,7 +30,6 @@ struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            auto_switch_theme: false,
             cli_path: "/usr/local/bin/bash".into(),
             font_family: "Arial".into(),
             font_size: 14.0,
@@ -134,33 +132,61 @@ impl SettingsStory {
                 .groups(vec![
                     SettingGroup::new().title("Appearance").items(vec![
                         SettingItem::new(
-                            "Dark Mode",
-                            SettingField::switch(
-                                |cx: &App| cx.theme().mode.is_dark(),
-                                |val: bool, cx: &mut App| {
-                                    let mode = if val {
-                                        ThemeMode::Dark
-                                    } else {
-                                        ThemeMode::Light
-                                    };
-                                    Theme::global_mut(cx).mode = mode;
-                                    Theme::change(mode, None, cx);
+                            "Color Theme",
+                            SettingField::dropdown(
+                                {
+                                    let sets = ThemeRegistry::global(cx).sorted_theme_sets();
+                                    sets.iter()
+                                        .map(|s| (s.name.clone(), s.name.clone()))
+                                        .collect()
+                                },
+                                |cx: &App| cx.theme().theme_set_name.clone(),
+                                |val: SharedString, cx: &mut App| {
+                                    let set =
+                                        ThemeRegistry::global(cx).theme_sets().get(&val).cloned();
+                                    if let Some(set) = set {
+                                        let preference = Theme::global(cx).mode_preference;
+                                        Theme::apply_theme_set(&set, preference, None, cx);
+                                    }
                                 },
                             )
-                            .default_value(false),
+                            .default_value("Default"),
                         )
-                        .description("Switch between light and dark themes."),
+                        .description("Select the color theme for the application."),
                         SettingItem::new(
-                            "Auto Switch Theme",
-                            SettingField::checkbox(
-                                |cx: &App| AppSettings::global(cx).auto_switch_theme,
-                                |val: bool, cx: &mut App| {
-                                    AppSettings::global_mut(cx).auto_switch_theme = val;
+                            "Mode",
+                            SettingField::dropdown(
+                                vec![
+                                    ("system".into(), "System".into()),
+                                    ("light".into(), "Light".into()),
+                                    ("dark".into(), "Dark".into()),
+                                ],
+                                |cx: &App| {
+                                    SharedString::from(match cx.theme().mode_preference {
+                                        ThemeModePreference::System => "system",
+                                        ThemeModePreference::Light => "light",
+                                        ThemeModePreference::Dark => "dark",
+                                    })
+                                },
+                                |val: SharedString, cx: &mut App| {
+                                    let preference = match val.as_ref() {
+                                        "light" => ThemeModePreference::Light,
+                                        "dark" => ThemeModePreference::Dark,
+                                        _ => ThemeModePreference::System,
+                                    };
+                                    let set_name = Theme::global(cx).theme_set_name.clone();
+                                    let set = ThemeRegistry::global(cx)
+                                        .theme_sets()
+                                        .get(&set_name)
+                                        .cloned();
+                                    if let Some(set) = set {
+                                        Theme::apply_theme_set(&set, preference, None, cx);
+                                    }
                                 },
                             )
-                            .default_value(default_settings.auto_switch_theme),
+                            .default_value("system"),
                         )
-                        .description("Automatically switch theme based on system settings."),
+                        .description("Choose System to follow OS appearance, or force Light/Dark."),
                         SettingItem::new(
                             "resettable",
                             SettingField::switch(

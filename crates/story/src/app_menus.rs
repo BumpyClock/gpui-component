@@ -1,5 +1,7 @@
 use gpui::{App, Entity, Menu, MenuItem, SharedString};
-use gpui_component::{ActiveTheme as _, Theme, ThemeModePreference, ThemeRegistry, menu::AppMenuBar};
+use gpui_component::{
+    ActiveTheme as _, Theme, ThemeModePreference, ThemeRegistry, menu::AppMenuBar,
+};
 
 use crate::{
     About, Open, Quit, SelectLocale, ToggleSearch,
@@ -45,11 +47,8 @@ fn update_app_menu(title: impl Into<SharedString>, app_menu_bar: Entity<AppMenuB
                 MenuItem::Submenu(Menu {
                     name: "Appearance".into(),
                     items: vec![
-                        MenuItem::action(
-                            "System",
-                            SwitchThemeMode(ThemeModePreference::System),
-                        )
-                        .checked(preference == ThemeModePreference::System),
+                        MenuItem::action("System", SwitchThemeMode(ThemeModePreference::System))
+                            .checked(preference == ThemeModePreference::System),
                         MenuItem::action("Light", SwitchThemeMode(ThemeModePreference::Light))
                             .checked(preference == ThemeModePreference::Light),
                         MenuItem::action("Dark", SwitchThemeMode(ThemeModePreference::Dark))

@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
 use gpui::{Action, App, SharedString};
-use gpui_component::{ActiveTheme, Theme, ThemeModePreference, ThemeRegistry, scroll::ScrollbarShow};
+use gpui_component::{
+    ActiveTheme, Theme, ThemeModePreference, ThemeRegistry, scroll::ScrollbarShow,
+};
 use serde::{Deserialize, Serialize};
 
 const STATE_FILE: &str = "target/state.json";
@@ -61,7 +63,11 @@ pub fn init(cx: &mut App) {
 
     cx.on_action(|switch: &SwitchTheme, cx| {
         let set_name = switch.0.clone();
-        if let Some(set) = ThemeRegistry::global(cx).theme_sets().get(&set_name).cloned() {
+        if let Some(set) = ThemeRegistry::global(cx)
+            .theme_sets()
+            .get(&set_name)
+            .cloned()
+        {
             let preference = Theme::global(cx).mode_preference;
             Theme::apply_theme_set(&set, preference, None, cx);
         }
@@ -70,7 +76,11 @@ pub fn init(cx: &mut App) {
     cx.on_action(|switch: &SwitchThemeMode, cx| {
         let preference = switch.0;
         let set_name = Theme::global(cx).theme_set_name.clone();
-        if let Some(set) = ThemeRegistry::global(cx).theme_sets().get(&set_name).cloned() {
+        if let Some(set) = ThemeRegistry::global(cx)
+            .theme_sets()
+            .get(&set_name)
+            .cloned()
+        {
             Theme::apply_theme_set(&set, preference, None, cx);
         }
         cx.refresh_windows();
