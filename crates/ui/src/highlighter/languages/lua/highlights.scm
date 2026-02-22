@@ -73,7 +73,7 @@
 
 ;;; Constants
 
-(nil) @boolean
+(nil) @constant.builtin
 [
  (false)
  (true)

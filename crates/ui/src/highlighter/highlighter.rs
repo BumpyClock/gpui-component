@@ -451,10 +451,12 @@ impl SyntaxHighlighter {
             };
 
             let mut parser = Parser::new();
-            if parser.set_language(&config.language).is_err() {
+            if let Err(e) = parser.set_language(&config.language) {
+                tracing::debug!("highlighter: failed to set_language for {}: {}", language_name, e);
                 continue;
             }
-            if parser.set_included_ranges(&ranges).is_err() {
+            if let Err(e) = parser.set_included_ranges(&ranges) {
+                tracing::debug!("highlighter: failed to set_included_ranges for {} ({} ranges): {}", language_name, ranges.len(), e);
                 continue;
             }
 

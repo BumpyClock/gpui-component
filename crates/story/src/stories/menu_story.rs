@@ -341,7 +341,7 @@ impl Render for MenuStory {
                                     .max_h(px(300.))
                                     .label(format!("Total {} items", 100));
                                 for i in 0..100 {
-                                    if i % 5 == 0 {
+                                    if i > 0 && i % 5 == 0 {
                                         this = this.separator();
                                     }
 

@@ -37,7 +37,7 @@ function HelloWorld:greet(...)
     local names = {...}
     local results = {}
 
-    for i, name in ipairs(names) do
+    for _, name in ipairs(names) do
         local greeting = string.format("Hello, %s!", name)
         table.insert(results, greeting)
         self._greetCount = self._greetCount + 1
