@@ -276,6 +276,8 @@ where
         self.selection_mode = SelectionMode::Row;
         self.right_clicked_row = None;
         self.selected_row = Some(row_ix);
+        self.selected_col = None;
+        self.selected_cell = None;
         if let Some(row_ix) = self.selected_row {
             self.vertical_scroll_handle.scroll_to_item(
                 row_ix,
@@ -305,6 +307,8 @@ where
     pub fn set_selected_col(&mut self, col_ix: usize, cx: &mut Context<Self>) {
         self.selection_mode = SelectionMode::Column;
         self.selected_col = Some(col_ix);
+        self.selected_row = None;
+        self.selected_cell = None;
         if let Some(col_ix) = self.selected_col {
             self.scroll_to_col(col_ix, cx);
         }
@@ -321,6 +325,8 @@ where
     pub fn set_selected_cell(&mut self, row_ix: usize, col_ix: usize, cx: &mut Context<Self>) {
         self.selection_mode = SelectionMode::Cell;
         self.selected_cell = Some((row_ix, col_ix));
+        self.selected_row = None;
+        self.selected_col = None;
 
         // Scroll to the cell
         self.vertical_scroll_handle

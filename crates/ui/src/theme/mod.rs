@@ -272,7 +272,13 @@ impl Theme {
             .unwrap_or_else(|| cx.window_appearance());
         let system_mode: ThemeMode = appearance.into();
 
-        let resolved = ThemeRegistry::resolve_theme(set, preference, system_mode);
+        let Some(resolved) = ThemeRegistry::resolve_theme(set, preference, system_mode) else {
+            tracing::warn!(
+                "ThemeSetEntry '{}' has neither light nor dark variant, falling back to defaults",
+                set.name
+            );
+            return;
+        };
 
         if !cx.has_global::<Theme>() {
             let mut theme = Theme::default();

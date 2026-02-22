@@ -175,31 +175,27 @@ impl ThemeRegistry {
         set: &ThemeSetEntry,
         preference: ThemeModePreference,
         system_appearance: ThemeMode,
-    ) -> &Rc<ThemeConfig> {
+    ) -> Option<&Rc<ThemeConfig>> {
         match preference {
-            ThemeModePreference::Light => set
-                .light
-                .as_ref()
-                .or(set.dark.as_ref())
-                .expect("theme set must have at least one variant"),
-            ThemeModePreference::Dark => set
-                .dark
-                .as_ref()
-                .or(set.light.as_ref())
-                .expect("theme set must have at least one variant"),
+            ThemeModePreference::Light => set.light.as_ref().or(set.dark.as_ref()),
+            ThemeModePreference::Dark => set.dark.as_ref().or(set.light.as_ref()),
             ThemeModePreference::System => {
                 if system_appearance.is_dark() {
-                    set.dark
-                        .as_ref()
-                        .or(set.light.as_ref())
-                        .expect("theme set must have at least one variant")
+                    set.dark.as_ref().or(set.light.as_ref())
                 } else {
-                    set.light
-                        .as_ref()
-                        .or(set.dark.as_ref())
-                        .expect("theme set must have at least one variant")
+                    set.light.as_ref().or(set.dark.as_ref())
                 }
             }
+        }
+    }
+
+    fn create_default_set(&self) -> ThemeSetEntry {
+        ThemeSetEntry {
+            name: "Default".into(),
+            author: None,
+            url: None,
+            light: self.default_themes.get(&ThemeMode::Light).map(Rc::clone),
+            dark: self.default_themes.get(&ThemeMode::Dark).map(Rc::clone),
         }
     }
 
@@ -223,20 +219,8 @@ impl ThemeRegistry {
             })
             .collect();
 
-        let mut default_set = ThemeSetEntry {
-            name: "Default".into(),
-            author: None,
-            url: None,
-            light: None,
-            dark: None,
-        };
-        if let Some(light) = self.default_themes.get(&ThemeMode::Light) {
-            default_set.light = Some(Rc::clone(light));
-        }
-        if let Some(dark) = self.default_themes.get(&ThemeMode::Dark) {
-            default_set.dark = Some(Rc::clone(dark));
-        }
-        self.theme_sets.insert("Default".into(), default_set);
+        self.theme_sets
+            .insert("Default".into(), self.create_default_set());
     }
 
     fn _watch_themes_dir(themes_dir: PathBuf, cx: &mut App) -> anyhow::Result<()> {
@@ -339,20 +323,8 @@ impl ThemeRegistry {
         // Rebuild theme_sets
         self.theme_sets.clear();
         // Re-add default set
-        let mut default_set = ThemeSetEntry {
-            name: "Default".into(),
-            author: None,
-            url: None,
-            light: None,
-            dark: None,
-        };
-        if let Some(light) = self.default_themes.get(&ThemeMode::Light) {
-            default_set.light = Some(Rc::clone(light));
-        }
-        if let Some(dark) = self.default_themes.get(&ThemeMode::Dark) {
-            default_set.dark = Some(Rc::clone(dark));
-        }
-        self.theme_sets.insert("Default".into(), default_set);
+        self.theme_sets
+            .insert("Default".into(), self.create_default_set());
 
         for set in &loaded_sets {
             let entry = self
