@@ -17,7 +17,7 @@ use crate::{
 const DEFAULT_MIN_WIDTH: Pixels = px(200.0);
 const DEFAULT_MAX_WIDTH: Pixels = px(400.0);
 const DEFAULT_RESIZER_WIDTH: Pixels = px(6.0);
-const DEFAULT_INSET: Pixels = px(4.0);
+const DEFAULT_INSET: Pixels = px(8.0);
 
 #[derive(Clone)]
 struct FloatingSidebarState {
@@ -133,7 +133,7 @@ impl<E: SidebarItem> FloatingSidebar<E> {
 
     /// Set the inset from window edges.
     ///
-    /// Default is 4px.
+    /// Default is 8px.
     pub fn inset(mut self, inset: impl Into<Pixels>) -> Self {
         self.inset = Some(inset.into());
         self

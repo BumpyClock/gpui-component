@@ -131,7 +131,7 @@ impl Focusable for FloatingSidebarStory {
 
 impl Render for FloatingSidebarStory {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let inset = if self.wide_inset { px(12.0) } else { px(4.0) };
+        let inset = if self.wide_inset { px(12.0) } else { px(8.0) };
 
         v_flex().gap_6().child(
             section("Floating Sidebar").child(

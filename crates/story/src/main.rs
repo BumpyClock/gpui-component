@@ -161,7 +161,7 @@ impl Render for Gallery {
                 ("".into(), "".into())
             };
 
-        let inset = px(4.0);
+        let inset = px(8.0);
         let collapsed_width = px(48.0);
         let sidebar_width = if self.collapsed {
             collapsed_width

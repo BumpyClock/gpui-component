@@ -55,7 +55,7 @@ impl Settings {
             sidebar_width: px(250.0),
             use_sidebar_shell: false,
             safe_area_top: px(0.0),
-            sidebar_shell_inset: px(4.0),
+            sidebar_shell_inset: px(8.0),
             sidebar_title: None,
             page_header_action: None,
             sidebar_style: StyleRefinement::default(),
@@ -84,7 +84,7 @@ impl Settings {
 
     /// Set the sidebar shell inset when `use_sidebar_shell` is enabled.
     ///
-    /// Default is `4px`.
+    /// Default is `8px`.
     pub fn sidebar_shell_inset(mut self, inset: impl Into<Pixels>) -> Self {
         self.sidebar_shell_inset = inset.into();
         self

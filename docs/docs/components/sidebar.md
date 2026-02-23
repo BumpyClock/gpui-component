@@ -88,7 +88,7 @@ SidebarToggleButton::new()
 ### Floating Sidebar (SidebarShell + Sidebar)
 
 `FloatingSidebar` composes `SidebarShell` with `Sidebar`, handling resize internally.
-It defaults to a 4px inset from the window edges and can be resized when expanded.
+It defaults to an 8px inset from the window edges and can be resized when expanded.
 
 ```rust
 use gpui_component::{FloatingSidebar, Side};
@@ -101,7 +101,7 @@ FloatingSidebar::new("floating-sidebar")
     .width(260)
     .min_width(200)
     .max_width(420)
-    .inset(4) // optional override (defaults to 4px)
+    .inset(8) // optional override (defaults to 8px)
     .collapsed(collapsed)
     .child(
         SidebarGroup::new("Navigation")

@@ -92,7 +92,7 @@ Use `SidebarShell` for a floating inset sidebar and optional page header actions
 ```rust
 Settings::new("app-settings")
     .use_sidebar_shell(true)
-    .sidebar_shell_inset(8) // default is 4px
+    .sidebar_shell_inset(8) // default is 8px
     .safe_area_top(TITLE_BAR_HEIGHT)
     .sidebar_title("Settings")
     .page_header_action(|_window, _cx| {
