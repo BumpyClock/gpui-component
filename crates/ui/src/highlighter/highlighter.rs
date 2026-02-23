@@ -392,7 +392,8 @@ impl SyntaxHighlighter {
 
         self.tree = Some(new_tree);
         self.text = text.clone();
-        self.parse_combined_injections(self.tree.as_ref().unwrap());
+        let tree = self.tree.clone().unwrap();
+        self.parse_combined_injections(&tree);
     }
 
     /// Parse all combined injections after main tree is updated.
