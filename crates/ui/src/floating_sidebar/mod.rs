@@ -102,20 +102,30 @@ impl<E: SidebarItem> FloatingSidebar<E> {
     }
 
     /// Set the expanded width of the floating sidebar.
+    ///
+    /// The value is clamped to the current `[min_width, max_width]` constraints.
     pub fn width(mut self, width: impl Into<Pixels>) -> Self {
-        self.width = width.into();
+        self.width = width.into().max(self.min_width).min(self.max_width);
         self
     }
 
     /// Set the minimum width constraint for resizing.
     pub fn min_width(mut self, width: impl Into<Pixels>) -> Self {
         self.min_width = width.into();
+        if self.min_width > self.max_width {
+            self.max_width = self.min_width;
+        }
+        self.width = self.width.max(self.min_width).min(self.max_width);
         self
     }
 
     /// Set the maximum width constraint for resizing.
     pub fn max_width(mut self, width: impl Into<Pixels>) -> Self {
         self.max_width = width.into();
+        if self.max_width < self.min_width {
+            self.min_width = self.max_width;
+        }
+        self.width = self.width.max(self.min_width).min(self.max_width);
         self
     }
 
@@ -495,5 +505,24 @@ mod tests {
         assert_eq!(sidebar.blur_enabled, Some(false));
         assert!(matches!(sidebar.elevation, ElevationToken::Md));
         assert!(sidebar.on_resize_end.is_some());
+    }
+
+    #[gpui::test]
+    fn test_floating_sidebar_width_constraints(_cx: &mut gpui::TestAppContext) {
+        let raised_min = FloatingSidebar::<SidebarMenu>::new("raised-min").min_width(px(450.0));
+        assert_eq!(raised_min.min_width, px(450.0));
+        assert_eq!(raised_min.max_width, px(450.0));
+        assert_eq!(raised_min.width, px(450.0));
+
+        let lowered_max = FloatingSidebar::<SidebarMenu>::new("lowered-max").max_width(px(180.0));
+        assert_eq!(lowered_max.min_width, px(180.0));
+        assert_eq!(lowered_max.max_width, px(180.0));
+        assert_eq!(lowered_max.width, px(180.0));
+
+        let clamped_width = FloatingSidebar::<SidebarMenu>::new("clamped-width")
+            .min_width(px(220.0))
+            .max_width(px(420.0))
+            .width(px(100.0));
+        assert_eq!(clamped_width.width, px(220.0));
     }
 }
