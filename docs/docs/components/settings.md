@@ -85,14 +85,14 @@ Settings::new("app-settings")
     ])
 ```
 
-### Sidebar Shell Layout
+### Floating Sidebar Layout
 
-Use `SidebarShell` for a floating inset sidebar and optional page header actions.
+Use `use_sidebar_shell(true)` to render settings navigation with `FloatingSidebar` (internally composed from Sidebar APIs) and optional page header actions.
 
 ```rust
 Settings::new("app-settings")
     .use_sidebar_shell(true)
-    .sidebar_shell_inset(8) // default is 8px
+    .sidebar_shell_inset(8) // optional; FloatingSidebar default inset is 8px
     .safe_area_top(TITLE_BAR_HEIGHT)
     .sidebar_title("Settings")
     .page_header_action(|_window, _cx| {

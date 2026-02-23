@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::{
-    IconName, SidebarShell, Sizable, Size, StyledExt,
+    FloatingSidebar, IconName, Side, Sizable, Size, StyledExt,
     group_box::GroupBoxVariant,
     input::{Input, InputState},
     resizable::{h_resizable, resizable_panel},
@@ -70,7 +70,7 @@ impl Settings {
         self
     }
 
-    /// Toggle rendering the left panel with SidebarShell.
+    /// Toggle rendering the left panel with FloatingSidebar.
     pub fn use_sidebar_shell(mut self, enabled: bool) -> Self {
         self.use_sidebar_shell = enabled;
         self
@@ -82,7 +82,7 @@ impl Settings {
         self
     }
 
-    /// Set the sidebar shell inset when `use_sidebar_shell` is enabled.
+    /// Set the floating sidebar inset when `use_sidebar_shell` is enabled.
     ///
     /// Default is `8px`.
     pub fn sidebar_shell_inset(mut self, inset: impl Into<Pixels>) -> Self {
@@ -201,6 +201,81 @@ impl Settings {
         return div().into_any_element();
     }
 
+    fn render_sidebar_header(
+        &self,
+        state: &Entity<SettingsState>,
+        cx: &mut App,
+    ) -> impl IntoElement {
+        let search_input = state.read(cx).search_input.clone();
+        let sidebar_title = self.sidebar_title.clone();
+        let sidebar_title_top_offset = (self.safe_area_top - self.sidebar_shell_inset).max(px(0.0));
+
+        div()
+            .w_full()
+            .refine_style(&self.header_style)
+            .when_some(sidebar_title, |this, title| {
+                this.child(div().h(sidebar_title_top_offset))
+                    .child(div().px_1().pb_2().font_semibold().child(title))
+            })
+            .child(Input::new(&search_input).prefix(IconName::Search))
+    }
+
+    fn render_sidebar_menu(
+        &self,
+        state: &Entity<SettingsState>,
+        pages: &Vec<SettingPage>,
+        cx: &mut App,
+    ) -> SidebarMenu {
+        let selected_index = state.read(cx).selected_index;
+
+        SidebarMenu::new().children(pages.iter().enumerate().map(|(page_ix, page)| {
+            let is_page_active =
+                selected_index.page_ix == page_ix && selected_index.group_ix.is_none();
+            SidebarMenuItem::new(page.title.clone())
+                .default_open(page.default_open)
+                .active(is_page_active)
+                .on_click({
+                    let state = state.clone();
+                    move |_, _, cx| {
+                        state.update(cx, |state, cx| {
+                            state.selected_index = SelectIndex {
+                                page_ix,
+                                ..Default::default()
+                            };
+                            cx.notify();
+                        })
+                    }
+                })
+                .when(page.groups.len() > 1, |this| {
+                    this.children(
+                        page.groups
+                            .iter()
+                            .filter(|g| g.title.is_some())
+                            .enumerate()
+                            .map(|(group_ix, group)| {
+                                let is_active = selected_index.page_ix == page_ix
+                                    && selected_index.group_ix == Some(group_ix);
+                                let title = group.title.clone().unwrap_or_default();
+
+                                SidebarMenuItem::new(title).active(is_active).on_click({
+                                    let state = state.clone();
+                                    move |_, _, cx| {
+                                        state.update(cx, |state, cx| {
+                                            state.selected_index = SelectIndex {
+                                                page_ix,
+                                                group_ix: Some(group_ix),
+                                            };
+                                            state.deferred_scroll_group_ix = Some(group_ix);
+                                            cx.notify();
+                                        })
+                                    }
+                                })
+                            }),
+                    )
+                })
+        }))
+    }
+
     fn render_sidebar(
         &self,
         state: &Entity<SettingsState>,
@@ -208,74 +283,13 @@ impl Settings {
         _: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
-        let selected_index = state.read(cx).selected_index;
-        let search_input = state.read(cx).search_input.clone();
-        let sidebar_title = self.sidebar_title.clone();
-        let sidebar_title_top_offset = (self.safe_area_top - self.sidebar_shell_inset).max(px(0.0));
-
         Sidebar::new("settings-sidebar")
             .w(relative(1.))
             .border_0()
             .refine_style(&self.sidebar_style)
             .collapsed(false)
-            .header(
-                div()
-                    .w_full()
-                    .refine_style(&self.header_style)
-                    .when_some(sidebar_title, |this, title| {
-                        this.child(div().h(sidebar_title_top_offset))
-                            .child(div().px_1().pb_2().font_semibold().child(title))
-                    })
-                    .child(Input::new(&search_input).prefix(IconName::Search)),
-            )
-            .child(
-                SidebarMenu::new().children(pages.iter().enumerate().map(|(page_ix, page)| {
-                    let is_page_active =
-                        selected_index.page_ix == page_ix && selected_index.group_ix.is_none();
-                    SidebarMenuItem::new(page.title.clone())
-                        .default_open(page.default_open)
-                        .active(is_page_active)
-                        .on_click({
-                            let state = state.clone();
-                            move |_, _, cx| {
-                                state.update(cx, |state, cx| {
-                                    state.selected_index = SelectIndex {
-                                        page_ix,
-                                        ..Default::default()
-                                    };
-                                    cx.notify();
-                                })
-                            }
-                        })
-                        .when(page.groups.len() > 1, |this| {
-                            this.children(
-                                page.groups
-                                    .iter()
-                                    .filter(|g| g.title.is_some())
-                                    .enumerate()
-                                    .map(|(group_ix, group)| {
-                                        let is_active = selected_index.page_ix == page_ix
-                                            && selected_index.group_ix == Some(group_ix);
-                                        let title = group.title.clone().unwrap_or_default();
-
-                                        SidebarMenuItem::new(title).active(is_active).on_click({
-                                            let state = state.clone();
-                                            move |_, _, cx| {
-                                                state.update(cx, |state, cx| {
-                                                    state.selected_index = SelectIndex {
-                                                        page_ix,
-                                                        group_ix: Some(group_ix),
-                                                    };
-                                                    state.deferred_scroll_group_ix = Some(group_ix);
-                                                    cx.notify();
-                                                })
-                                            }
-                                        })
-                                    }),
-                            )
-                        })
-                })),
-            )
+            .header(self.render_sidebar_header(state, cx))
+            .child(self.render_sidebar_menu(state, pages, cx))
     }
 }
 
@@ -340,21 +354,28 @@ impl RenderOnce for Settings {
         if self.use_sidebar_shell {
             let sidebar_width = self.sidebar_width;
             let sidebar_inset = self.sidebar_shell_inset;
+            let clamped_sidebar_width = sidebar_width.max(px(200.0)).min(px(400.0));
+            let mut floating_sidebar = FloatingSidebar::new("settings-floating-sidebar")
+                .side(Side::Left)
+                .width(sidebar_width)
+                .resizer_width(px(0.0))
+                .refine_style(&self.sidebar_style)
+                .header(self.render_sidebar_header(&state, cx))
+                .child(self.render_sidebar_menu(&state, &filtered_pages, cx));
+
+            if sidebar_inset != px(8.0) {
+                floating_sidebar = floating_sidebar.inset(sidebar_inset);
+            }
 
             return div()
                 .relative()
                 .size_full()
                 .overflow_hidden()
-                .child(
-                    SidebarShell::left(sidebar_width)
-                        .inset(sidebar_inset)
-                        .resizer_width(px(0.0))
-                        .child(self.render_sidebar(&state, &filtered_pages, window, cx)),
-                )
+                .child(floating_sidebar)
                 .child(
                     div()
                         .size_full()
-                        .pl(sidebar_width + sidebar_inset)
+                        .pl(clamped_sidebar_width + sidebar_inset)
                         .pt(self.safe_area_top)
                         .child(self.render_active_page(
                             &state,
