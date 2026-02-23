@@ -1,9 +1,8 @@
 use gpui::{prelude::*, *};
 use gpui_component::{
-    ActiveTheme as _, Icon, IconName, h_flex,
+    ActiveTheme as _, FloatingSidebar, Icon, IconName, h_flex,
     input::{Input, InputEvent, InputState},
-    resizable::{h_resizable, resizable_panel},
-    sidebar::{Sidebar, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem},
+    sidebar::{SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem},
     v_flex,
 };
 use gpui_component_assets::Assets;
@@ -14,6 +13,7 @@ pub struct Gallery {
     active_group_index: Option<usize>,
     active_index: Option<usize>,
     collapsed: bool,
+    sidebar_width: Pixels,
     search_input: Entity<InputState>,
     _subscriptions: Vec<Subscription>,
 }
@@ -78,6 +78,7 @@ impl Gallery {
                     StoryContainer::panel::<SelectStory>(window, cx),
                     StoryContainer::panel::<SettingsStory>(window, cx),
                     StoryContainer::panel::<SheetStory>(window, cx),
+                    StoryContainer::panel::<FloatingSidebarStory>(window, cx),
                     StoryContainer::panel::<SidebarStory>(window, cx),
                     StoryContainer::panel::<SkeletonStory>(window, cx),
                     StoryContainer::panel::<SliderStory>(window, cx),
@@ -103,6 +104,7 @@ impl Gallery {
             active_group_index: Some(0),
             active_index: Some(0),
             collapsed: false,
+            sidebar_width: px(255.0),
             _subscriptions,
         };
 
@@ -159,119 +161,131 @@ impl Render for Gallery {
                 ("".into(), "".into())
             };
 
-        h_resizable("gallery-container")
+        let inset = px(4.0);
+        let collapsed_width = px(48.0);
+        let sidebar_width = if self.collapsed {
+            collapsed_width
+        } else {
+            self.sidebar_width
+        };
+        let content_offset = sidebar_width + inset;
+        let view = cx.entity().downgrade();
+
+        div()
+            .relative()
+            .size_full()
+            .overflow_hidden()
             .child(
-                resizable_panel()
-                    .size(px(255.))
-                    .size_range(px(200.)..px(320.))
-                    .child(
-                        Sidebar::new("gallery-sidebar")
-                            .w(relative(1.))
-                            .border_0()
-                            .collapsed(self.collapsed)
-                            .header_with({
-                                let search_input = self.search_input.clone();
-                                move |collapsed, _, cx| {
-                                    v_flex()
+                FloatingSidebar::new("gallery-sidebar")
+                    .width(self.sidebar_width)
+                    .collapsed(self.collapsed)
+                    .inset(inset)
+                    .on_resize_end(move |width, _, cx| {
+                        if let Some(view) = view.upgrade() {
+                            view.update(cx, |this, cx| {
+                                this.sidebar_width = width;
+                                cx.notify();
+                            });
+                        }
+                    })
+                    .header_with({
+                        let search_input = self.search_input.clone();
+                        move |collapsed, _, cx| {
+                            v_flex()
+                                .w_full()
+                                .gap_4()
+                                .child(
+                                    SidebarHeader::new()
                                         .w_full()
-                                        .gap_4()
-                                        .child(
-                                            SidebarHeader::new()
-                                                .w_full()
-                                                .child(
-                                                    div()
-                                                        .flex()
-                                                        .items_center()
-                                                        .justify_center()
-                                                        .rounded(cx.theme().radius)
-                                                        .bg(cx.theme().primary)
-                                                        .text_color(cx.theme().primary_foreground)
-                                                        .size_8()
-                                                        .flex_shrink_0()
-                                                        .when(!collapsed, |this| {
-                                                            this.child(Icon::new(
-                                                                IconName::GalleryVerticalEnd,
-                                                            ))
-                                                        })
-                                                        .when(collapsed, |this| {
-                                                            this.size_4()
-                                                                .bg(cx.theme().transparent)
-                                                                .text_color(cx.theme().foreground)
-                                                                .child(Icon::new(
-                                                                    IconName::GalleryVerticalEnd,
-                                                                ))
-                                                        })
-                                                        .rounded_lg(),
-                                                )
-                                                .when(!collapsed, |this| {
-                                                    this.child(
-                                                        v_flex()
-                                                            .gap_0()
-                                                            .text_sm()
-                                                            .flex_1()
-                                                            .line_height(relative(1.25))
-                                                            .overflow_hidden()
-                                                            .text_ellipsis()
-                                                            .child("GPUI Component")
-                                                            .child(
-                                                                div()
-                                                                    .text_color(
-                                                                        cx.theme().muted_foreground,
-                                                                    )
-                                                                    .child("Gallery")
-                                                                    .text_xs(),
-                                                            ),
-                                                    )
-                                                }),
-                                        )
                                         .child(
                                             div()
-                                                .bg(cx.theme().sidebar_accent)
-                                                .rounded_full()
-                                                .px_1()
-                                                .when(cx.theme().radius.is_zero(), |this| {
-                                                    this.rounded(px(0.))
-                                                })
-                                                .flex_1()
-                                                .mx_1()
-                                                .child(
-                                                    Input::new(&search_input)
-                                                        .appearance(false)
-                                                        .cleanable(true),
-                                                ),
-                                        )
-                                }
-                            })
-                            .children(stories.clone().into_iter().enumerate().map(
-                                |(group_ix, (group_name, sub_stories))| {
-                                    SidebarGroup::new(*group_name).child(
-                                        SidebarMenu::new().children(
-                                            sub_stories.iter().enumerate().map(|(ix, story)| {
-                                                SidebarMenuItem::new(story.read(cx).name.clone())
-                                                    .active(
-                                                        self.active_group_index == Some(group_ix)
-                                                            && self.active_index == Some(ix),
-                                                    )
-                                                    .on_click(cx.listener(
-                                                        move |this, _: &ClickEvent, _, cx| {
-                                                            this.active_group_index =
-                                                                Some(group_ix);
-                                                            this.active_index = Some(ix);
-                                                            cx.notify();
-                                                        },
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .rounded(cx.theme().radius)
+                                                .bg(cx.theme().primary)
+                                                .text_color(cx.theme().primary_foreground)
+                                                .size_8()
+                                                .flex_shrink_0()
+                                                .when(!collapsed, |this| {
+                                                    this.child(Icon::new(
+                                                        IconName::GalleryVerticalEnd,
                                                     ))
-                                            }),
+                                                })
+                                                .when(collapsed, |this| {
+                                                    this.size_4()
+                                                        .bg(cx.theme().transparent)
+                                                        .text_color(cx.theme().foreground)
+                                                        .child(Icon::new(
+                                                            IconName::GalleryVerticalEnd,
+                                                        ))
+                                                })
+                                                .rounded_lg(),
+                                        )
+                                        .when(!collapsed, |this| {
+                                            this.child(
+                                                v_flex()
+                                                    .gap_0()
+                                                    .text_sm()
+                                                    .flex_1()
+                                                    .line_height(relative(1.25))
+                                                    .overflow_hidden()
+                                                    .text_ellipsis()
+                                                    .child("GPUI Component")
+                                                    .child(
+                                                        div()
+                                                            .text_color(cx.theme().muted_foreground)
+                                                            .child("Gallery")
+                                                            .text_xs(),
+                                                    ),
+                                            )
+                                        }),
+                                )
+                                .child(
+                                    div()
+                                        .bg(cx.theme().sidebar_accent)
+                                        .rounded_full()
+                                        .px_1()
+                                        .when(cx.theme().radius.is_zero(), |this| {
+                                            this.rounded(px(0.))
+                                        })
+                                        .flex_1()
+                                        .mx_1()
+                                        .child(
+                                            Input::new(&search_input)
+                                                .appearance(false)
+                                                .cleanable(true),
                                         ),
-                                    )
-                                },
-                            )),
-                    ),
+                                )
+                        }
+                    })
+                    .children(stories.clone().into_iter().enumerate().map(
+                        |(group_ix, (group_name, sub_stories))| {
+                            SidebarGroup::new(*group_name).child(SidebarMenu::new().children(
+                                sub_stories.iter().enumerate().map(|(ix, story)| {
+                                    SidebarMenuItem::new(story.read(cx).name.clone())
+                                        .active(
+                                            self.active_group_index == Some(group_ix)
+                                                && self.active_index == Some(ix),
+                                        )
+                                        .on_click(cx.listener(
+                                            move |this, _: &ClickEvent, _, cx| {
+                                                this.active_group_index = Some(group_ix);
+                                                this.active_index = Some(ix);
+                                                cx.notify();
+                                            },
+                                        ))
+                                }),
+                            ))
+                        },
+                    )),
             )
             .child(
                 v_flex()
                     .flex_1()
                     .h_full()
                     .overflow_x_hidden()
+                    .pl(content_offset)
                     .child(
                         h_flex()
                             .id("header")

@@ -1,5 +1,7 @@
+use std::rc::Rc;
+
 use crate::{
-    IconName, Sizable, Size, StyledExt,
+    IconName, SidebarShell, Sizable, Size, StyledExt,
     group_box::GroupBoxVariant,
     input::{Input, InputState},
     resizable::{h_resizable, resizable_panel},
@@ -7,8 +9,9 @@ use crate::{
     sidebar::{Sidebar, SidebarMenu, SidebarMenuItem},
 };
 use gpui::{
-    App, AppContext as _, Axis, ElementId, Entity, IntoElement, ParentElement as _, Pixels,
-    RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder as _, px, relative,
+    AnyElement, App, AppContext as _, Axis, ElementId, Entity, IntoElement, ParentElement as _,
+    Pixels, RenderOnce, SharedString, StyleRefinement, Styled, Window, div,
+    prelude::FluentBuilder as _, px, relative,
 };
 use rust_i18n::t;
 
@@ -31,6 +34,11 @@ pub struct Settings {
     group_variant: GroupBoxVariant,
     size: Size,
     sidebar_width: Pixels,
+    use_sidebar_shell: bool,
+    safe_area_top: Pixels,
+    sidebar_shell_inset: Pixels,
+    sidebar_title: Option<SharedString>,
+    page_header_action: Option<Rc<dyn Fn(&mut Window, &mut App) -> AnyElement>>,
     sidebar_style: StyleRefinement,
     default_selected_index: SelectIndex,
     header_style: StyleRefinement,
@@ -45,6 +53,11 @@ impl Settings {
             group_variant: GroupBoxVariant::default(),
             size: Size::default(),
             sidebar_width: px(250.0),
+            use_sidebar_shell: false,
+            safe_area_top: px(0.0),
+            sidebar_shell_inset: px(4.0),
+            sidebar_title: None,
+            page_header_action: None,
             sidebar_style: StyleRefinement::default(),
             default_selected_index: SelectIndex::default(),
             header_style: StyleRefinement::default(),
@@ -54,6 +67,41 @@ impl Settings {
     /// Set the width of the sidebar, default is `250px`.
     pub fn sidebar_width(mut self, width: impl Into<Pixels>) -> Self {
         self.sidebar_width = width.into();
+        self
+    }
+
+    /// Toggle rendering the left panel with SidebarShell.
+    pub fn use_sidebar_shell(mut self, enabled: bool) -> Self {
+        self.use_sidebar_shell = enabled;
+        self
+    }
+
+    /// Set top safe-area offset to avoid titlebar control collisions.
+    pub fn safe_area_top(mut self, inset: impl Into<Pixels>) -> Self {
+        self.safe_area_top = inset.into();
+        self
+    }
+
+    /// Set the sidebar shell inset when `use_sidebar_shell` is enabled.
+    ///
+    /// Default is `4px`.
+    pub fn sidebar_shell_inset(mut self, inset: impl Into<Pixels>) -> Self {
+        self.sidebar_shell_inset = inset.into();
+        self
+    }
+
+    /// Set an optional title displayed at the top of the sidebar.
+    pub fn sidebar_title(mut self, title: impl Into<SharedString>) -> Self {
+        self.sidebar_title = Some(title.into());
+        self
+    }
+
+    /// Render a custom action in the active page header.
+    pub fn page_header_action(
+        mut self,
+        action: impl Fn(&mut Window, &mut App) -> AnyElement + 'static,
+    ) -> Self {
+        self.page_header_action = Some(Rc::new(action));
         self
     }
 
@@ -140,8 +188,12 @@ impl Settings {
 
         for (ix, page) in pages.into_iter().enumerate() {
             if selected_index.page_ix == ix {
+                let page_header_action = self
+                    .page_header_action
+                    .as_ref()
+                    .map(|action| action(window, cx));
                 return page
-                    .render(ix, state, &options, window, cx)
+                    .render(ix, state, &options, page_header_action, window, cx)
                     .into_any_element();
             }
         }
@@ -158,6 +210,8 @@ impl Settings {
     ) -> impl IntoElement {
         let selected_index = state.read(cx).selected_index;
         let search_input = state.read(cx).search_input.clone();
+        let sidebar_title = self.sidebar_title.clone();
+        let sidebar_title_top_offset = (self.safe_area_top - self.sidebar_shell_inset).max(px(0.0));
 
         Sidebar::new("settings-sidebar")
             .w(relative(1.))
@@ -168,6 +222,10 @@ impl Settings {
                 div()
                     .w_full()
                     .refine_style(&self.header_style)
+                    .when_some(sidebar_title, |this, title| {
+                        this.child(div().h(sidebar_title_top_offset))
+                            .child(div().px_1().pb_2().font_semibold().child(title))
+                    })
                     .child(Input::new(&search_input).prefix(IconName::Search)),
             )
             .child(
@@ -279,6 +337,36 @@ impl RenderOnce for Settings {
             layout: Axis::Horizontal,
         };
 
+        if self.use_sidebar_shell {
+            let sidebar_width = self.sidebar_width;
+            let sidebar_inset = self.sidebar_shell_inset;
+
+            return div()
+                .relative()
+                .size_full()
+                .overflow_hidden()
+                .child(
+                    SidebarShell::left(sidebar_width)
+                        .inset(sidebar_inset)
+                        .resizer_width(px(0.0))
+                        .child(self.render_sidebar(&state, &filtered_pages, window, cx)),
+                )
+                .child(
+                    div()
+                        .size_full()
+                        .pl(sidebar_width + sidebar_inset)
+                        .pt(self.safe_area_top)
+                        .child(self.render_active_page(
+                            &state,
+                            &filtered_pages,
+                            &options,
+                            window,
+                            cx,
+                        )),
+                )
+                .into_any_element();
+        }
+
         h_resizable(self.id.clone())
             .child(
                 resizable_panel()
@@ -292,5 +380,6 @@ impl RenderOnce for Settings {
                 window,
                 cx,
             )))
+            .into_any_element()
     }
 }

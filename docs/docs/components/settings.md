@@ -85,6 +85,22 @@ Settings::new("app-settings")
     ])
 ```
 
+### Sidebar Shell Layout
+
+Use `SidebarShell` for a floating inset sidebar and optional page header actions.
+
+```rust
+Settings::new("app-settings")
+    .use_sidebar_shell(true)
+    .sidebar_shell_inset(8) // default is 4px
+    .safe_area_top(TITLE_BAR_HEIGHT)
+    .sidebar_title("Settings")
+    .page_header_action(|_window, _cx| {
+        Button::new("save-settings").label("Save").primary().into_any_element()
+    })
+    .pages(vec![...])
+```
+
 ### Group Variants
 
 ```rust

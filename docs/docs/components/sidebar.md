@@ -85,6 +85,34 @@ SidebarToggleButton::new()
     })
 ```
 
+### Floating Sidebar (SidebarShell + Sidebar)
+
+`FloatingSidebar` composes `SidebarShell` with `Sidebar`, handling resize internally.
+It defaults to a 4px inset from the window edges and can be resized when expanded.
+
+```rust
+use gpui_component::{FloatingSidebar, Side};
+use gpui_component::sidebar::{SidebarGroup, SidebarMenu, SidebarMenuItem};
+
+let mut collapsed = false;
+
+FloatingSidebar::new("floating-sidebar")
+    .side(Side::Left)
+    .width(260)
+    .min_width(200)
+    .max_width(420)
+    .inset(4) // optional override (defaults to 4px)
+    .collapsed(collapsed)
+    .child(
+        SidebarGroup::new("Navigation")
+            .child(
+                SidebarMenu::new()
+                    .child(SidebarMenuItem::new("Dashboard"))
+                    .child(SidebarMenuItem::new("Settings"))
+            )
+    )
+```
+
 ### Nested Menu Items
 
 ```rust

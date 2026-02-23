@@ -474,6 +474,7 @@ impl StoryState {
             "LabelStory" => story!(LabelStory),
             "TooltipStory" => story!(TooltipStory),
             "AccordionStory" => story!(AccordionStory),
+            "FloatingSidebarStory" => story!(FloatingSidebarStory),
             "SidebarStory" => story!(SidebarStory),
             "FormStory" => story!(FormStory),
             "NotificationStory" => story!(NotificationStory),
