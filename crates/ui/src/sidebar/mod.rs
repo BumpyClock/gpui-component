@@ -28,8 +28,8 @@ pub use group::*;
 pub use header::*;
 pub use menu::*;
 
-const DEFAULT_WIDTH: Pixels = px(255.);
-const COLLAPSED_WIDTH: Pixels = px(48.);
+pub(crate) const DEFAULT_WIDTH: Pixels = px(255.);
+pub(crate) const COLLAPSED_WIDTH: Pixels = px(48.);
 
 pub trait SidebarItem: Collapsible + Clone {
     fn render(
@@ -60,6 +60,7 @@ pub struct Sidebar<E: SidebarItem + 'static> {
     collapsible: bool,
     collapsed: bool,
     width: Pixels,
+    animate_width: bool,
 }
 
 impl<E: SidebarItem> Sidebar<E> {
@@ -75,6 +76,7 @@ impl<E: SidebarItem> Sidebar<E> {
             collapsible: true,
             collapsed: false,
             width: DEFAULT_WIDTH,
+            animate_width: true,
         }
     }
 
@@ -104,6 +106,14 @@ impl<E: SidebarItem> Sidebar<E> {
         self
     }
 
+    /// Set whether the sidebar animates its width when collapsing or expanding.
+    ///
+    /// Default is `true`.
+    pub fn animate_width(mut self, animate: bool) -> Self {
+        self.animate_width = animate;
+        self
+    }
+
     /// Set the header of the sidebar.
     pub fn header(mut self, header: impl IntoElement) -> Self {
         self.header = Some(SidebarSlot::Static(header.into_any_element()));
@@ -116,9 +126,9 @@ impl<E: SidebarItem> Sidebar<E> {
         F: Fn(bool, &mut Window, &mut App) -> H + 'static,
         H: IntoElement,
     {
-        self.header = Some(SidebarSlot::Dynamic(Rc::new(move |collapsed, window, cx| {
-            builder(collapsed, window, cx).into_any_element()
-        })));
+        self.header = Some(SidebarSlot::Dynamic(Rc::new(
+            move |collapsed, window, cx| builder(collapsed, window, cx).into_any_element(),
+        )));
         self
     }
 
@@ -134,9 +144,9 @@ impl<E: SidebarItem> Sidebar<E> {
         F: Fn(bool, &mut Window, &mut App) -> H + 'static,
         H: IntoElement,
     {
-        self.footer = Some(SidebarSlot::Dynamic(Rc::new(move |collapsed, window, cx| {
-            builder(collapsed, window, cx).into_any_element()
-        })));
+        self.footer = Some(SidebarSlot::Dynamic(Rc::new(
+            move |collapsed, window, cx| builder(collapsed, window, cx).into_any_element(),
+        )));
         self
     }
 
@@ -237,6 +247,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         self.style.padding = EdgesRefinement::default();
 
         let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let animate_width = self.animate_width && !reduced_motion;
         let motion = cx.theme().motion.clone();
         let target_collapsed = self.collapsed;
         let sidebar_id = self.id.clone();
@@ -257,7 +268,7 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         let presence = keyed_presence(
             SharedString::from(format!("{}-collapsed-presence", sidebar_id)),
             !target_collapsed,
-            !reduced_motion,
+            animate_width,
             Duration::from_millis(u64::from(open_duration_ms)),
             Duration::from_millis(u64::from(close_duration_ms)),
             PresenceOptions::default(),
@@ -267,14 +278,14 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         // Mirror close/open semantics:
         // - Closing: keep expanded visuals during `Exiting`, switch to collapsed at `Exited`.
         // - Opening: keep collapsed visuals during `Entering`, switch to expanded at `Entered`.
-        let visual_collapsed = if reduced_motion {
+        let visual_collapsed = if !animate_width {
             target_collapsed
         } else if target_collapsed {
             matches!(presence.phase, PresencePhase::Exited)
         } else {
             matches!(presence.phase, PresencePhase::Entering)
         };
-        let transition_active = !reduced_motion && presence.transition_active();
+        let transition_active = animate_width && presence.transition_active();
         let from_width = if target_collapsed {
             expanded_width
         } else {

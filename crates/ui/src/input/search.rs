@@ -31,10 +31,7 @@ struct RopeReader<'a> {
 impl<'a> RopeReader<'a> {
     fn new(rope: &'a Rope) -> Self {
         let mut chunks = rope.chunks();
-        let current = chunks
-            .next()
-            .map(|s| s.as_bytes())
-            .unwrap_or_default();
+        let current = chunks.next().map(|s| s.as_bytes()).unwrap_or_default();
         Self {
             chunks,
             current,

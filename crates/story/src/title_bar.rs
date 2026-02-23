@@ -68,7 +68,7 @@ impl Render for AppTitleBar {
                     .child((self.child.clone())(window, cx))
                     .child(
                         Label::new("theme:")
-                            .secondary(cx.theme().theme_name())
+                            .secondary(cx.theme().theme_set_name.clone())
                             .text_sm(),
                     )
                     .child(self.font_size_selector.clone())

@@ -360,8 +360,7 @@ impl SidebarItem for SidebarMenuItem {
         let open_duration = if reduced_motion {
             motion.fast_duration_ms
         } else {
-            spring_preset_duration_ms(&motion, SpringPreset::Mild)
-                .max(motion.fast_duration_ms)
+            spring_preset_duration_ms(&motion, SpringPreset::Mild).max(motion.fast_duration_ms)
         };
         let submenu_presence = keyed_presence(
             SharedString::from(format!("{}-submenu-presence", state_key)),
@@ -565,7 +564,7 @@ impl SidebarItem for SidebarMenuItem {
                     None => {
                         let menu_items = children.clone();
                         let menu = PopupMenu::build(window, cx, move |menu, window, cx| {
-                            build_collapsed_submenu(menu, menu_items.clone(), window, cx)
+                            build_collapsed_submenu(menu, menu_items, window, cx)
                         });
                         menu_state.update(cx, |state, _| {
                             state.menu = Some(menu.clone());

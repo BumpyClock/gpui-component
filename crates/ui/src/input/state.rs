@@ -105,7 +105,11 @@ pub(super) const CONTEXT: &str = "Input";
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("backspace", Backspace, Some(CONTEXT)),
+        KeyBinding::new("shift-backspace", Backspace, Some(CONTEXT)),
+        #[cfg(target_os = "macos")]
+        KeyBinding::new("ctrl-backspace", Backspace, Some(CONTEXT)),
         KeyBinding::new("delete", Delete, Some(CONTEXT)),
+        KeyBinding::new("shift-delete", Delete, Some(CONTEXT)),
         #[cfg(target_os = "macos")]
         KeyBinding::new("cmd-backspace", DeleteToBeginningOfLine, Some(CONTEXT)),
         #[cfg(target_os = "macos")]
@@ -119,6 +123,7 @@ pub(crate) fn init(cx: &mut App) {
         #[cfg(not(target_os = "macos"))]
         KeyBinding::new("ctrl-delete", DeleteToNextWordEnd, Some(CONTEXT)),
         KeyBinding::new("enter", Enter { secondary: false }, Some(CONTEXT)),
+        KeyBinding::new("shift-enter", Enter { secondary: false }, Some(CONTEXT)),
         KeyBinding::new("secondary-enter", Enter { secondary: true }, Some(CONTEXT)),
         KeyBinding::new("escape", Escape, Some(CONTEXT)),
         KeyBinding::new("up", MoveUp, Some(CONTEXT)),
@@ -1522,12 +1527,7 @@ impl InputState {
         }
     }
 
-    fn push_history_with_old_text(
-        &mut self,
-        old_text: &str,
-        range: &Range<usize>,
-        new_text: &str,
-    ) {
+    fn push_history_with_old_text(&mut self, old_text: &str, range: &Range<usize>, new_text: &str) {
         if self.history.ignore {
             return;
         }
@@ -2044,7 +2044,8 @@ impl EntityInputHandler for InputState {
         if self.mode.is_single_line() {
             let pending_text = self.text.to_string();
             if !self.is_valid_input(&pending_text, cx) {
-                self.text.replace(range.start..range.start + new_text.len(), &old_slice);
+                self.text
+                    .replace(range.start..range.start + new_text.len(), &old_slice);
                 return;
             }
 
@@ -2111,7 +2112,8 @@ impl EntityInputHandler for InputState {
         if self.mode.is_single_line() {
             let pending_text = self.text.to_string();
             if !self.is_valid_input(&pending_text, cx) {
-                self.text.replace(range.start..range.start + new_text.len(), &old_slice);
+                self.text
+                    .replace(range.start..range.start + new_text.len(), &old_slice);
                 return;
             }
         }

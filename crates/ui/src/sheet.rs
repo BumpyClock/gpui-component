@@ -281,19 +281,15 @@ impl RenderOnce for Sheet {
                             })
                             .map(move |this| match slide_animation {
                                 Some(anim) => this
-                                    .with_animation(
-                                        "slide",
-                                        anim,
-                                        move |this, delta| {
-                                            let y = px(-100.) + delta * px(100.);
-                                            this.map(|this| match placement {
-                                                Placement::Top => this.top(top + y),
-                                                Placement::Right => this.right(y),
-                                                Placement::Bottom => this.bottom(y),
-                                                Placement::Left => this.left(y),
-                                            })
-                                        },
-                                    )
+                                    .with_animation("slide", anim, move |this, delta| {
+                                        let y = px(-100.) + delta * px(100.);
+                                        this.map(|this| match placement {
+                                            Placement::Top => this.top(top + y),
+                                            Placement::Right => this.right(y),
+                                            Placement::Bottom => this.bottom(y),
+                                            Placement::Left => this.left(y),
+                                        })
+                                    })
                                     .into_any_element(),
                                 None => this.into_any_element(),
                             }),

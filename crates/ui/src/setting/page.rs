@@ -1,5 +1,5 @@
 use gpui::{
-    App, Entity, InteractiveElement as _, IntoElement, ListAlignment, ListState,
+    AnyElement, App, Entity, InteractiveElement as _, IntoElement, ListAlignment, ListState,
     ParentElement as _, SharedString, Styled, Window, div, list, prelude::FluentBuilder as _, px,
 };
 use rust_i18n::t;
@@ -88,6 +88,7 @@ impl SettingPage {
         ix: usize,
         state: &Entity<SettingsState>,
         options: &RenderOptions,
+        page_header_action: Option<AnyElement>,
         window: &mut Window,
         cx: &mut App,
     ) -> impl IntoElement {
@@ -100,6 +101,8 @@ impl SettingPage {
             .cloned()
             .collect::<Vec<_>>();
         let groups_count = groups.len();
+        let is_resettable = self.is_resettable(cx);
+        let has_page_header_action = page_header_action.is_some();
 
         let list_state = window
             .use_keyed_state(
@@ -131,24 +134,37 @@ impl SettingPage {
                     .gap_3()
                     .border_b_1()
                     .border_color(cx.theme().border)
-                    .child(h_flex().justify_between().child(self.title.clone()).when(
-                        self.is_resettable(cx),
-                        |this| {
-                            this.child(
-                                Button::new("reset")
-                                    .icon(IconName::Undo2)
-                                    .ghost()
-                                    .small()
-                                    .tooltip(t!("Settings.Reset All"))
-                                    .on_click({
-                                        let page = self.clone();
-                                        move |_, window, cx| {
-                                            page.reset_all(window, cx);
-                                        }
-                                    }),
-                            )
-                        },
-                    ))
+                    .child(
+                        h_flex()
+                            .justify_between()
+                            .items_center()
+                            .child(self.title.clone())
+                            .when(is_resettable || has_page_header_action, |this| {
+                                this.child(
+                                    h_flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .when(is_resettable, |this| {
+                                            this.child(
+                                                Button::new("reset")
+                                                    .icon(IconName::Undo2)
+                                                    .ghost()
+                                                    .small()
+                                                    .tooltip(t!("Settings.Reset All"))
+                                                    .on_click({
+                                                        let page = self.clone();
+                                                        move |_, window, cx| {
+                                                            page.reset_all(window, cx);
+                                                        }
+                                                    }),
+                                            )
+                                        })
+                                        .when_some(page_header_action, |this, action| {
+                                            this.child(action)
+                                        }),
+                                )
+                            }),
+                    )
                     .when_some(self.description.clone(), |this, description| {
                         this.child(
                             Label::new(description)
