@@ -393,7 +393,7 @@ impl TreeState {
         }
     }
 
-    pub fn focus(&mut self, window: &mut Window, cx: &mut App) {
+    pub fn focus(&self, window: &mut Window, cx: &mut App) {
         self.focus_handle.focus(window, cx);
     }
 

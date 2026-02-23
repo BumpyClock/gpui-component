@@ -666,6 +666,7 @@ impl TableDelegate for MyTableDelegate {
 - `RightClickedRow(Option<usize>)` - Row right-clicked
 - `ColumnWidthsChanged(Vec<Pixels>)` - Column widths changed
 - `MoveColumn(usize, usize)` - Column moved (from_ix, to_ix)
+- `ClearSelection` - All selections cleared
 
 [Table]: https://docs.rs/gpui-component/latest/gpui_component/table/struct.Table.html
 [TableState]: https://docs.rs/gpui-component/latest/gpui_component/table/struct.TableState.html

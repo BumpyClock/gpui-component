@@ -440,6 +440,10 @@ impl SyntaxHighlighter {
             }
         }
 
+        // Prune injection_layers for languages no longer present in combined_ranges
+        self.injection_layers
+            .retain(|lang, _| combined_ranges.get(lang).is_some_and(|r| !r.is_empty()));
+
         // Parse each combined language group with incremental parsing
         for (language_name, ranges) in combined_ranges {
             if ranges.is_empty() {
