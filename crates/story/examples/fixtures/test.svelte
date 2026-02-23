@@ -97,7 +97,7 @@
 			<p class="text-gray-500" transition:fade>No items yet. Add some!</p>
 		{:else}
 			<ul class="space-y-2">
-				{#each state.items as item, i (item)}
+				{#each state.items as item, i (i)}
 					<li
 						class="flex justify-between items-center p-2 bg-gray-100 rounded"
 						transition:slide

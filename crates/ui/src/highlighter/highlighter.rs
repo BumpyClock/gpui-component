@@ -390,9 +390,9 @@ impl SyntaxHighlighter {
             return;
         };
 
-        self.tree = Some(new_tree.clone());
+        self.tree = Some(new_tree);
         self.text = text.clone();
-        self.parse_combined_injections(&new_tree);
+        self.parse_combined_injections(self.tree.as_ref().unwrap());
     }
 
     /// Parse all combined injections after main tree is updated.
@@ -456,11 +456,20 @@ impl SyntaxHighlighter {
 
             let mut parser = Parser::new();
             if let Err(e) = parser.set_language(&config.language) {
-                tracing::debug!("highlighter: failed to set_language for {}: {}", language_name, e);
+                tracing::debug!(
+                    "highlighter: failed to set_language for {}: {}",
+                    language_name,
+                    e
+                );
                 continue;
             }
             if let Err(e) = parser.set_included_ranges(&ranges) {
-                tracing::debug!("highlighter: failed to set_included_ranges for {} ({} ranges): {}", language_name, ranges.len(), e);
+                tracing::debug!(
+                    "highlighter: failed to set_included_ranges for {} ({} ranges): {}",
+                    language_name,
+                    ranges.len(),
+                    e
+                );
                 continue;
             }
 
