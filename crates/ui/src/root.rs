@@ -10,7 +10,7 @@ use crate::{
 use gpui::{
     AnyView, App, AppContext, Context, DefiniteLength, Entity, FocusHandle, InteractiveElement,
     IntoElement, KeyBinding, ParentElement as _, Render, StyleRefinement, Styled, WeakFocusHandle,
-    Window, actions, div, prelude::FluentBuilder as _, px,
+    Window, actions, div, prelude::FluentBuilder as _,
 };
 use std::{any::TypeId, rc::Rc};
 
@@ -492,17 +492,7 @@ impl Render for Root {
                 .bg(cx.theme().background)
                 .text_color(cx.theme().foreground)
                 .refine_style(&self.style)
-                .child(self.view.clone())
-                .child(
-                    div()
-                        .absolute()
-                        .top_0()
-                        .left_0()
-                        .p(px(4.0))
-                        .bg(cx.theme().accent.opacity(0.15))
-                        .text_color(cx.theme().accent)
-                        .child("GPUI COMPONENT ROOT"),
-                ),
+                .child(self.view.clone()),
         )
     }
 }

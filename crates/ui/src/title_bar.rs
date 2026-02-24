@@ -15,7 +15,7 @@ use windows::Win32::{
     Foundation::{HWND, LPARAM, WPARAM},
     UI::{
         Input::KeyboardAndMouse::ReleaseCapture,
-        WindowsAndMessaging::{HTCAPTION, SendMessageW, WM_NCLBUTTONDOWN},
+        WindowsAndMessaging::{HTCAPTION, PostMessageW, WM_NCLBUTTONDOWN},
     },
 };
 
@@ -220,13 +220,15 @@ fn start_windows_titlebar_drag(_window: &Window) {
                 tracing::warn!(?error, "ReleaseCapture failed");
             }
             // Ask Windows to begin a standard non-client titlebar drag.
-            // This is more reliable than relying on WM_NCHITTEST state when using client-side decorations.
-            let _ = SendMessageW(
-                hwnd,
+            // PostMessage avoids re-entering GPUI event dispatch while the current callback still holds App borrows.
+            if let Err(error) = PostMessageW(
+                Some(hwnd),
                 WM_NCLBUTTONDOWN,
-                Some(WPARAM(HTCAPTION as _)),
-                Some(LPARAM(0)),
-            );
+                WPARAM(HTCAPTION as _),
+                LPARAM(0),
+            ) {
+                tracing::warn!(?error, "PostMessageW(WM_NCLBUTTONDOWN) failed");
+            }
         }
     }
 }
