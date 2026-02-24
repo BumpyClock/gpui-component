@@ -20,7 +20,7 @@ use gpui::{
 
 use crate::{ActiveTheme, StyledExt, ThemeShadowToken};
 
-const GLASS_NOISE_ASSET_PATH: &str = "NoiseAsset_256.png";
+const GLASS_NOISE_ASSET_PATH: &str = "surface/NoiseAsset_256.png";
 const GLASS_NOISE_TILE_SIZE_BASE: f32 = 128.0;
 
 /// Runtime context for surface rendering decisions.
