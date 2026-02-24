@@ -12,6 +12,7 @@ mod icon;
 mod index_path;
 #[cfg(any(feature = "inspector", debug_assertions))]
 mod inspector;
+mod overlay_window;
 mod root;
 mod sidebar_shell;
 mod styled;
@@ -91,6 +92,7 @@ pub use index_path::IndexPath;
 pub use input::{Rope, RopeExt, RopeLines};
 #[cfg(any(feature = "inspector", debug_assertions))]
 pub use inspector::*;
+pub use overlay_window::OverlayWindowOptions;
 pub use root::Root;
 pub use sidebar_shell::*;
 pub use styled::*;
