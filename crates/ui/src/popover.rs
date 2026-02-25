@@ -421,9 +421,9 @@ impl RenderOnce for Popover {
             self.anchor,
             Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight
         ) {
-            1.0
-        } else {
             -1.0
+        } else {
+            1.0
         };
 
         let popover_content =

@@ -1,8 +1,4 @@
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "link-arg=/STACK:8000000"]
 
-[env]
-CMAKE_GENERATOR = "Visual Studio 18 2026"
-AWS_LC_SYS_CMAKE_GENERATOR = "Visual Studio 18 2026"
-AWS_LC_SYS_C_STD = "11"
-AWS_LC_SYS_CFLAGS = "/std:c11"
+
