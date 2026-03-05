@@ -5,17 +5,20 @@ order: -4
 
 # Icons & Assets
 
-The [IconName] and [Icon] in GPUI Component provide a comprehensive set of icons and assets that can be easily integrated into your GPUI applications.
+The [IconName] and [Icon] APIs rely on your app's registered [`AssetSource`](https://docs.rs/gpui/latest/gpui/trait.AssetSource.html). GPUI Component also ships a small bundled asset crate for library-owned resources.
 
-But for minimal size applications, **we have not embedded any icon assets by default** in `gpui-component` crate.
+The main `gpui-component` crate still does **not** embed icon SVGs directly, which keeps the core crate lean.
 
-We split the icon assets into a separate crate [gpui-component-assets] to allow developers to choose whether to include the icon assets in their applications or if you don't need the icons at all, you can build your own assets.
+Those assets live in [gpui-component-assets], which now packages both:
 
-## Use default bundled assets
+- bundled icons under `icons/...`
+- library-owned non-icon assets under stable names such as `surface/NoiseAsset_256.png`
 
-The [gpui-component-assets] crate provides a default bundled assets implementation that includes all the icon files in the `assets/icons` folder.
+## Use bundled component assets
 
-To use the default bundled assets, you need to add the `gpui-component-assets` crate as a dependency in your `Cargo.toml`:
+If your application does not have its own assets, register the bundled source directly.
+
+Add the crate:
 
 ```toml-vue
 [dependencies]
@@ -23,37 +26,28 @@ gpui-component = "{{ VERSION }}"
 gpui-component-assets = "{{ VERSION }}"
 ```
 
-Then we need call the `with_assets` method when creating the GPUI application to register the asset source:
+Then register it with GPUI:
 
 ```rs
-use gpui::*;
 use gpui_component_assets::Assets;
 
-let app = Application::new().with_assets(Assets);
+let app = gpui_platform::application().with_assets(Assets);
 ```
 
-Now, we can use `IconName` and `Icon` in our application as usual, the all icon assets are loaded from the default bundled assets.
+This is enough for bundled icons and GPUI Component-owned assets such as the surface noise texture.
 
 Continue [Use the icons](#use-the-icons) section to see how to use the icons in your application.
 
-## Build you own assets
+## Compose app assets with bundled component assets
 
-You may have a specific set of icons that you want to use in your application, or you may want to reduce the size of your application binary by including only the icons you need.
+If your app has its own assets, do not replace `gpui_component_assets::Assets`. Compose your asset source with it so app paths resolve first and bundled GPUI Component paths still work.
 
-In this case, you can build your own assets by following these steps.
-
-The [assets](https://github.com/longbridge/gpui-component/tree/main/crates/assets/assets/) folder in source code contains all the available icons in SVG format, every file is that GPUI Component support, it matched with the [IconName] enum.
-
-You can download the SVG files you need from the [assets] folder, or you can use your own SVG files by following the [IconName] naming convention.
-
-In GPUI application, we can use the [rust-embed] crate to embed the SVG files into the application binary.
-
-And GPUI Application providers an `AssetSource` trait to load the assets.
+This is the recommended downstream integration pattern.
 
 ```rs
-use anyhow::anyhow;
 use gpui::*;
 use gpui_component::{v_flex, IconName, Root};
+use gpui_component_assets::{Assets as ComponentAssets, chain};
 use rust_embed::RustEmbed;
 use std::borrow::Cow;
 
@@ -61,17 +55,15 @@ use std::borrow::Cow;
 #[derive(RustEmbed)]
 #[folder = "./assets"]
 #[include = "icons/**/*.svg"]
-pub struct Assets;
+pub struct AppAssets;
 
-impl AssetSource for Assets {
+impl AssetSource for AppAssets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
         if path.is_empty() {
             return Ok(None);
         }
 
-        Self::get(path)
-            .map(|f| Some(f.data))
-            .ok_or_else(|| anyhow!("could not find asset at path \"{path}\""))
+        Ok(Self::get(path).map(|file| file.data))
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
@@ -80,14 +72,9 @@ impl AssetSource for Assets {
             .collect())
     }
 }
-```
 
-We need call the `with_assets` method when creating the GPUI application to register the asset source:
-
-```rs
 fn main() {
-    // Register Assets to GPUI application.
-    let app = Application::new().with_assets(Assets);
+    let app = gpui_platform::application().with_assets(chain(AppAssets, ComponentAssets));
 
     app.run(move |cx| {
         // We must initialize gpui_component before using it.
@@ -106,6 +93,18 @@ fn main() {
     });
 }
 ```
+
+With this setup:
+
+- `icons/...` can be app-owned and override bundled assets if you want
+- GPUI Component assets like `surface/NoiseAsset_256.png` still load from the fallback bundle
+- no bare-path aliases are needed; library assets stay namespaced
+
+## Build your own icon set
+
+If you want to ship a smaller icon subset, copy only the SVGs you need into your app's `assets/icons/` directory and keep the composed fallback above.
+
+The [assets] folder in source code contains the bundled icons and other packaged component assets.
 
 ## Use the icons
 

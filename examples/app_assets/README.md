@@ -1,12 +1,12 @@
-## Icon assets in GPUI Component
+## Asset composition in GPUI Component
 
-The [IconName](https://github.com/longbridge/gpui-component/blob/6998708b817024c2ac0f1ea164d74ddfc024e124/crates/ui/src/icon.rs#L9) is a enum that defined a bunch of icon names, because some internal components in GPUI Component will use them.
+The [IconName](https://github.com/longbridge/gpui-component/blob/6998708b817024c2ac0f1ea164d74ddfc024e124/crates/ui/src/icon.rs#L9) enum defines the icon filenames used by GPUI Component. The separate `gpui-component-assets` crate now also bundles library-owned non-icon assets, such as `surface/NoiseAsset_256.png`.
 
-You can see, we have a lot of svg icon files in the `assets/icons` folder, but we are not embed all of the icon files in the library by default. This for keep the library size small.
+This example keeps app-specific icons in `./assets/icons`, but still composes them with `gpui_component_assets::Assets` so bundled component assets continue to resolve.
 
-So you must have your own icon files to use the `Icon` component in GPUI Component.
+You can still ship your own icons. Put them under `icons/...` and register your asset source first so app assets win on conflicts.
 
-You can download the icon files from [here](https://lucide.dev/) or use your own icon files as you wish, just use the same filename as the icon name (match with the `IconName` defined) you want to use.
+You can download icon files from [Lucide](https://lucide.dev/) or use your own SVGs, as long as the filenames match the `IconName` values you use.
 
 For example your assets folder:
 
@@ -26,24 +26,26 @@ You also can just copy the svg files you want from the `assets/icons` folder in 
 
 ## How to use
 
-You need define a `Assets` struct with rust-embed to register assets to GPUI application.
+Define an app asset source with `rust-embed`, then compose it with the bundled GPUI Component assets.
 
 ```rs
-use anyhow::anyhow;
 use gpui::*;
+use gpui_component_assets::{chain, Assets as ComponentAssets};
 use rust_embed::RustEmbed;
 use std::borrow::Cow;
 
 #[derive(RustEmbed)]
 #[folder = "./assets"]
 #[include = "icons/**/*.svg"]
-pub struct Assets;
+pub struct AppAssets;
 
-impl AssetSource for Assets {
+impl AssetSource for AppAssets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
-        Self::get(path)
-            .map(|f| Some(f.data))
-            .ok_or_else(|| anyhow!("could not find asset at path \"{path}\""))
+        if path.is_empty() {
+            return Ok(None);
+        }
+
+        Ok(Self::get(path).map(|file| file.data))
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
@@ -54,29 +56,26 @@ impl AssetSource for Assets {
 }
 
 fn main() {
-    // Call with_assets to register assets
-    let app = Application::new().with_assets(Assets);
+    let app = gpui_platform::application().with_assets(chain(AppAssets, ComponentAssets));
 
     // ...
 }
 ```
 
-## Use default bundled assets.
+This gives you app assets first and GPUI Component assets second. No path aliases are required for bundled resources like `surface/NoiseAsset_256.png`; the library continues to own those namespaced paths.
 
-The `gpui-component-assets` crate provide a default bundled assets implementation that include all the icon files in the `assets/icons` folder.
+## Use only the bundled component assets
 
-If you don't want to manage your own icon files, you can just use the default bundled assets.
+If you do not have app-specific assets, use the bundled source directly.
 
-Just add `gpui-component-assets` as a dependency in your `Cargo.toml`:
+```rs
+let app = gpui_platform::application().with_assets(gpui_component_assets::Assets);
+```
+
+## Dependency
 
 ```toml
 [dependencies]
 gpui-component = "*"
 gpui-component-assets = "*"
-```
-
-And then use it in your application:
-
-```rs
-let app = Application::new().with_assets(gpui_component_assets::Assets);
 ```

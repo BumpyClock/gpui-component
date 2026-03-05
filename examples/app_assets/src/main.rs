@@ -1,6 +1,6 @@
-use anyhow::anyhow;
 use gpui::*;
 use gpui_component::{IconName, Root, v_flex};
+use gpui_component_assets::{Assets as ComponentAssets, chain};
 use rust_embed::RustEmbed;
 use std::borrow::Cow;
 
@@ -8,17 +8,15 @@ use std::borrow::Cow;
 #[derive(RustEmbed)]
 #[folder = "./assets"]
 #[include = "icons/**/*.svg"]
-pub struct Assets;
+pub struct AppAssets;
 
-impl AssetSource for Assets {
+impl AssetSource for AppAssets {
     fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
         if path.is_empty() {
             return Ok(None);
         }
 
-        Self::get(path)
-            .map(|f| Some(f.data))
-            .ok_or_else(|| anyhow!("could not find asset at path \"{path}\""))
+        Ok(Self::get(path).map(|file| file.data))
     }
 
     fn list(&self, path: &str) -> Result<Vec<SharedString>> {
@@ -43,8 +41,8 @@ impl Render for Example {
 }
 
 fn main() {
-    // Register Assets to GPUI application.
-    let app = gpui_platform::application().with_assets(Assets);
+    // Register app assets first, then fall back to bundled gpui-component assets.
+    let app = gpui_platform::application().with_assets(chain(AppAssets, ComponentAssets));
 
     app.run(move |cx| {
         // We must initialize gpui_component before using it.

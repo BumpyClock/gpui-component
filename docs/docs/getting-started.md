@@ -22,7 +22,7 @@ anyhow = "1.0"
 :::tip
 The `gpui-component-assets` crate is optional.
 
-It provides a default set of icon assets. If you want to manage your own assets, you can skip adding this dependency.
+It provides bundled component assets, including icons and library-owned files like `surface/NoiseAsset_256.png`. If your app has its own assets, compose them with `gpui_component_assets::chain(app_assets, gpui_component_assets::Assets)` instead of replacing the bundled source.
 
 See [Icons & Assets](./assets.md) for more details.
 :::
@@ -56,7 +56,7 @@ impl Render for HelloWorld {
 }
 
 fn main() {
-    let app = Application::new().with_assets(gpui_component_assets::Assets);
+    let app = gpui_platform::application().with_assets(gpui_component_assets::Assets);
 
     app.run(move |cx| {
         // This must be called before using any GPUI Component features.

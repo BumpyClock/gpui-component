@@ -34,6 +34,7 @@ UI components for building fantastic desktop applications using [GPUI](https://g
 ```toml
 gpui = "0.2.2"
 gpui-component = "0.5.1"
+gpui-component-assets = "0.5.1"
 ```
 
 ### Basic Example
@@ -62,7 +63,7 @@ impl Render for HelloWorld {
 }
 
 fn main() {
-    let app = Application::new();
+    let app = gpui_platform::application().with_assets(gpui_component_assets::Assets);
 
     app.run(move |cx| {
         // This must be called before using any GPUI Component features.
@@ -87,6 +88,8 @@ fn main() {
 GPUI Component has an `Icon` element, but it does not include SVG files by default.
 
 The example uses [Lucide](https://lucide.dev) icons, but you can use any icons you like. Just name the SVG files as defined in [IconName](https://github.com/longbridge/gpui-component/blob/main/crates/ui/src/icon.rs#L86). You can add any icons you need to your project.
+
+The `gpui-component-assets` crate also bundles library-owned non-icon assets such as `surface/NoiseAsset_256.png`. If your app has its own `AssetSource`, compose it with `gpui_component_assets::chain(app_assets, gpui_component_assets::Assets)` so app assets win first and GPUI Component assets remain available as fallback.
 
 ## Development
 
