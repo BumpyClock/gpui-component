@@ -39,6 +39,7 @@ fn update_app_menu(title: impl Into<SharedString>, app_menu_bar: Entity<AppMenuB
     cx.set_menus(vec![
         Menu {
             name: title.into(),
+            disabled: false,
             items: vec![
                 MenuItem::action("About", About),
                 MenuItem::Separator,
@@ -46,6 +47,7 @@ fn update_app_menu(title: impl Into<SharedString>, app_menu_bar: Entity<AppMenuB
                 MenuItem::Separator,
                 MenuItem::Submenu(Menu {
                     name: "Appearance".into(),
+                    disabled: false,
                     items: vec![
                         MenuItem::action("System", SwitchThemeMode(ThemeModePreference::System))
                             .checked(preference == ThemeModePreference::System),
@@ -63,6 +65,7 @@ fn update_app_menu(title: impl Into<SharedString>, app_menu_bar: Entity<AppMenuB
         },
         Menu {
             name: "Edit".into(),
+            disabled: false,
             items: vec![
                 MenuItem::action("Undo", gpui_component::input::Undo),
                 MenuItem::action("Redo", gpui_component::input::Redo),
@@ -88,10 +91,12 @@ fn update_app_menu(title: impl Into<SharedString>, app_menu_bar: Entity<AppMenuB
         },
         Menu {
             name: "Window".into(),
+            disabled: false,
             items: vec![MenuItem::action("Toggle Search", ToggleSearch)],
         },
         Menu {
             name: "Help".into(),
+            disabled: false,
             items: vec![MenuItem::action("Open Website", Open)],
         },
     ]);
@@ -105,6 +110,7 @@ fn language_menu(_: &App) -> MenuItem {
     let locale = rust_i18n::locale().to_string();
     MenuItem::Submenu(Menu {
         name: "Language".into(),
+        disabled: false,
         items: vec![
             MenuItem::action("English", SelectLocale("en".into())).checked(locale == "en"),
             MenuItem::action("简体中文", SelectLocale("zh-CN".into())).checked(locale == "zh-CN"),
@@ -117,6 +123,7 @@ fn theme_menu(cx: &App) -> MenuItem {
     let current_set = &cx.theme().theme_set_name;
     MenuItem::Submenu(Menu {
         name: "Theme".into(),
+        disabled: false,
         items: sets
             .iter()
             .map(|set| {

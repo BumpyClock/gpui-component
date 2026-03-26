@@ -30,7 +30,7 @@ Update the GPUI git submodule and all related Cargo.toml references to the lates
    gpui = { git = "https://github.com/BumpyClock/gpui", rev = "<old-hash>", ... }
    gpui_platform = { git = "https://github.com/BumpyClock/gpui", rev = "<old-hash>", ... }
    ```
-   Update both `rev` values to the new short commit hash (first 10 chars).
+   Update both `rev` values to the **full** commit hash.
 
 5. **Build and verify**:
    ```bash
@@ -54,4 +54,7 @@ Update the GPUI git submodule and all related Cargo.toml references to the lates
 - The submodule is at `vendor/gpui` and tracks `https://github.com/BumpyClock/gpui`.
 - The `Cargo.toml` at the workspace root has `[workspace.dependencies]` entries for `gpui` and `gpui_platform` that pin to a specific `rev`.
 - Always update both the submodule pointer AND the Cargo.toml rev in lockstep.
+- **Always use `git + rev` dependencies, never path dependencies.** GPUI lives in its own repo; gpui-component consumes it as a git dependency.
+- Use full 40-char commit hashes in `rev = "..."` for reproducibility.
+- The submodule may need `git submodule update --init vendor/gpui` if not yet initialized.
 - If `$ARGUMENTS` contains a specific commit hash or branch, use that instead of `origin/main`.

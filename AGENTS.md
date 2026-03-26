@@ -175,7 +175,8 @@ The `Icon` element does not include SVG files by default. You need to:
 
 ## Dependencies
 
-- GPUI: Git version from Zed repository
+- GPUI: Git dependency from `https://github.com/BumpyClock/gpui` (our hard fork), pinned via `rev = "<commit>"` in workspace `Cargo.toml`. **Never use path dependencies for GPUI** — always use `git + rev`. The `vendor/gpui` submodule tracks the same repo/commit for local reference.
+- To update GPUI: use the `/update-gpui` skill. This updates both the submodule pointer and Cargo.toml rev entries, then builds and fixes any breaking API changes.
 - Tree-sitter: For syntax highlighting
 - Ropey: Rope data structure for text, and `RopeExt` trait with more features.
 - Markdown rendering: `markdown` crate
