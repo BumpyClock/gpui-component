@@ -41,12 +41,13 @@ pub use reduced_motion_scope::ReducedMotionScope;
 use std::rc::Rc;
 
 use gpui::{
-    AnyElement, App, Hsla, InteractiveElement, IntoElement, MouseButton, MouseMoveEvent,
-    MouseUpEvent, ParentElement, Pixels, RenderOnce, StyleRefinement, Styled, Window,
-    WindowDecorations, WindowOptions, div, prelude::FluentBuilder as _, px, transparent_black,
+    AnyElement, App, AppContext, Empty, Hsla, InteractiveElement, IntoElement, MouseButton,
+    MouseMoveEvent, MouseUpEvent, ParentElement, Pixels, RenderOnce, StatefulInteractiveElement,
+    StyleRefinement, Styled, Window, WindowDecorations, WindowOptions, div,
+    prelude::FluentBuilder as _, px, transparent_black,
 };
 
-use crate::{ActiveTheme, StyledExt, TITLE_BAR_HEIGHT, TitleBar};
+use crate::{ActiveTheme, Side, StyledExt, TITLE_BAR_HEIGHT, TitleBar};
 
 /// Default additional safe area offsets for title bar content.
 const DEFAULT_SAFE_AREA_LEFT: Pixels = px(0.0);
@@ -54,6 +55,8 @@ const DEFAULT_SAFE_AREA_RIGHT: Pixels = px(0.0);
 
 /// Default splitter width for Split layout mode.
 const DEFAULT_SPLITTER_WIDTH: Pixels = px(4.0);
+const MIN_SPLIT_SIDEBAR_WIDTH: Pixels = px(160.0);
+const MIN_SPLIT_MAIN_WIDTH: Pixels = px(240.0);
 
 /// Layout modes for WindowShell.
 ///
@@ -130,7 +133,9 @@ pub struct WindowShell {
     on_mouse_up: Option<Rc<dyn Fn(&MouseUpEvent, &mut Window, &mut App)>>,
 
     // Split mode configuration
-    on_split_resize: Option<Rc<dyn Fn(Pixels, &mut Window, &mut App)>>,
+    on_split_resize: Option<Rc<dyn Fn(Side, Pixels, &mut Window, &mut App)>>,
+    split_left_width: Option<Pixels>,
+    split_right_width: Option<Pixels>,
     splitter_width: Pixels,
     splitter_style: StyleRefinement,
 
@@ -176,6 +181,8 @@ impl WindowShell {
             on_mouse_move: None,
             on_mouse_up: None,
             on_split_resize: None,
+            split_left_width: None,
+            split_right_width: None,
             splitter_width: DEFAULT_SPLITTER_WIDTH,
             splitter_style: StyleRefinement::default(),
             style: StyleRefinement::default(),
@@ -361,12 +368,24 @@ impl WindowShell {
 
     /// Set the callback for split resize operations (Split mode only).
     ///
-    /// The callback receives the new sidebar width.
+    /// The callback receives the resized side and the new sidebar width.
     pub fn on_split_resize(
         mut self,
-        handler: impl Fn(Pixels, &mut Window, &mut App) + 'static,
+        handler: impl Fn(Side, Pixels, &mut Window, &mut App) + 'static,
     ) -> Self {
         self.on_split_resize = Some(Rc::new(handler));
+        self
+    }
+
+    /// Set the controlled width of the left split pane.
+    pub fn split_left_width(mut self, width: impl Into<Pixels>) -> Self {
+        self.split_left_width = Some(width.into());
+        self
+    }
+
+    /// Set the controlled width of the right split pane.
+    pub fn split_right_width(mut self, width: impl Into<Pixels>) -> Self {
+        self.split_right_width = Some(width.into());
         self
     }
 
@@ -502,10 +521,14 @@ impl WindowShell {
         title_bar_height: Pixels,
         splitter_width: Pixels,
         splitter_style: StyleRefinement,
-        on_split_resize: Option<Rc<dyn Fn(Pixels, &mut Window, &mut App)>>,
+        split_left_width: Option<Pixels>,
+        split_right_width: Option<Pixels>,
+        on_split_resize: Option<Rc<dyn Fn(Side, Pixels, &mut Window, &mut App)>>,
         cx: &App,
     ) -> impl IntoElement {
         let splitter_hover_bg = cx.theme().border;
+        let left_resize = on_split_resize.clone();
+        let right_resize = on_split_resize;
 
         div()
             .id("window-shell-split-layout")
@@ -517,38 +540,100 @@ impl WindowShell {
             .flex()
             .flex_row()
             .when_some(sidebar_left, |el, sidebar| {
-                el.child(sidebar).child(Self::render_splitter(
-                    "left",
-                    splitter_width,
-                    splitter_style.clone(),
-                    splitter_hover_bg,
-                    on_split_resize.clone(),
-                ))
+                let controlled_width = split_left_width;
+                let on_resize = left_resize.clone();
+
+                el.child(
+                    div()
+                        .when_some(controlled_width, |wrapper, width| wrapper.w(width))
+                        .child(sidebar),
+                )
+                .when(
+                    controlled_width.is_some() && on_resize.is_some(),
+                    |wrapper| {
+                        wrapper.child(Self::render_splitter(
+                            Side::Left,
+                            splitter_width,
+                            splitter_style.clone(),
+                            splitter_hover_bg,
+                            split_left_width,
+                            split_right_width,
+                            on_resize.unwrap(),
+                        ))
+                    },
+                )
             })
             .when_some(main, |el, main| {
                 el.child(div().flex_1().size_full().child(main))
             })
             .when_some(sidebar_right, |el, sidebar| {
-                el.child(Self::render_splitter(
-                    "right",
-                    splitter_width,
-                    splitter_style,
-                    splitter_hover_bg,
-                    on_split_resize,
-                ))
-                .child(sidebar)
+                let controlled_width = split_right_width;
+                let on_resize = right_resize.clone();
+
+                el.when(
+                    controlled_width.is_some() && on_resize.is_some(),
+                    |wrapper| {
+                        wrapper.child(Self::render_splitter(
+                            Side::Right,
+                            splitter_width,
+                            splitter_style.clone(),
+                            splitter_hover_bg,
+                            split_left_width,
+                            split_right_width,
+                            on_resize.unwrap(),
+                        ))
+                    },
+                )
+                .child(
+                    div()
+                        .when_some(controlled_width, |wrapper, width| wrapper.w(width))
+                        .child(sidebar),
+                )
             })
     }
 
+    fn max_split_width(
+        side: Side,
+        layout_width: Pixels,
+        splitter_width: Pixels,
+        left_width: Option<Pixels>,
+        right_width: Option<Pixels>,
+    ) -> Pixels {
+        let left_splitter = left_width.map(|_| splitter_width).unwrap_or(px(0.0));
+        let right_splitter = right_width.map(|_| splitter_width).unwrap_or(px(0.0));
+
+        let reserved = match side {
+            Side::Left => {
+                right_width.unwrap_or(px(0.0))
+                    + left_splitter
+                    + right_splitter
+                    + MIN_SPLIT_MAIN_WIDTH
+            }
+            Side::Right => {
+                left_width.unwrap_or(px(0.0))
+                    + left_splitter
+                    + right_splitter
+                    + MIN_SPLIT_MAIN_WIDTH
+            }
+        };
+
+        (layout_width - reserved).max(MIN_SPLIT_SIDEBAR_WIDTH)
+    }
+
     fn render_splitter(
-        id: &'static str,
+        side: Side,
         width: Pixels,
         style: StyleRefinement,
         hover_bg: Hsla,
-        _on_resize: Option<Rc<dyn Fn(Pixels, &mut Window, &mut App)>>,
+        left_width: Option<Pixels>,
+        right_width: Option<Pixels>,
+        on_resize: Rc<dyn Fn(Side, Pixels, &mut Window, &mut App)>,
     ) -> impl IntoElement {
         div()
-            .id(format!("window-shell-splitter-{}", id))
+            .id(format!(
+                "window-shell-splitter-{}",
+                if side.is_left() { "left" } else { "right" }
+            ))
             .w(width)
             .h_full()
             .flex_shrink_0()
@@ -556,8 +641,21 @@ impl WindowShell {
             .bg(transparent_black())
             .hover(move |s| s.bg(hover_bg))
             .refine_style(&style)
-        // Note: Actual drag handling requires consumer to use on_mouse_move at root level
-        // or implement via on_drag. The splitter is styled and ready for interaction.
+            .on_drag(side, move |_, _, _, cx| cx.new(|_| Empty))
+            .on_drag_move(move |event: &gpui::DragMoveEvent<Side>, window, cx| {
+                let side = *event.drag(cx);
+                let layout_width = window.bounds().size.width;
+                let max_width =
+                    Self::max_split_width(side, layout_width, width, left_width, right_width);
+                let next_width = match side {
+                    Side::Left => event.event.position.x,
+                    Side::Right => layout_width - event.event.position.x,
+                }
+                .max(MIN_SPLIT_SIDEBAR_WIDTH)
+                .min(max_width);
+
+                on_resize(side, next_width, window, cx);
+            })
     }
 }
 
@@ -627,6 +725,8 @@ impl RenderOnce for WindowShell {
                 title_bar_height,
                 self.splitter_width,
                 self.splitter_style,
+                self.split_left_width,
+                self.split_right_width,
                 self.on_split_resize,
                 cx,
             )
@@ -703,5 +803,54 @@ impl RenderOnce for WindowShell {
                     .when(cfg!(not(target_os = "macos")), |el| el.occlude())
                     .child(title_bar),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_width_builders_store_controlled_widths() {
+        let shell = WindowShell::new()
+            .split_left_width(px(280.0))
+            .split_right_width(px(320.0));
+
+        assert_eq!(shell.split_left_width, Some(px(280.0)));
+        assert_eq!(shell.split_right_width, Some(px(320.0)));
+    }
+
+    #[test]
+    fn max_split_width_reserves_main_and_opposite_sidebar_space() {
+        let max_left = WindowShell::max_split_width(
+            Side::Left,
+            px(1200.0),
+            px(4.0),
+            Some(px(240.0)),
+            Some(px(280.0)),
+        );
+        let max_right = WindowShell::max_split_width(
+            Side::Right,
+            px(1200.0),
+            px(4.0),
+            Some(px(240.0)),
+            Some(px(280.0)),
+        );
+
+        assert_eq!(max_left, px(672.0));
+        assert_eq!(max_right, px(712.0));
+    }
+
+    #[test]
+    fn max_split_width_never_drops_below_minimum_sidebar_width() {
+        let max_width = WindowShell::max_split_width(
+            Side::Left,
+            px(480.0),
+            px(4.0),
+            Some(px(160.0)),
+            Some(px(160.0)),
+        );
+
+        assert_eq!(max_width, MIN_SPLIT_SIDEBAR_WIDTH);
     }
 }

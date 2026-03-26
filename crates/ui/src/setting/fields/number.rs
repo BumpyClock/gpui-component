@@ -8,10 +8,7 @@ use gpui::{
 use crate::{
     AxisExt, Sizable, StyledExt,
     input::{InputEvent, InputState, NumberInput, NumberInputEvent, StepAction},
-    setting::{
-        AnySettingField, RenderOptions,
-        fields::{SettingFieldRender, get_value, set_value},
-    },
+    setting::RenderOptions,
 };
 
 #[derive(Clone, Debug)]
@@ -34,16 +31,13 @@ impl Default for NumberFieldOptions {
     }
 }
 
-pub(crate) struct NumberField {
+#[derive(Clone)]
+pub struct NumberInputSettingControl {
     options: NumberFieldOptions,
-}
-
-impl NumberField {
-    pub(crate) fn new(options: Option<&NumberFieldOptions>) -> Self {
-        Self {
-            options: options.cloned().unwrap_or_default(),
-        }
-    }
+    style: StyleRefinement,
+    value: Rc<dyn Fn(&App) -> f64>,
+    set_value: Rc<dyn Fn(f64, &mut App)>,
+    default_value: Option<f64>,
 }
 
 struct State {
@@ -52,17 +46,38 @@ struct State {
     _subscriptions: Vec<Subscription>,
 }
 
-impl SettingFieldRender for NumberField {
-    fn render(
+impl NumberInputSettingControl {
+    pub(crate) fn new<V, S>(options: NumberFieldOptions, value: V, set_value: S) -> Self
+    where
+        V: Fn(&App) -> f64 + 'static,
+        S: Fn(f64, &mut App) + 'static,
+    {
+        Self {
+            options,
+            style: StyleRefinement::default(),
+            value: Rc::new(value),
+            set_value: Rc::new(set_value),
+            default_value: None,
+        }
+    }
+
+    pub fn default_value(mut self, default_value: f64) -> Self {
+        self.default_value = Some(default_value);
+        self
+    }
+
+    pub(crate) fn style_mut(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+
+    pub(crate) fn render(
         &self,
-        field: Rc<dyn AnySettingField>,
         options: &RenderOptions,
-        style: &StyleRefinement,
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
-        let value = get_value::<f64>(&field, cx);
-        let set_value = set_value::<f64>(&field, cx);
+        let value = (self.value)(cx);
+        let set_value = self.set_value.clone();
         let num_options = self.options.clone();
 
         let state = window
@@ -77,6 +92,7 @@ impl SettingFieldRender for NumberField {
                         cx.new(|cx| InputState::new(window, cx).default_value(value.to_string()));
                     let _subscriptions = vec![
                         cx.subscribe_in(&input, window, {
+                            let num_options = num_options.clone();
                             move |_, input, event: &NumberInputEvent, window, cx| match event {
                                 NumberInputEvent::Step(action) => input.update(cx, |input, cx| {
                                     let value = input.value();
@@ -97,31 +113,28 @@ impl SettingFieldRender for NumberField {
                         }),
                         cx.subscribe_in(&input, window, {
                             move |state: &mut State, input, event: &InputEvent, window, cx| {
-                                match event {
-                                    InputEvent::Change => {
-                                        input.update(cx, |input, cx| {
-                                            let value = input.value();
-                                            if value == state.initial_value.to_string() {
-                                                return;
-                                            }
+                                if let InputEvent::Change = event {
+                                    input.update(cx, |input, cx| {
+                                        let value = input.value();
+                                        if value == state.initial_value.to_string() {
+                                            return;
+                                        }
 
-                                            if let Ok(value) = value.parse::<f64>() {
-                                                let clamp_value =
-                                                    value.clamp(num_options.min, num_options.max);
+                                        if let Ok(value) = value.parse::<f64>() {
+                                            let clamped_value =
+                                                value.clamp(num_options.min, num_options.max);
 
-                                                set_value(clamp_value, cx);
-                                                state.initial_value = clamp_value;
-                                                if clamp_value != value {
-                                                    input.set_value(
-                                                        SharedString::from(clamp_value.to_string()),
-                                                        window,
-                                                        cx,
-                                                    );
-                                                }
+                                            set_value(clamped_value, cx);
+                                            state.initial_value = clamped_value;
+                                            if clamped_value != value {
+                                                input.set_value(
+                                                    SharedString::from(clamped_value.to_string()),
+                                                    window,
+                                                    cx,
+                                                );
                                             }
-                                        });
-                                    }
-                                    _ => {}
+                                        }
+                                    });
                                 }
                             }
                         }),
@@ -145,7 +158,26 @@ impl SettingFieldRender for NumberField {
                     this.w_full()
                 }
             })
-            .refine_style(style)
+            .refine_style(&self.style)
             .into_any_element()
+    }
+
+    pub(crate) fn is_resettable(&self, cx: &App) -> bool {
+        self.default_value
+            .is_some_and(|default_value| (self.value)(cx) != default_value)
+    }
+
+    pub(crate) fn reset(&self, _window: &mut Window, cx: &mut App) {
+        let Some(default_value) = self.default_value else {
+            return;
+        };
+
+        (self.set_value)(default_value, cx);
+    }
+}
+
+impl Styled for NumberInputSettingControl {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
     }
 }

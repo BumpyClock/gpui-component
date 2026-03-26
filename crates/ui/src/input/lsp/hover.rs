@@ -4,6 +4,7 @@ use anyhow::Result;
 use gpui::{App, Context, Task, Window};
 use ropey::Rope;
 
+use crate::input::lsp::log_provider_failure;
 use crate::input::{InputState, RopeExt, popovers::HoverPopover};
 
 /// Hover provider
@@ -56,9 +57,19 @@ impl InputState {
                     .await;
             }
 
-            let result = task.await?;
+            let result = match task.await {
+                Ok(result) => result,
+                Err(err) => {
+                    log_provider_failure("hover", &err);
+                    editor.update(cx, |editor, cx| {
+                        editor.hover_popover = None;
+                        cx.notify();
+                    });
+                    return Ok(());
+                }
+            };
 
-            _ = editor.update(cx, |editor, cx| match result {
+            editor.update(cx, |editor, cx| match result {
                 Some(hover) => {
                     if let Some(range) = hover.range {
                         let start = editor.text.position_to_offset(&range.start);

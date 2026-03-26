@@ -19,7 +19,12 @@ use gpui::{
     prelude::FluentBuilder, px, uniform_list,
 };
 
-use super::*;
+use super::{
+    navigation::{
+        first_target, last_target, next_target, page_down_target, page_up_target, previous_target,
+    },
+    *,
+};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum SelectionMode {
@@ -644,19 +649,24 @@ where
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let columns_count = self.delegate.columns_count(cx);
+        let Some(first_col) = first_target(columns_count) else {
+            return;
+        };
+
         // Cell selection mode: move to first cell in current row
         if self.selection_mode.is_cell() {
             if let Some((row_ix, _)) = self.selected_cell {
-                self.set_selected_cell(row_ix, 0, cx);
+                self.set_selected_cell(row_ix, first_col, cx);
             } else {
                 // No cell selected, select first cell of first row
-                self.set_selected_cell(0, 0, cx);
+                self.set_selected_cell(0, first_col, cx);
             }
             return;
         }
 
         // Column selection mode
-        self.set_selected_col(0, cx);
+        self.set_selected_col(first_col, cx);
     }
 
     pub(super) fn action_select_last_column(
@@ -666,20 +676,23 @@ where
         cx: &mut Context<Self>,
     ) {
         let columns_count = self.delegate.columns_count(cx);
+        let Some(last_col) = last_target(columns_count) else {
+            return;
+        };
 
         // Cell selection mode: move to last cell in current row
         if self.selection_mode.is_cell() {
             if let Some((row_ix, _)) = self.selected_cell {
-                self.set_selected_cell(row_ix, columns_count.saturating_sub(1), cx);
+                self.set_selected_cell(row_ix, last_col, cx);
             } else {
                 // No cell selected, select last cell of first row
-                self.set_selected_cell(0, columns_count.saturating_sub(1), cx);
+                self.set_selected_cell(0, last_col, cx);
             }
             return;
         }
 
         // Column selection mode
-        self.set_selected_col(columns_count.saturating_sub(1), cx);
+        self.set_selected_col(last_col, cx);
     }
 
     pub(super) fn action_select_page_up(
@@ -688,12 +701,17 @@ where
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let rows_count = self.delegate.rows_count(cx);
+        if rows_count == 0 {
+            return;
+        }
+
         let step = self.page_item_count();
 
         // Cell selection mode: move up by page within the same column
         if self.selection_mode.is_cell() {
             if let Some((row_ix, col_ix)) = self.selected_cell {
-                let target = row_ix.saturating_sub(step);
+                let target = page_up_target(Some(row_ix), step, rows_count).unwrap_or(row_ix);
                 self.set_selected_cell(target, col_ix, cx);
             } else {
                 // No cell selected, select first cell
@@ -703,8 +721,7 @@ where
         }
 
         // Row selection mode
-        let current = self.selected_row.unwrap_or(0);
-        let target = current.saturating_sub(step);
+        let target = page_up_target(self.selected_row, step, rows_count).unwrap_or(0);
         self.set_selected_row(target, cx);
     }
 
@@ -724,8 +741,7 @@ where
         // Cell selection mode: move down by page within the same column
         if self.selection_mode.is_cell() {
             if let Some((row_ix, col_ix)) = self.selected_cell {
-                let max_row = rows_count.saturating_sub(1);
-                let target = (row_ix + step).min(max_row);
+                let target = page_down_target(Some(row_ix), step, rows_count).unwrap_or(row_ix);
                 self.set_selected_cell(target, col_ix, cx);
             } else {
                 // No cell selected, select first cell
@@ -735,9 +751,7 @@ where
         }
 
         // Row selection mode
-        let current = self.selected_row.unwrap_or(0);
-        let max_row = rows_count.saturating_sub(1);
-        let target = (current + step).min(max_row);
+        let target = page_down_target(self.selected_row, step, rows_count).unwrap_or(0);
         self.set_selected_row(target, cx);
     }
 
@@ -748,17 +762,15 @@ where
         cx: &mut Context<Self>,
     ) {
         let columns_count = self.delegate.columns_count(cx);
+        if columns_count == 0 {
+            return;
+        }
 
         // Cell selection mode: move left within the same row
         if self.selection_mode.is_cell() {
             if let Some((row_ix, col_ix)) = self.selected_cell {
-                let new_col = if col_ix > 0 {
-                    col_ix.saturating_sub(1)
-                } else if self.loop_selection {
-                    columns_count.saturating_sub(1)
-                } else {
-                    col_ix
-                };
+                let new_col = previous_target(Some(col_ix), columns_count, self.loop_selection)
+                    .unwrap_or(col_ix);
                 self.set_selected_cell(row_ix, new_col, cx);
             } else {
                 // No cell selected, select first cell
@@ -768,14 +780,8 @@ where
         }
 
         // Column selection mode
-        let mut selected_col = self.selected_col.unwrap_or(0);
-        if selected_col > 0 {
-            selected_col = selected_col.saturating_sub(1);
-        } else {
-            if self.loop_selection {
-                selected_col = columns_count.saturating_sub(1);
-            }
-        }
+        let selected_col =
+            previous_target(self.selected_col, columns_count, self.loop_selection).unwrap_or(0);
         self.set_selected_col(selected_col, cx);
     }
 
@@ -786,17 +792,15 @@ where
         cx: &mut Context<Self>,
     ) {
         let columns_count = self.delegate.columns_count(cx);
+        if columns_count == 0 {
+            return;
+        }
 
         // Cell selection mode: move right within the same row
         if self.selection_mode.is_cell() {
             if let Some((row_ix, col_ix)) = self.selected_cell {
-                let new_col = if col_ix < columns_count.saturating_sub(1) {
-                    col_ix + 1
-                } else if self.loop_selection {
-                    0
-                } else {
-                    col_ix
-                };
+                let new_col =
+                    next_target(Some(col_ix), columns_count, self.loop_selection).unwrap_or(col_ix);
                 self.set_selected_cell(row_ix, new_col, cx);
             } else {
                 // No cell selected, select first cell
@@ -806,14 +810,8 @@ where
         }
 
         // Column selection mode
-        let mut selected_col = self.selected_col.unwrap_or(0);
-        if selected_col < columns_count.saturating_sub(1) {
-            selected_col += 1;
-        } else {
-            if self.loop_selection {
-                selected_col = 0;
-            }
-        }
+        let selected_col =
+            next_target(self.selected_col, columns_count, self.loop_selection).unwrap_or(0);
 
         self.set_selected_col(selected_col, cx);
     }
@@ -1941,5 +1939,138 @@ where
                         ),
                 )
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::table::Column;
+    use gpui::{TestAppContext, VisualTestContext, div};
+
+    #[derive(Clone)]
+    struct TestDelegate {
+        rows: usize,
+        cols: usize,
+    }
+
+    impl TestDelegate {
+        fn new(rows: usize, cols: usize) -> Self {
+            Self { rows, cols }
+        }
+    }
+
+    impl TableDelegate for TestDelegate {
+        fn columns_count(&self, _: &App) -> usize {
+            self.cols
+        }
+
+        fn rows_count(&self, _: &App) -> usize {
+            self.rows
+        }
+
+        fn column(&self, col_ix: usize, _: &App) -> Column {
+            Column::new(format!("col-{col_ix}"), format!("Col {col_ix}"))
+        }
+
+        fn render_td(
+            &mut self,
+            _row_ix: usize,
+            _col_ix: usize,
+            _: &mut Window,
+            _: &mut Context<TableState<Self>>,
+        ) -> impl IntoElement {
+            div()
+        }
+    }
+
+    fn new_table_state(
+        cx: &mut TestAppContext,
+        rows: usize,
+        cols: usize,
+    ) -> (
+        gpui::WindowHandle<gpui::Empty>,
+        VisualTestContext,
+        Entity<TableState<TestDelegate>>,
+    ) {
+        let window = cx.update(|cx| {
+            cx.open_window(Default::default(), |_, cx| cx.new(|_| gpui::Empty))
+                .unwrap()
+        });
+        let mut visual_cx = VisualTestContext::from_window(window.into(), cx);
+        let state = visual_cx.update(|window, cx| {
+            cx.new(|cx| TableState::new(TestDelegate::new(rows, cols), window, cx))
+        });
+        (window, visual_cx, state)
+    }
+
+    #[gpui::test]
+    fn test_table_row_navigation_wraps_and_clamps(cx: &mut TestAppContext) {
+        let (_window, mut cx, state) = new_table_state(cx, 3, 2);
+
+        state.update_in(&mut cx, |state, window, cx| {
+            state.loop_selection = true;
+            state.set_selected_row(0, cx);
+            state.action_select_prev(&SelectUp, window, cx);
+            assert_eq!(state.selected_row(), Some(2));
+
+            state.loop_selection = false;
+            state.action_select_next(&SelectDown, window, cx);
+            assert_eq!(state.selected_row(), Some(2));
+        });
+    }
+
+    #[gpui::test]
+    fn test_table_cell_navigation_keeps_axis_and_wraps(cx: &mut TestAppContext) {
+        let (_window, mut cx, state) = new_table_state(cx, 3, 3);
+
+        state.update_in(&mut cx, |state, window, cx| {
+            state.loop_selection = true;
+            state.set_selected_cell(0, 0, cx);
+            state.action_select_prev_col(&SelectPrevColumn, window, cx);
+            assert_eq!(state.selected_cell(), Some((0, 2)));
+
+            state.action_select_prev(&SelectUp, window, cx);
+            assert_eq!(state.selected_cell(), Some((2, 2)));
+        });
+    }
+
+    #[gpui::test]
+    fn test_table_page_navigation_uses_page_size(cx: &mut TestAppContext) {
+        let (_window, mut cx, state) = new_table_state(cx, 10, 2);
+
+        state.update_in(&mut cx, |state, window, cx| {
+            state.bounds.size.height = px(96.);
+            state.set_selected_row(4, cx);
+            state.action_select_page_up(&SelectPageUp, window, cx);
+            assert_eq!(state.selected_row(), Some(2));
+
+            state.action_select_page_down(&SelectPageDown, window, cx);
+            assert_eq!(state.selected_row(), Some(4));
+        });
+    }
+
+    #[gpui::test]
+    fn test_table_column_navigation_bootstraps_wraps_and_clamps(cx: &mut TestAppContext) {
+        let (_window, mut cx, state) = new_table_state(cx, 3, 3);
+
+        state.update_in(&mut cx, |state, window, cx| {
+            state.loop_selection = true;
+            state.action_select_prev_col(&SelectPrevColumn, window, cx);
+            assert_eq!(state.selected_col(), Some(0));
+
+            state.action_select_prev_col(&SelectPrevColumn, window, cx);
+            assert_eq!(state.selected_col(), Some(2));
+
+            state.loop_selection = false;
+            state.action_select_next_col(&SelectNextColumn, window, cx);
+            assert_eq!(state.selected_col(), Some(2));
+
+            state.action_select_first_column(&SelectFirst, window, cx);
+            assert_eq!(state.selected_col(), Some(0));
+
+            state.action_select_last_column(&SelectLast, window, cx);
+            assert_eq!(state.selected_col(), Some(2));
+        });
     }
 }

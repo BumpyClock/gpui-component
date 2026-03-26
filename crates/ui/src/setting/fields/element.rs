@@ -1,11 +1,14 @@
-use gpui::{AnyElement, App, IntoElement, StyleRefinement, Window};
 use std::rc::Rc;
 
-use crate::setting::{AnySettingField, RenderOptions, fields::SettingFieldRender};
+use gpui::{
+    AnyElement, App, IntoElement, ParentElement as _, StyleRefinement, Styled, Window, div,
+};
+
+use crate::{StyledExt as _, setting::RenderOptions};
 
 /// A trait for rendering custom setting field elements.
 ///
-/// For [`crate::setting::SettingField::element`] method.
+/// For [`crate::setting::SettingControl::element`].
 pub trait SettingFieldElement {
     type Element: IntoElement + 'static;
 
@@ -34,7 +37,8 @@ where
     }
 }
 
-pub(crate) struct AnySettingFieldElement<T>(pub(crate) T);
+struct AnySettingFieldElement<T>(T);
+
 impl<T> SettingFieldElement for AnySettingFieldElement<T>
 where
     T: SettingFieldElement,
@@ -50,6 +54,7 @@ where
         self.0.render_field(options, window, cx).into_any_element()
     }
 }
+
 impl SettingFieldElement for Rc<dyn SettingFieldElement<Element = AnyElement>> {
     type Element = AnyElement;
 
@@ -63,30 +68,48 @@ impl SettingFieldElement for Rc<dyn SettingFieldElement<Element = AnyElement>> {
     }
 }
 
-pub(crate) struct ElementField {
+#[derive(Clone)]
+pub struct ElementSettingControl {
+    style: StyleRefinement,
     element_render: Rc<dyn SettingFieldElement<Element = AnyElement>>,
 }
 
-impl ElementField {
+impl ElementSettingControl {
     pub(crate) fn new<E>(element_render: E) -> Self
     where
-        E: SettingFieldElement<Element = AnyElement> + 'static,
+        E: SettingFieldElement + 'static,
     {
         Self {
-            element_render: Rc::new(element_render),
+            style: StyleRefinement::default(),
+            element_render: Rc::new(AnySettingFieldElement(element_render)),
         }
     }
-}
 
-impl SettingFieldRender for ElementField {
-    fn render(
+    pub(crate) fn style_mut(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+
+    pub(crate) fn render(
         &self,
-        _: Rc<dyn AnySettingField>,
         options: &RenderOptions,
-        _style: &StyleRefinement,
         window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
-        (self.element_render).render_field(options, window, cx)
+        div()
+            .refine_style(&self.style)
+            .child(self.element_render.render_field(options, window, cx))
+            .into_any_element()
+    }
+
+    pub(crate) fn is_resettable(&self, _cx: &App) -> bool {
+        false
+    }
+
+    pub(crate) fn reset(&self, _window: &mut Window, _cx: &mut App) {}
+}
+
+impl Styled for ElementSettingControl {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
     }
 }

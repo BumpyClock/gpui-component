@@ -6,6 +6,7 @@ use gpui::{App, Context, Hsla, Task, Window};
 use lsp_types::ColorInformation;
 use ropey::Rope;
 
+use crate::input::lsp::{log_dropped_ui_target, log_provider_failure};
 use crate::input::{InputState, Lsp, RopeExt};
 
 pub trait DocumentColorProvider {
@@ -68,13 +69,18 @@ impl Lsp {
                 .timer(Duration::from_millis(100))
                 .await;
 
-            let task_result = cx
-                .update(|window, cx| provider.document_colors(&text, window, cx))
-                .ok();
+            let task_result =
+                match cx.update(|window, cx| provider.document_colors(&text, window, cx)) {
+                    Ok(task) => task,
+                    Err(_) => {
+                        log_dropped_ui_target("request document colors");
+                        return;
+                    }
+                };
 
-            if let Some(task) = task_result {
-                if let Ok(colors) = task.await {
-                    let _ = input_state.update(cx, |input_state, cx| {
+            match task_result.await {
+                Ok(colors) => {
+                    input_state.update(cx, |input_state, cx| {
                         let mut document_colors: Vec<(lsp_types::Range, Hsla)> = colors
                             .iter()
                             .map(|info| {
@@ -97,6 +103,7 @@ impl Lsp {
                         }
                     });
                 }
+                Err(err) => log_provider_failure("document colors", &err),
             }
         });
     }

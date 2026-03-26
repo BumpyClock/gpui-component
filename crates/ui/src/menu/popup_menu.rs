@@ -1470,3 +1470,69 @@ impl Render for PopupMenu {
             )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{Corner, Empty, TestAppContext, VisualTestContext};
+
+    fn new_popup_menu(
+        cx: &mut TestAppContext,
+    ) -> (
+        gpui::WindowHandle<Empty>,
+        VisualTestContext,
+        Entity<PopupMenu>,
+    ) {
+        let window = cx.update(|cx| {
+            cx.open_window(Default::default(), |_, cx| cx.new(|_| Empty))
+                .unwrap()
+        });
+        let mut visual_cx = VisualTestContext::from_window(window.into(), cx);
+        let menu = visual_cx.update(|window, cx| {
+            PopupMenu::build(window, cx, |menu, window, cx| {
+                menu.item(PopupMenuItem::new("Open"))
+                    .submenu("More", window, cx, |submenu, _, _| {
+                        submenu
+                            .item(PopupMenuItem::new("Child 1"))
+                            .item(PopupMenuItem::new("Child 2"))
+                    })
+                    .item(PopupMenuItem::new("Quit"))
+            })
+        });
+        (window, visual_cx, menu)
+    }
+
+    #[gpui::test]
+    fn test_popup_menu_select_right_focuses_active_submenu(cx: &mut TestAppContext) {
+        let (_window, mut cx, menu) = new_popup_menu(cx);
+
+        menu.update_in(&mut cx, |menu, window, cx| {
+            menu.selected_index = Some(1);
+            menu.submenu_anchor = (Corner::TopLeft, Pixels::ZERO);
+            menu.select_right(&SelectRight, window, cx);
+
+            let submenu = menu.active_submenu().expect("submenu to be active");
+            let submenu = submenu.read(cx);
+            assert_eq!(submenu.selected_index, Some(0));
+            assert!(submenu.focus_handle.is_focused(window));
+        });
+    }
+
+    #[gpui::test]
+    fn test_popup_menu_dismiss_clears_parent_selection(cx: &mut TestAppContext) {
+        let (_window, mut cx, menu) = new_popup_menu(cx);
+
+        let submenu = menu.update_in(&mut cx, |menu, _, _| {
+            menu.selected_index = Some(1);
+            menu.active_submenu().expect("submenu to exist")
+        });
+
+        submenu.update_in(&mut cx, |submenu, window, cx| {
+            submenu.dismiss(&Cancel, window, cx);
+        });
+
+        menu.read_with(&cx, |menu, _| {
+            assert_eq!(menu.selected_index, None);
+        });
+    }
+}

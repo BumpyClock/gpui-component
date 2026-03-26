@@ -8,7 +8,8 @@ use wry::{
 use gpui::{
     App, Bounds, ContentMask, DismissEvent, Element, ElementId, Entity, EventEmitter, FocusHandle,
     Focusable, GlobalElementId, Hitbox, InteractiveElement, IntoElement, LayoutId, MouseDownEvent,
-    ParentElement as _, Pixels, Render, Size, Style, Styled as _, Window, canvas, div,
+    ParentElement as _, Pixels, Render, SharedString, Size, Style, Styled as _, Window, canvas,
+    div,
 };
 
 /// A webview based on wry WebView.
@@ -19,38 +20,67 @@ pub struct WebView {
     webview: Rc<wry::WebView>,
     visible: bool,
     bounds: Bounds<Pixels>,
+    last_error: Option<SharedString>,
 }
 
 impl Drop for WebView {
     fn drop(&mut self) {
-        self.hide();
+        let _ = self.hide();
     }
 }
 
 impl WebView {
     /// Create a new WebView from a wry WebView.
     pub fn new(webview: wry::WebView, _: &mut Window, cx: &mut App) -> Self {
-        let _ = webview.set_bounds(Rect::default());
+        let last_error = webview
+            .set_bounds(Rect::default())
+            .err()
+            .map(|err| format!("Failed to initialize webview bounds: {err}").into());
 
         Self {
             focus_handle: cx.focus_handle(),
             visible: true,
             bounds: Bounds::default(),
             webview: Rc::new(webview),
+            last_error,
         }
     }
 
+    fn clear_error(&mut self) {
+        self.last_error = None;
+    }
+
+    fn set_error(&mut self, message: impl Into<SharedString>) {
+        self.last_error = Some(message.into());
+    }
+
     /// Show the webview.
-    pub fn show(&mut self) {
-        let _ = self.webview.set_visible(true);
+    pub fn show(&mut self) -> anyhow::Result<()> {
+        if let Err(err) = self.webview.set_visible(true) {
+            let message = format!("Failed to show webview: {err}");
+            self.set_error(message.clone());
+            return Err(anyhow::anyhow!(message));
+        }
         self.visible = true;
+        self.clear_error();
+        Ok(())
     }
 
     /// Hide the webview.
-    pub fn hide(&mut self) {
-        _ = self.webview.focus_parent();
-        _ = self.webview.set_visible(false);
+    pub fn hide(&mut self) -> anyhow::Result<()> {
+        if let Err(err) = self.webview.focus_parent() {
+            let message = format!("Failed to return focus to the parent view: {err}");
+            self.set_error(message.clone());
+            return Err(anyhow::anyhow!(message));
+        }
+        if let Err(err) = self.webview.set_visible(false) {
+            let message = format!("Failed to hide webview: {err}");
+            self.set_error(message.clone());
+            return Err(anyhow::anyhow!(message));
+        }
         self.visible = false;
+        self.clear_error();
+        Ok(())
     }
 
     /// Get whether the webview is visible.
@@ -63,14 +93,31 @@ impl WebView {
         self.bounds
     }
 
+    /// Return the latest non-fatal webview error.
+    pub fn last_error(&self) -> Option<&SharedString> {
+        self.last_error.as_ref()
+    }
+
     /// Go back in the webview history.
     pub fn back(&mut self) -> anyhow::Result<()> {
-        Ok(self.webview.evaluate_script("history.back();")?)
+        if let Err(err) = self.webview.evaluate_script("history.back();") {
+            let message = format!("Failed to navigate back: {err}");
+            self.set_error(message.clone());
+            return Err(anyhow::anyhow!(message));
+        }
+        self.clear_error();
+        Ok(())
     }
 
     /// Load a URL in the webview.
-    pub fn load_url(&mut self, url: &str) {
-        self.webview.load_url(url).unwrap();
+    pub fn load_url(&mut self, url: &str) -> anyhow::Result<()> {
+        if let Err(err) = self.webview.load_url(url) {
+            let message = format!("Failed to load '{url}': {err}");
+            self.set_error(message.clone());
+            return Err(anyhow::anyhow!(message));
+        }
+        self.clear_error();
+        Ok(())
     }
 
     /// Get the raw wry webview.
@@ -188,18 +235,30 @@ impl Element for WebViewElement {
             return None;
         }
 
-        self.view
-            .set_bounds(Rect {
-                size: dpi::Size::Logical(LogicalSize {
-                    width: bounds.size.width.into(),
-                    height: bounds.size.height.into(),
-                }),
-                position: dpi::Position::Logical(dpi::LogicalPosition::new(
-                    bounds.origin.x.into(),
-                    bounds.origin.y.into(),
-                )),
-            })
-            .unwrap();
+        if let Err(err) = self.view.set_bounds(Rect {
+            size: dpi::Size::Logical(LogicalSize {
+                width: bounds.size.width.into(),
+                height: bounds.size.height.into(),
+            }),
+            position: dpi::Position::Logical(dpi::LogicalPosition::new(
+                bounds.origin.x.into(),
+                bounds.origin.y.into(),
+            )),
+        }) {
+            let message: SharedString = format!("Failed to resize webview: {err}").into();
+            let _ = self.parent.update(cx, |parent, cx| {
+                parent.set_error(message.clone());
+                cx.notify();
+            });
+            return None;
+        }
+
+        let _ = self.parent.update(cx, |parent, cx| {
+            if parent.last_error.is_some() {
+                parent.clear_error();
+                cx.notify();
+            }
+        });
 
         // Create a hitbox to handle mouse event
         Some(window.insert_hitbox(bounds, gpui::HitboxBehavior::Normal))

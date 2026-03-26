@@ -8,61 +8,73 @@ use gpui::{
 use crate::{
     AxisExt, Sizable, StyledExt,
     button::Button,
-    menu::{DropdownMenu, PopupMenuItem},
-    setting::{
-        AnySettingField, RenderOptions,
-        fields::{SettingFieldRender, get_value, set_value},
-    },
+    menu::{DropdownMenu, PopupMenu, PopupMenuItem},
+    setting::RenderOptions,
 };
 
-pub(crate) struct DropdownField<T> {
+#[derive(Clone)]
+pub struct DropdownSettingControl {
     options: Vec<(SharedString, SharedString)>,
-    _marker: std::marker::PhantomData<T>,
+    style: StyleRefinement,
+    value: Rc<dyn Fn(&App) -> SharedString>,
+    set_value: Rc<dyn Fn(SharedString, &mut App)>,
+    default_value: Option<SharedString>,
 }
 
-impl<T> DropdownField<T> {
-    pub(crate) fn new(options: Option<&Vec<(SharedString, SharedString)>>) -> Self {
+impl DropdownSettingControl {
+    pub(crate) fn new<V, S>(
+        options: Vec<(SharedString, SharedString)>,
+        value: V,
+        set_value: S,
+    ) -> Self
+    where
+        V: Fn(&App) -> SharedString + 'static,
+        S: Fn(SharedString, &mut App) + 'static,
+    {
         Self {
-            options: options.cloned().unwrap_or(vec![]),
-            _marker: std::marker::PhantomData,
+            options,
+            style: StyleRefinement::default(),
+            value: Rc::new(value),
+            set_value: Rc::new(set_value),
+            default_value: None,
         }
     }
-}
 
-impl<T> SettingFieldRender for DropdownField<T>
-where
-    T: Into<SharedString> + From<SharedString> + Clone + 'static,
-{
-    fn render(
+    pub fn default_value(mut self, default_value: impl Into<SharedString>) -> Self {
+        self.default_value = Some(default_value.into());
+        self
+    }
+
+    pub(crate) fn style_mut(&mut self) -> &mut StyleRefinement {
+        &mut self.style
+    }
+
+    pub(crate) fn render(
         &self,
-        field: Rc<dyn AnySettingField>,
         options: &RenderOptions,
-        style: &StyleRefinement,
-        _: &mut Window,
+        _window: &mut Window,
         cx: &mut App,
     ) -> AnyElement {
-        let old_value = get_value::<T>(&field, cx);
-        let set_value = set_value::<T>(&field, cx);
+        let selected_value = (self.value)(cx);
+        let set_value = self.set_value.clone();
         let dropdown_options = self.options.clone();
 
-        let old_label = dropdown_options
+        let selected_label = dropdown_options
             .iter()
-            .find(|(value, _)| *value == old_value.clone().into())
+            .find(|(value, _)| *value == selected_value)
             .map(|(_, label)| label.clone())
-            .unwrap_or_else(|| old_value.clone().into());
+            .unwrap_or_else(|| selected_value.clone());
 
         Button::new("btn")
             .when(options.layout.is_vertical(), |this| this.w_full())
-            .label(old_label)
+            .label(selected_label)
             .dropdown_caret(true)
             .outline()
             .with_size(options.size)
-            .refine_style(style)
-            .dropdown_menu_with_anchor(Corner::TopRight, move |menu, _, _| {
-                let set_value = set_value.clone();
-                let menu = dropdown_options.iter().fold(menu, |menu, (value, label)| {
-                    let old_value: SharedString = old_value.clone().into();
-                    let checked = &old_value == value;
+            .refine_style(&self.style)
+            .dropdown_menu_with_anchor(Corner::TopRight, move |menu: PopupMenu, _, _| {
+                dropdown_options.iter().fold(menu, |menu, (value, label)| {
+                    let checked = &selected_value == value;
                     menu.item(
                         PopupMenuItem::new(label.clone())
                             .checked(checked)
@@ -70,13 +82,32 @@ where
                                 let value = value.clone();
                                 let set_value = set_value.clone();
                                 move |_, _, cx| {
-                                    set_value(T::from(value.clone()), cx);
+                                    set_value(value.clone(), cx);
                                 }
                             }),
                     )
-                });
-                menu
+                })
             })
             .into_any_element()
+    }
+
+    pub(crate) fn is_resettable(&self, cx: &App) -> bool {
+        self.default_value
+            .as_ref()
+            .is_some_and(|default_value| (self.value)(cx) != *default_value)
+    }
+
+    pub(crate) fn reset(&self, _window: &mut Window, cx: &mut App) {
+        let Some(default_value) = self.default_value.clone() else {
+            return;
+        };
+
+        (self.set_value)(default_value, cx);
+    }
+}
+
+impl Styled for DropdownSettingControl {
+    fn style(&mut self) -> &mut StyleRefinement {
+        &mut self.style
     }
 }

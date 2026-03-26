@@ -5,6 +5,7 @@ use gpui::{
 use ropey::Rope;
 use std::{ops::Range, rc::Rc};
 
+use crate::input::lsp::log_provider_failure;
 use crate::{
     ActiveTheme,
     input::{GoToDefinition, InputState, RopeExt, element::TextElement},
@@ -83,18 +84,28 @@ impl InputState {
         let mut symbol_range = self.text.word_range(offset).unwrap_or(offset..offset);
         let editor = cx.entity();
         self.lsp._hover_task = cx.spawn_in(window, async move |_, cx| {
-            let locations = task.await?;
+            let locations = match task.await {
+                Ok(locations) => locations,
+                Err(err) => {
+                    log_provider_failure("definitions", &err);
+                    editor.update(cx, |editor, cx| {
+                        editor.hover_definition.clear();
+                        cx.notify();
+                    });
+                    return Ok(());
+                }
+            };
 
-            _ = editor.update(cx, |editor, cx| {
+            editor.update(cx, |editor, cx| {
                 if locations.is_empty() {
                     editor.hover_definition.clear();
                 } else {
-                    if let Some(location) = locations.first() {
-                        if let Some(range) = location.origin_selection_range {
-                            let start = editor.text.position_to_offset(&range.start);
-                            let end = editor.text.position_to_offset(&range.end);
-                            symbol_range = start..end;
-                        }
+                    if let Some(location) = locations.first()
+                        && let Some(range) = location.origin_selection_range
+                    {
+                        let start = editor.text.position_to_offset(&range.start);
+                        let end = editor.text.position_to_offset(&range.end);
+                        symbol_range = start..end;
                     }
 
                     editor

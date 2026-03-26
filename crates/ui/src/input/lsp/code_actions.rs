@@ -3,6 +3,7 @@ use gpui::{App, Context, Entity, SharedString, Task, Window};
 use lsp_types::CodeAction;
 use std::ops::Range;
 
+use crate::input::lsp::{log_dropped_ui_target, log_provider_failure};
 use crate::input::{
     InputState, ToggleCodeActions,
     popovers::{CodeActionItem, CodeActionMenu, ContextMenu},
@@ -81,35 +82,46 @@ impl InputState {
 
             let mut code_actions: Vec<CodeActionItem> = vec![];
             for (provider_id, provider_responses) in provider_responses {
-                if let Some(responses) = provider_responses.await.ok() {
-                    code_actions.extend(responses.into_iter().map(|action| CodeActionItem {
-                        provider_id: provider_id.clone(),
-                        action,
-                    }))
+                match provider_responses.await {
+                    Ok(responses) => {
+                        code_actions.extend(responses.into_iter().map(|action| CodeActionItem {
+                            provider_id: provider_id.clone(),
+                            action,
+                        }));
+                    }
+                    Err(err) => {
+                        log_provider_failure(
+                            &format!("code actions from provider '{}'", provider_id),
+                            &err,
+                        );
+                    }
                 }
             }
 
             if code_actions.is_empty() {
-                _ = menu.update(cx, |menu, cx| {
+                menu.update(cx, |menu, cx| {
                     menu.hide(cx);
                     cx.notify();
                 });
 
                 return Ok(());
             }
-            editor
+            if editor
                 .update_in(cx, |editor, window, cx| {
                     if !editor.focus_handle.is_focused(window) {
                         return;
                     }
 
-                    _ = menu.update(cx, |menu, cx| {
+                    menu.update(cx, |menu, cx| {
                         menu.show(editor.cursor(), code_actions, window, cx);
                     });
 
                     cx.notify();
                 })
-                .ok();
+                .is_err()
+            {
+                log_dropped_ui_target("update editor with code actions");
+            }
 
             Ok(())
         });
@@ -129,11 +141,21 @@ impl InputState {
             return;
         };
 
+        let provider_id = item.provider_id.clone();
+        let action_title = item.action.title.clone();
         let state = cx.entity();
         let task = provider.perform_code_action(state, item.action.clone(), true, window, cx);
 
         cx.spawn_in(window, async move |_, _| {
-            let _ = task.await;
+            if let Err(err) = task.await {
+                log_provider_failure(
+                    &format!(
+                        "perform code action '{}' from provider '{}'",
+                        action_title, provider_id
+                    ),
+                    &err,
+                );
+            }
         })
         .detach();
     }

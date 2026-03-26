@@ -32,18 +32,16 @@ impl ReqwestClient {
             .connect_timeout(Duration::from_secs(10))
     }
 
-    pub fn new() -> Self {
-        Self::builder()
-            .build()
-            .expect("Failed to initialize HTTP client")
-            .into()
+    pub fn new() -> anyhow::Result<Self> {
+        let client = Self::builder().build()?;
+        Self::from_client(client)
     }
 
     pub fn user_agent(agent: &str) -> anyhow::Result<Self> {
         let mut map = HeaderMap::new();
         map.insert(http::header::USER_AGENT, HeaderValue::from_str(agent)?);
         let client = Self::builder().default_headers(map).build()?;
-        Ok(client.into())
+        Self::from_client(client)
     }
 
     pub fn proxy_and_user_agent(proxy: Option<Url>, user_agent: &str) -> anyhow::Result<Self> {
@@ -52,57 +50,66 @@ impl ReqwestClient {
         let mut map = HeaderMap::new();
         map.insert(http::header::USER_AGENT, user_agent.clone());
         let mut client = Self::builder().default_headers(map);
-        let client_has_proxy;
+        if let Some(proxy_url) = proxy.as_ref() {
+            let proxy_config = reqwest::Proxy::all(proxy_url.clone()).map_err(|err| {
+                anyhow!(
+                    "failed to configure proxy '{}': {}",
+                    proxy_url,
+                    err.source().unwrap_or(&err as &_)
+                )
+            })?;
 
-        if let Some(proxy) = proxy.as_ref().and_then(|proxy_url| {
-            reqwest::Proxy::all(proxy_url.clone())
-                .inspect_err(|e| {
-                    log::error!(
-                        "Failed to parse proxy URL '{}': {}",
-                        proxy_url,
-                        e.source().unwrap_or(&e as &_)
-                    )
-                })
-                .ok()
-        }) {
             // Respect NO_PROXY env var
-            client = client.proxy(proxy.no_proxy(reqwest::NoProxy::from_env()));
-            client_has_proxy = true;
-        } else {
-            client_has_proxy = false;
-        };
+            client = client.proxy(proxy_config.no_proxy(reqwest::NoProxy::from_env()));
+        }
 
         let client = client
             .use_preconfigured_tls(http_client_tls::tls_config())
             .build()?;
-        let mut client: ReqwestClient = client.into();
-        client.proxy = client_has_proxy.then_some(proxy).flatten();
+        let mut client = Self::from_client(client)?;
+        client.proxy = proxy;
         client.user_agent = Some(user_agent);
         Ok(client)
     }
-}
 
-impl From<reqwest::Client> for ReqwestClient {
-    fn from(client: reqwest::Client) -> Self {
-        let handle = tokio::runtime::Handle::try_current().unwrap_or_else(|_| {
-            log::debug!("no tokio runtime found, creating one for Reqwest...");
-            let runtime = RUNTIME.get_or_init(|| {
-                tokio::runtime::Builder::new_multi_thread()
-                    // Since we now have two executors, let's try to keep our footprint small
-                    .worker_threads(1)
-                    .enable_all()
-                    .build()
-                    .expect("Failed to initialize HTTP client")
-            });
+    fn from_client(client: reqwest::Client) -> anyhow::Result<Self> {
+        let handle = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => handle,
+            Err(_) => {
+                log::debug!("no tokio runtime found, creating one for Reqwest...");
+                if let Some(runtime) = RUNTIME.get() {
+                    runtime.handle().clone()
+                } else {
+                    let runtime = tokio::runtime::Builder::new_multi_thread()
+                        // Since we now have two executors, let's try to keep our footprint small
+                        .worker_threads(1)
+                        .enable_all()
+                        .build()?;
+                    let handle = runtime.handle().clone();
 
-            runtime.handle().clone()
-        });
-        Self {
+                    if RUNTIME.set(runtime).is_err() {
+                        return Ok(Self {
+                            client,
+                            handle: RUNTIME
+                                .get()
+                                .map(|runtime| runtime.handle().clone())
+                                .unwrap_or(handle),
+                            proxy: None,
+                            user_agent: None,
+                        });
+                    }
+
+                    handle
+                }
+            }
+        };
+
+        Ok(Self {
             client,
             handle,
             proxy: None,
             user_agent: None,
-        }
+        })
     }
 }
 
@@ -280,7 +287,7 @@ mod tests {
 
     #[test]
     fn test_proxy_uri() {
-        let client = ReqwestClient::new();
+        let client = ReqwestClient::new().unwrap();
         assert_eq!(client.proxy(), None);
 
         let proxy = Url::parse("http://localhost:10809").unwrap();
@@ -311,10 +318,13 @@ mod tests {
     #[test]
     fn test_invalid_proxy_uri() {
         let proxy = Url::parse("socks://127.0.0.1:20170").unwrap();
-        let client = ReqwestClient::proxy_and_user_agent(Some(proxy), "test").unwrap();
+        let error = match ReqwestClient::proxy_and_user_agent(Some(proxy), "test") {
+            Ok(_) => panic!("invalid proxy configuration should fail explicitly"),
+            Err(err) => err,
+        };
         assert!(
-            client.proxy.is_none(),
-            "An invalid proxy URL should add no proxy to the client!"
-        )
+            error.to_string().contains("failed to configure proxy"),
+            "invalid proxy configuration should fail explicitly"
+        );
     }
 }

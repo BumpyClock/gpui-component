@@ -583,14 +583,10 @@ fn format_colors(
     if let serde_json::Value::Object(map) = json_theme {
         for (key, value) in map {
             if let Ok(color) = serde_json::from_value::<Hsla>(value) {
-                let parsed = super::mapper::parse_theme_key(&key);
-                let category = parsed.category;
-                let name = parsed.name;
+                let (category, name) = theme_key_display_parts(&key);
 
                 // Check if this key is explicit in the user config
-                let is_explicit = config_keys
-                    .as_ref()
-                    .map_or(false, |k| k.contains(&parsed.canonical_key));
+                let is_explicit = config_keys.as_ref().is_some_and(|keys| keys.contains(&key));
 
                 categories.entry(category).or_default().push(ColorEntry {
                     name,
@@ -636,6 +632,52 @@ fn format_colors(
     });
 
     categories_vec
+}
+
+fn theme_key_display_parts(key: &str) -> (String, String) {
+    match key {
+        "background" | "border" | "foreground" | "overlay" | "ring" => {
+            ("Global".to_string(), title_case_words(key))
+        }
+        "caret" => ("Input".to_string(), "Caret".to_string()),
+        "selection.background" => ("Input".to_string(), "Selection".to_string()),
+        _ => {
+            let parts: Vec<_> = key.split('.').collect();
+
+            if parts.first() == Some(&"chart") && parts.len() == 2 {
+                return ("Chart".to_string(), format!("Color {}", parts[1]));
+            }
+
+            if parts.len() == 1 {
+                return ("Global".to_string(), title_case_words(parts[0]));
+            }
+
+            let category = title_case_words(parts[0]);
+            let name = parts[1..]
+                .iter()
+                .map(|part| title_case_words(part))
+                .collect::<Vec<_>>()
+                .join(" ");
+
+            (category, name)
+        }
+    }
+}
+
+fn title_case_words(segment: &str) -> String {
+    segment
+        .split('_')
+        .map(title_case_word)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn title_case_word(word: &str) -> String {
+    let mut chars = word.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
 }
 
 fn hsla_to_hex(color: Hsla) -> String {
@@ -786,5 +828,61 @@ impl Render for ThemeColorsStory {
                     .child(self.render_left_panel(window, cx))
                     .child(self.render_right_panel(window, cx)),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{format_colors, theme_key_display_parts};
+    use gpui_component::{ThemeColor, theme::ThemeConfigColors};
+
+    #[test]
+    fn uses_canonical_theme_keys_when_marking_explicit_colors() {
+        let colors: ThemeConfigColors = serde_json::from_value(serde_json::json!({
+            "chart.1": "#112233",
+            "link.foreground": "#445566"
+        }))
+        .expect("test colors should deserialize");
+
+        let categories = format_colors(&ThemeColor::default(), Some(&colors));
+        let chart_color = categories
+            .iter()
+            .find(|category| category.name == "Chart")
+            .and_then(|category| {
+                category
+                    .entries
+                    .iter()
+                    .find(|entry| entry.name == "Color 1")
+            })
+            .expect("chart color entry should exist");
+        let link_color = categories
+            .iter()
+            .find(|category| category.name == "Link")
+            .and_then(|category| {
+                category
+                    .entries
+                    .iter()
+                    .find(|entry| entry.name == "Foreground")
+            })
+            .expect("link color entry should exist");
+
+        assert!(chart_color.is_explicit);
+        assert!(link_color.is_explicit);
+    }
+
+    #[test]
+    fn derives_story_labels_from_canonical_theme_keys() {
+        assert_eq!(
+            theme_key_display_parts("selection.background"),
+            ("Input".to_string(), "Selection".to_string())
+        );
+        assert_eq!(
+            theme_key_display_parts("chart.5"),
+            ("Chart".to_string(), "Color 5".to_string())
+        );
+        assert_eq!(
+            theme_key_display_parts("sidebar.primary.foreground"),
+            ("Sidebar".to_string(), "Primary Foreground".to_string())
+        );
     }
 }

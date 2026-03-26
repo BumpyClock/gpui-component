@@ -1,8 +1,8 @@
-This is a fork of the original gpui-component by longbridge. Goal is to maintain compatibility with gpui while adding custom components as needed.
+This is a BumpyClock fork of the original gpui-component by longbridge. Goal is to maintain compatibility with gpui while adding custom components as needed.
 
 ## Upstream sync status
 
-- Manual snippet sync source: `longbridge/gpui-component@94fdac9b` (`upstream/main` as of 2026-02-22).
+- Manual snippet sync source: `BumpyClock/gpui-component@94fdac9b` (`upstream/main` as of 2026-02-22).
 - Imported upstream fixes/features in this sync batch:
   - Editor syntax/perf: `d2f0960d`, `c045f74f`, `d60c6d5f`, `b4310a66`, `3724b071`
   - Table selection/docs: `662e291a`, `24b552d8`, `545c3488`, `9fb44739`
@@ -10,7 +10,7 @@ This is a fork of the original gpui-component by longbridge. Goal is to maintain
 
 # GPUI Component
 
-[![Build Status](https://github.com/longbridge/gpui-component/actions/workflows/ci.yml/badge.svg)](https://github.com/longbridge/gpui-component/actions/workflows/ci.yml) [![Docs](https://docs.rs/gpui-component/badge.svg)](https://docs.rs/gpui-component/) [![Crates.io](https://img.shields.io/crates/v/gpui-component.svg)](https://crates.io/crates/gpui-component)
+[![Build Status](https://github.com/BumpyClock/gpui-component/actions/workflows/ci.yml/badge.svg)](https://github.com/BumpyClock/gpui-component/actions/workflows/ci.yml) [![Docs](https://docs.rs/gpui-component/badge.svg)](https://docs.rs/gpui-component/) [![Crates.io](https://img.shields.io/crates/v/gpui-component.svg)](https://crates.io/crates/gpui-component)
 
 UI components for building fantastic desktop applications using [GPUI](https://gpui.rs).
 
@@ -87,7 +87,7 @@ fn main() {
 
 GPUI Component has an `Icon` element, but it does not include SVG files by default.
 
-The example uses [Lucide](https://lucide.dev) icons, but you can use any icons you like. Just name the SVG files as defined in [IconName](https://github.com/longbridge/gpui-component/blob/main/crates/ui/src/icon.rs#L86). You can add any icons you need to your project.
+The example uses [Lucide](https://lucide.dev) icons, but you can use any icons you like. Just name the SVG files as defined in [IconName](https://github.com/BumpyClock/gpui-component/blob/main/crates/ui/src/icon.rs#L86). You can add any icons you need to your project.
 
 The `gpui-component-assets` crate also bundles library-owned non-icon assets such as `surface/NoiseAsset_256.png`. If your app has its own `AssetSource`, compose it with `gpui_component_assets::chain(app_assets, gpui_component_assets::Assets)` so app assets win first and GPUI Component assets remain available as fallback.
 

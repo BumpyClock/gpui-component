@@ -1160,3 +1160,82 @@ impl RenderOnce for SelectListItem {
             )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{TestAppContext, VisualTestContext};
+
+    fn new_select_state(
+        cx: &mut TestAppContext,
+    ) -> (
+        gpui::WindowHandle<SelectState<Vec<&'static str>>>,
+        VisualTestContext,
+    ) {
+        let window = cx.update(|cx| {
+            crate::init(cx);
+            cx.open_window(Default::default(), |window, cx| {
+                cx.new(|cx| {
+                    SelectState::new(
+                        vec!["Alpha", "Beta", "Gamma"],
+                        Some(IndexPath::default().row(1)),
+                        window,
+                        cx,
+                    )
+                })
+            })
+            .unwrap()
+        });
+        let visual_cx = VisualTestContext::from_window(window.into(), cx);
+        (window, visual_cx)
+    }
+
+    #[gpui::test]
+    fn test_select_blur_restores_committed_selection(cx: &mut TestAppContext) {
+        let (window, mut cx) = new_select_state(cx);
+        let state = window.root(&mut cx).unwrap();
+
+        state.update_in(&mut cx, |state, window, cx| {
+            state.open = true;
+            state.list.update(cx, |list, cx| {
+                list._set_selected_index(Some(IndexPath::default().row(0)), window, cx);
+            });
+            state.on_blur(window, cx);
+        });
+
+        state.read_with(&cx, |state, cx| {
+            assert_eq!(
+                state.final_selected_index,
+                Some(IndexPath::default().row(1))
+            );
+            assert_eq!(state.selected_index(cx), Some(IndexPath::default().row(1)));
+            assert!(!state.open);
+        });
+    }
+
+    #[gpui::test]
+    fn test_select_confirm_commits_transient_selection(cx: &mut TestAppContext) {
+        let (window, mut cx) = new_select_state(cx);
+        let state = window.root(&mut cx).unwrap();
+
+        state.update_in(&mut cx, |state, window, cx| {
+            state.open = true;
+            state.list.update(cx, |list, cx| {
+                let selected_index = Some(IndexPath::default().row(2));
+                list._set_selected_index(selected_index, window, cx);
+                list.delegate_mut().confirm(false, window, cx);
+            });
+        });
+        cx.run_until_parked();
+
+        state.read_with(&cx, |state, cx| {
+            assert_eq!(
+                state.final_selected_index,
+                Some(IndexPath::default().row(2))
+            );
+            assert_eq!(state.selected_index(cx), Some(IndexPath::default().row(2)));
+            assert_eq!(state.selected_value(), Some(&"Gamma"));
+            assert!(!state.open);
+        });
+    }
+}

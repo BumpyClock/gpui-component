@@ -17,6 +17,14 @@ pub use definitions::*;
 pub use document_colors::*;
 pub use hover::*;
 
+pub(crate) fn log_provider_failure(operation: &str, err: &anyhow::Error) {
+    tracing::error!("input lsp {operation} failed: {err:#}");
+}
+
+pub(crate) fn log_dropped_ui_target(operation: &str) {
+    tracing::debug!("input lsp {operation} skipped because the target UI was dropped");
+}
+
 /// LSP ServerCapabilities
 ///
 /// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#serverCapabilities

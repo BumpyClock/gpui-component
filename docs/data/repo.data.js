@@ -1,4 +1,4 @@
-const API_URL = "https://api.github.com/repos/longbridge/gpui-component";
+const API_URL = "https://api.github.com/repos/BumpyClock/gpui-component";
 
 export default {
   async load() {

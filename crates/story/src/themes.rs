@@ -1,5 +1,7 @@
-use std::path::PathBuf;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
 
+use anyhow::{Context as _, Result};
 use gpui::{Action, App, SharedString};
 use gpui_component::{
     ActiveTheme, Theme, ThemeModePreference, ThemeRegistry, scroll::ScrollbarShow,
@@ -25,11 +27,52 @@ impl Default for State {
     }
 }
 
+fn load_state(path: impl AsRef<Path>) -> Result<Option<State>> {
+    let path = path.as_ref();
+    let json = match std::fs::read_to_string(path) {
+        Ok(json) => json,
+        Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(err) => {
+            return Err(err)
+                .with_context(|| format!("failed to read theme state at {}", path.display()));
+        }
+    };
+
+    let state = serde_json::from_str::<State>(&json)
+        .with_context(|| format!("failed to parse theme state at {}", path.display()))?;
+    Ok(Some(state))
+}
+
+fn persist_state(path: impl AsRef<Path>, state: &State) -> Result<()> {
+    let path = path.as_ref();
+    let json = serde_json::to_string_pretty(state).context("failed to serialize theme state")?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "failed to create theme state directory {}",
+                parent.display()
+            )
+        })?;
+    }
+    std::fs::write(path, json)
+        .with_context(|| format!("failed to write theme state to {}", path.display()))?;
+    Ok(())
+}
+
 pub fn init(cx: &mut App) {
     // Load last theme state
-    let json = std::fs::read_to_string(STATE_FILE).unwrap_or(String::default());
     tracing::info!("Load themes...");
-    let state = serde_json::from_str::<State>(&json).unwrap_or_default();
+    let state = match load_state(STATE_FILE) {
+        Ok(Some(state)) => state,
+        Ok(None) => {
+            tracing::info!("No saved theme state found at {STATE_FILE}, using defaults");
+            State::default()
+        }
+        Err(err) => {
+            tracing::error!("{err:#}");
+            State::default()
+        }
+    };
     if let Err(err) = ThemeRegistry::watch_dir(PathBuf::from("./themes"), cx, move |cx| {
         if let Some(set) = ThemeRegistry::global(cx)
             .theme_sets()
@@ -54,9 +97,8 @@ pub fn init(cx: &mut App) {
             scrollbar_show: Some(cx.theme().scrollbar_show),
         };
 
-        if let Ok(json) = serde_json::to_string_pretty(&state) {
-            // Ignore write errors - if STATE_FILE doesn't exist or can't be written, do nothing
-            let _ = std::fs::write(STATE_FILE, json);
+        if let Err(err) = persist_state(STATE_FILE, &state) {
+            tracing::error!("{err:#}");
         }
     })
     .detach();
@@ -94,3 +136,59 @@ pub(crate) struct SwitchTheme(pub(crate) SharedString);
 #[derive(Action, Clone, PartialEq)]
 #[action(namespace = themes, no_json)]
 pub(crate) struct SwitchThemeMode(pub(crate) ThemeModePreference);
+
+#[cfg(test)]
+mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use gpui_component::{ThemeModePreference, scroll::ScrollbarShow};
+
+    use super::{State, load_state, persist_state};
+
+    fn unique_path(name: &str) -> std::path::PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("gpui-component-{name}-{nanos}.json"))
+    }
+
+    #[test]
+    fn load_state_distinguishes_missing_file() {
+        let path = unique_path("missing-theme-state");
+        let state = load_state(&path).unwrap();
+        assert!(state.is_none());
+    }
+
+    #[test]
+    fn load_state_reports_parse_failure() {
+        let path = unique_path("invalid-theme-state");
+        std::fs::write(&path, "{ invalid json").unwrap();
+
+        let error = load_state(&path).unwrap_err();
+        assert!(error.to_string().contains("failed to parse theme state"));
+
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn persist_state_creates_parent_directories() {
+        let path = unique_path("persist-theme-state");
+        let nested = path.parent().unwrap().join("nested").join("state.json");
+        let state = State {
+            theme_set: "Default".into(),
+            mode_preference: ThemeModePreference::Dark,
+            scrollbar_show: Some(ScrollbarShow::Hover),
+        };
+
+        persist_state(&nested, &state).unwrap();
+
+        let saved = load_state(&nested).unwrap().unwrap();
+        assert_eq!(saved.theme_set, state.theme_set);
+        assert_eq!(saved.mode_preference, state.mode_preference);
+        assert_eq!(saved.scrollbar_show, state.scrollbar_show);
+
+        std::fs::remove_file(&nested).unwrap();
+        std::fs::remove_dir(nested.parent().unwrap()).unwrap();
+    }
+}

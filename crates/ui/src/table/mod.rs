@@ -13,6 +13,7 @@ use gpui::{
 mod column;
 mod delegate;
 mod loading;
+mod navigation;
 mod state;
 
 pub use column::*;

@@ -5,6 +5,7 @@ members = [
     "crates/story",
     "crates/ui",
     "crates/assets",
+    "crates/reqwest_client",
     "crates/webview",
     "examples/app_assets",
     "examples/hello_world",

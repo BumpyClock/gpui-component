@@ -1,8 +1,48 @@
 use gpui::{App, AppContext, Axis, Bounds, Entity, Pixels, WeakEntity, Window, point, px, size};
 use itertools::Itertools as _;
 use serde::{Deserialize, Serialize};
+use std::{error::Error, fmt};
 
 use super::{Dock, DockArea, DockItem, DockPlacement, Panel, PanelRegistry};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DockLoadError {
+    IncompatibleVersion {
+        expected: Option<usize>,
+        found: Option<usize>,
+    },
+    UnknownPanel {
+        panel_name: String,
+    },
+    InvalidTabsPayload {
+        panel_name: String,
+        child_panel_name: String,
+    },
+}
+
+impl fmt::Display for DockLoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::IncompatibleVersion { expected, found } => write!(
+                f,
+                "dock layout version mismatch: expected {:?}, found {:?}",
+                expected, found
+            ),
+            Self::UnknownPanel { panel_name } => {
+                write!(f, "dock layout references unknown panel `{panel_name}`")
+            }
+            Self::InvalidTabsPayload {
+                panel_name,
+                child_panel_name,
+            } => write!(
+                f,
+                "dock tabs payload `{panel_name}` contains non-panel child `{child_panel_name}`",
+            ),
+        }
+    }
+}
+
+impl Error for DockLoadError {}
 
 /// Used to serialize and deserialize the DockArea
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
@@ -48,9 +88,9 @@ impl DockState {
         dock_area: WeakEntity<DockArea>,
         window: &mut Window,
         cx: &mut App,
-    ) -> Entity<Dock> {
-        let item = self.panel.to_item(dock_area.clone(), window, cx);
-        cx.new(|cx| {
+    ) -> Result<Entity<Dock>, DockLoadError> {
+        let item = self.panel.to_item(dock_area.clone(), window, cx)?;
+        Ok(cx.new(|cx| {
             Dock::from_state(
                 dock_area.clone(),
                 self.placement,
@@ -60,7 +100,7 @@ impl DockState {
                 window,
                 cx,
             )
-        })
+        }))
     }
 }
 
@@ -168,6 +208,34 @@ impl Default for PanelState {
 }
 
 impl PanelState {
+    fn validate_with<F>(&self, panel_exists: F) -> Result<(), DockLoadError>
+    where
+        F: Fn(&str) -> bool + Copy,
+    {
+        for child in &self.children {
+            child.validate_with(panel_exists)?;
+        }
+
+        if matches!(self.info, PanelInfo::Tabs { .. }) {
+            for child in &self.children {
+                if !matches!(child.info, PanelInfo::Panel(_)) {
+                    return Err(DockLoadError::InvalidTabsPayload {
+                        panel_name: self.panel_name.clone(),
+                        child_panel_name: child.panel_name.clone(),
+                    });
+                }
+            }
+        }
+
+        if matches!(self.info, PanelInfo::Panel(_)) && !panel_exists(&self.panel_name) {
+            return Err(DockLoadError::UnknownPanel {
+                panel_name: self.panel_name.clone(),
+            });
+        }
+
+        Ok(())
+    }
+
     pub fn new<P: Panel>(panel: &P) -> Self {
         Self {
             panel_name: panel.panel_name().to_string(),
@@ -184,14 +252,14 @@ impl PanelState {
         dock_area: WeakEntity<DockArea>,
         window: &mut Window,
         cx: &mut App,
-    ) -> DockItem {
+    ) -> Result<DockItem, DockLoadError> {
         let info = self.info.clone();
 
-        let items: Vec<DockItem> = self
+        let items = self
             .children
             .iter()
             .map(|child| child.to_item(dock_area.clone(), window, cx))
-            .collect();
+            .collect::<Result<Vec<_>, _>>()?;
 
         match info {
             PanelInfo::Stack { sizes, axis } => {
@@ -201,25 +269,37 @@ impl PanelState {
                     Axis::Vertical
                 };
                 let sizes = sizes.iter().map(|s| Some(*s)).collect_vec();
-                DockItem::split_with_sizes(axis, items, sizes, &dock_area, window, cx)
+                Ok(DockItem::split_with_sizes(
+                    axis, items, sizes, &dock_area, window, cx,
+                ))
             }
             PanelInfo::Tabs { active_index } => {
                 if items.len() == 1 {
-                    return items[0].clone();
+                    return match &items[0] {
+                        DockItem::Tabs { .. } => Ok(items[0].clone()),
+                        _ => Err(DockLoadError::InvalidTabsPayload {
+                            panel_name: self.panel_name.clone(),
+                            child_panel_name: self.children[0].panel_name.clone(),
+                        }),
+                    };
                 }
 
                 let items = items
-                    .iter()
-                    .flat_map(|item| match item {
-                        DockItem::Tabs { items, .. } => items.clone(),
-                        _ => {
-                            // ignore invalid panels in tabs
-                            vec![]
-                        }
+                    .into_iter()
+                    .zip(self.children.iter())
+                    .map(|(item, child)| match item {
+                        DockItem::Tabs { items, .. } => Ok(items),
+                        _ => Err(DockLoadError::InvalidTabsPayload {
+                            panel_name: self.panel_name.clone(),
+                            child_panel_name: child.panel_name.clone(),
+                        }),
                     })
+                    .collect::<Result<Vec<_>, _>>()?
+                    .into_iter()
+                    .flatten()
                     .collect_vec();
 
-                DockItem::tabs(items, &dock_area, window, cx).active_index(active_index, cx)
+                Ok(DockItem::tabs(items, &dock_area, window, cx).active_index(active_index, cx))
             }
             PanelInfo::Panel(_) => {
                 let view = PanelRegistry::build_panel(
@@ -230,10 +310,53 @@ impl PanelState {
                     window,
                     cx,
                 );
-                DockItem::tabs(vec![view.into()], &dock_area, window, cx)
+                Ok(DockItem::tabs(vec![view.into()], &dock_area, window, cx))
             }
-            PanelInfo::Tiles { metas } => DockItem::tiles(items, metas, &dock_area, window, cx),
+            PanelInfo::Tiles { metas } => Ok(DockItem::tiles(items, metas, &dock_area, window, cx)),
         }
+    }
+}
+
+impl DockAreaState {
+    pub fn validate_for_load(
+        &self,
+        expected_version: Option<usize>,
+        cx: &App,
+    ) -> Result<(), DockLoadError> {
+        self.validate_for_load_with(expected_version, |panel_name| {
+            PanelRegistry::global(cx).items.contains_key(panel_name)
+        })
+    }
+
+    fn validate_for_load_with<F>(
+        &self,
+        expected_version: Option<usize>,
+        panel_exists: F,
+    ) -> Result<(), DockLoadError>
+    where
+        F: Fn(&str) -> bool + Copy,
+    {
+        if self.version != expected_version {
+            return Err(DockLoadError::IncompatibleVersion {
+                expected: expected_version,
+                found: self.version,
+            });
+        }
+
+        self.center.validate_with(panel_exists)?;
+
+        for dock in [
+            self.left_dock.as_ref(),
+            self.right_dock.as_ref(),
+            self.bottom_dock.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            dock.panel.validate_with(panel_exists)?;
+        }
+
+        Ok(())
     }
 }
 
@@ -242,6 +365,7 @@ mod tests {
     use gpui::px;
 
     use super::*;
+
     #[test]
     fn test_deserialize_item_state() {
         let json = include_str!("../../tests/fixtures/layout.json");
@@ -278,5 +402,82 @@ mod tests {
         assert_eq!(right_dock.panel.panel_name, "TabPanel");
         assert_eq!(right_dock.panel.children.len(), 1);
         assert_eq!(right_dock.panel.children[0].panel_name, "StoryContainer");
+    }
+
+    #[test]
+    fn test_validate_for_load_rejects_version_mismatch() {
+        let state = DockAreaState {
+            version: Some(1),
+            ..Default::default()
+        };
+
+        let err = state.validate_for_load_with(Some(2), |_| true).unwrap_err();
+        assert_eq!(
+            err,
+            DockLoadError::IncompatibleVersion {
+                expected: Some(2),
+                found: Some(1),
+            }
+        );
+    }
+
+    #[test]
+    fn test_validate_for_load_rejects_non_panel_tabs_children() {
+        let state = DockAreaState {
+            version: Some(5),
+            center: PanelState {
+                panel_name: "TabPanel".into(),
+                children: vec![PanelState {
+                    panel_name: "StackPanel".into(),
+                    children: vec![],
+                    info: PanelInfo::stack(vec![], Axis::Horizontal),
+                }],
+                info: PanelInfo::tabs(0),
+            },
+            ..Default::default()
+        };
+
+        let err = state.validate_for_load_with(Some(5), |_| true).unwrap_err();
+        assert_eq!(
+            err,
+            DockLoadError::InvalidTabsPayload {
+                panel_name: "TabPanel".into(),
+                child_panel_name: "StackPanel".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_validate_for_load_rejects_unknown_panel() {
+        let state = DockAreaState {
+            version: Some(5),
+            center: PanelState {
+                panel_name: "StoryContainer".into(),
+                children: vec![],
+                info: PanelInfo::panel(serde_json::Value::Null),
+            },
+            ..Default::default()
+        };
+
+        let err = state
+            .validate_for_load_with(Some(5), |_| false)
+            .unwrap_err();
+        assert_eq!(
+            err,
+            DockLoadError::UnknownPanel {
+                panel_name: "StoryContainer".into(),
+            }
+        );
+    }
+
+    #[test]
+    fn test_layout_state_round_trips_through_json() {
+        let json = include_str!("../../tests/fixtures/layout.json");
+        let state: DockAreaState = serde_json::from_str(json).unwrap();
+        let round_trip = serde_json::to_string(&state).unwrap();
+        let restored: DockAreaState = serde_json::from_str(&round_trip).unwrap();
+
+        assert_eq!(restored, state);
+        restored.validate_for_load_with(None, |_| true).unwrap();
     }
 }

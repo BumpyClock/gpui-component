@@ -412,26 +412,23 @@ pub struct ThemeConfigColors {
     /// Text color for GroupBox.
     #[serde(rename = "group_box.foreground")]
     pub group_box_foreground: Option<SharedString>,
-    /// Title text color for GroupBox.
-    #[serde(rename = "group_box.title.foreground")]
-    pub group_box_title_foreground: Option<SharedString>,
     /// Input caret color (Blinking cursor).
     #[serde(rename = "caret")]
     pub caret: Option<SharedString>,
     /// Chart 1 color.
-    #[serde(rename = "chart.1")]
+    #[serde(rename = "chart.1", alias = "chart_1")]
     pub chart_1: Option<SharedString>,
     /// Chart 2 color.
-    #[serde(rename = "chart.2")]
+    #[serde(rename = "chart.2", alias = "chart_2")]
     pub chart_2: Option<SharedString>,
     /// Chart 3 color.
-    #[serde(rename = "chart.3")]
+    #[serde(rename = "chart.3", alias = "chart_3")]
     pub chart_3: Option<SharedString>,
     /// Chart 4 color.
-    #[serde(rename = "chart.4")]
+    #[serde(rename = "chart.4", alias = "chart_4")]
     pub chart_4: Option<SharedString>,
     /// Chart 5 color.
-    #[serde(rename = "chart.5")]
+    #[serde(rename = "chart.5", alias = "chart_5")]
     pub chart_5: Option<SharedString>,
     /// Danger background color.
     #[serde(rename = "danger.background")]
@@ -446,13 +443,19 @@ pub struct ThemeConfigColors {
     #[serde(rename = "danger.hover.background")]
     pub danger_hover: Option<SharedString>,
     /// Description List label background color.
-    #[serde(rename = "description_list.label.background")]
+    #[serde(
+        rename = "description_list.label.background",
+        alias = "description_list_label.background"
+    )]
     pub description_list_label: Option<SharedString>,
     /// Description List label foreground color.
-    #[serde(rename = "description_list.label.foreground")]
+    #[serde(
+        rename = "description_list.label.foreground",
+        alias = "description_list_label.foreground"
+    )]
     pub description_list_label_foreground: Option<SharedString>,
     /// Drag border color.
-    #[serde(rename = "drag.border")]
+    #[serde(rename = "drag.border", alias = "drag_border")]
     pub drag_border: Option<SharedString>,
     /// Drop target background color.
     #[serde(rename = "drop_target.background")]
@@ -476,13 +479,13 @@ pub struct ThemeConfigColors {
     #[serde(rename = "input.border")]
     pub input: Option<SharedString>,
     /// Link text color.
-    #[serde(rename = "link")]
+    #[serde(rename = "link.foreground", alias = "link")]
     pub link: Option<SharedString>,
     /// Active link text color.
-    #[serde(rename = "link.active")]
+    #[serde(rename = "link.active.foreground", alias = "link.active")]
     pub link_active: Option<SharedString>,
     /// Hover link text color.
-    #[serde(rename = "link.hover")]
+    #[serde(rename = "link.hover.foreground", alias = "link.hover")]
     pub link_hover: Option<SharedString>,
     /// Background color for List and ListItem.
     #[serde(rename = "list.background")]
@@ -527,7 +530,7 @@ pub struct ThemeConfigColors {
     #[serde(rename = "primary.hover.background")]
     pub primary_hover: Option<SharedString>,
     /// Progress bar background color.
-    #[serde(rename = "progress.bar.background")]
+    #[serde(rename = "progress.bar.background", alias = "progress_bar.background")]
     pub progress_bar: Option<SharedString>,
     /// Used for focus ring.
     #[serde(rename = "ring")]
@@ -581,7 +584,7 @@ pub struct ThemeConfigColors {
     #[serde(rename = "skeleton.background")]
     pub skeleton: Option<SharedString>,
     /// Slider bar background color.
-    #[serde(rename = "slider.background")]
+    #[serde(rename = "slider.bar.background", alias = "slider.background")]
     pub slider_bar: Option<SharedString>,
     /// Slider thumb background color.
     #[serde(rename = "slider.thumb.background")]
@@ -1044,5 +1047,81 @@ impl Theme {
 
         self.colors.apply_config(&config, &default_theme.colors);
         self.mode = config.mode;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ThemeConfigColors;
+    use crate::theme::ThemeColor;
+    use std::collections::BTreeSet;
+
+    fn serialized_keys(value: impl serde::Serialize) -> BTreeSet<String> {
+        serde_json::to_value(value)
+            .expect("value should serialize")
+            .as_object()
+            .expect("serialized value should be an object")
+            .keys()
+            .cloned()
+            .collect()
+    }
+
+    #[test]
+    fn theme_config_colors_support_every_runtime_theme_key() {
+        let runtime_keys = serialized_keys(ThemeColor::default());
+        let value = serde_json::Value::Object(
+            runtime_keys
+                .iter()
+                .map(|key| {
+                    (
+                        key.clone(),
+                        serde_json::Value::String("#112233".to_string()),
+                    )
+                })
+                .collect(),
+        );
+
+        let colors: ThemeConfigColors =
+            serde_json::from_value(value).expect("runtime theme keys should deserialize");
+
+        assert_eq!(serialized_keys(colors), runtime_keys);
+    }
+
+    #[test]
+    fn theme_config_colors_preserve_legacy_aliases_on_load() {
+        let value = serde_json::json!({
+            "chart_1": "#112233",
+            "description_list_label.background": "#223344",
+            "description_list_label.foreground": "#334455",
+            "drag_border": "#445566",
+            "link": "#556677",
+            "link.active": "#667788",
+            "link.hover": "#778899",
+            "progress_bar.background": "#8899aa",
+            "slider.background": "#99aabb"
+        });
+        let colors: ThemeConfigColors =
+            serde_json::from_value(value).expect("legacy keys should deserialize");
+        let serialized = serde_json::to_value(colors).expect("colors should serialize");
+        let object = serialized
+            .as_object()
+            .expect("serialized colors should be an object");
+
+        assert!(object.contains_key("chart.1"));
+        assert!(object.contains_key("description_list.label.background"));
+        assert!(object.contains_key("description_list.label.foreground"));
+        assert!(object.contains_key("drag.border"));
+        assert!(object.contains_key("link.foreground"));
+        assert!(object.contains_key("link.active.foreground"));
+        assert!(object.contains_key("link.hover.foreground"));
+        assert!(object.contains_key("progress.bar.background"));
+        assert!(object.contains_key("slider.bar.background"));
+        assert!(!object.contains_key("chart_1"));
+        assert!(!object.contains_key("drag_border"));
+        assert!(!object.contains_key("link"));
+        assert!(!object.contains_key("link.active"));
+        assert!(!object.contains_key("link.hover"));
+        assert!(!object.contains_key("progress_bar.background"));
+        assert!(!object.contains_key("slider.background"));
     }
 }

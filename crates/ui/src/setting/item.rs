@@ -2,15 +2,12 @@ use gpui::{
     AnyElement, App, Axis, Div, InteractiveElement as _, IntoElement, ParentElement, SharedString,
     Stateful, Styled, Window, div, prelude::FluentBuilder as _,
 };
-use std::{any::TypeId, ops::Deref, rc::Rc};
+use std::rc::Rc;
 
 use crate::{
     ActiveTheme as _, AxisExt, StyledExt as _,
     label::Label,
-    setting::{
-        AnySettingField, ElementField, RenderOptions,
-        fields::{BoolField, DropdownField, NumberField, SettingFieldRender, StringField},
-    },
+    setting::{RenderOptions, SettingControl},
     text::Text,
     v_flex,
 };
@@ -23,7 +20,7 @@ pub enum SettingItem {
         title: SharedString,
         description: Option<Text>,
         layout: Axis,
-        field: Rc<dyn AnySettingField>,
+        field: SettingControl,
     },
     /// A full custom element to render.
     Element {
@@ -35,13 +32,13 @@ impl SettingItem {
     /// Create a new setting item.
     pub fn new<F>(title: impl Into<SharedString>, field: F) -> Self
     where
-        F: AnySettingField + 'static,
+        F: Into<SettingControl>,
     {
         SettingItem::Item {
             title: title.into(),
             description: None,
             layout: Axis::Horizontal,
-            field: Rc::new(field),
+            field: field.into(),
         }
     }
 
@@ -115,41 +112,6 @@ impl SettingItem {
         }
     }
 
-    fn render_field(
-        field: Rc<dyn AnySettingField>,
-        options: RenderOptions,
-        window: &mut Window,
-        cx: &mut App,
-    ) -> impl IntoElement {
-        let field_type = field.field_type();
-        let style = field.style().clone();
-        let type_id = field.deref().type_id();
-        let renderer: Box<dyn SettingFieldRender> = match type_id {
-            t if t == std::any::TypeId::of::<bool>() => {
-                Box::new(BoolField::new(field_type.is_switch()))
-            }
-            t if t == TypeId::of::<f64>() && field_type.is_number_input() => {
-                Box::new(NumberField::new(field_type.number_input_options()))
-            }
-            t if t == TypeId::of::<SharedString>() && field_type.is_input() => {
-                Box::new(StringField::<SharedString>::new())
-            }
-            t if t == TypeId::of::<String>() && field_type.is_input() => {
-                Box::new(StringField::<String>::new())
-            }
-            t if t == TypeId::of::<SharedString>() && field_type.is_dropdown() => Box::new(
-                DropdownField::<SharedString>::new(field_type.dropdown_options()),
-            ),
-            t if t == TypeId::of::<String>() && field_type.is_dropdown() => {
-                Box::new(DropdownField::<String>::new(field_type.dropdown_options()))
-            }
-            _ if field_type.is_element() => Box::new(ElementField::new(field_type.element())),
-            _ => unimplemented!("Unsupported setting type: {}", field.deref().type_name()),
-        };
-
-        renderer.render(field, &options, &style, window, cx)
-    }
-
     pub(super) fn render_item(
         self,
         options: &RenderOptions,
@@ -197,9 +159,8 @@ impl SettingItem {
                                 )
                             }),
                     )
-                    .child(div().id("field").child(Self::render_field(
-                        field,
-                        RenderOptions { layout, ..*options },
+                    .child(div().id("field").child(field.render_control(
+                        &RenderOptions { layout, ..*options },
                         window,
                         cx,
                     )))
@@ -208,5 +169,157 @@ impl SettingItem {
                     (render)(&options, window, cx).into_any_element()
                 }
             })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+    };
+
+    use super::*;
+    use gpui::{AppContext as _, Empty, SharedString, TestAppContext};
+
+    fn with_window(cx: &mut TestAppContext, f: impl FnOnce(&mut Window, &mut App)) {
+        let window = cx.update(|cx| {
+            cx.open_window(Default::default(), |_, cx| cx.new(|_| Empty))
+                .expect("test window")
+        });
+
+        cx.update(|cx| {
+            window
+                .update(cx, |_, window, cx| f(window, cx))
+                .expect("window update");
+        });
+    }
+
+    fn item_is_resettable(cx: &mut TestAppContext, item: &SettingItem) -> bool {
+        cx.update(|cx| item.is_resettable(cx))
+    }
+
+    #[gpui::test]
+    fn test_switch_control_resets_to_default(cx: &mut TestAppContext) {
+        let value = Rc::new(Cell::new(true));
+        let item = SettingItem::new(
+            "Enabled",
+            SettingControl::switch(
+                {
+                    let value = value.clone();
+                    move |_| value.get()
+                },
+                {
+                    let value = value.clone();
+                    move |next, _| value.set(next)
+                },
+            )
+            .default_value(false),
+        );
+
+        assert!(item_is_resettable(cx, &item));
+
+        with_window(cx, |window, cx| item.reset(window, cx));
+
+        assert!(!value.get());
+        assert!(!item_is_resettable(cx, &item));
+    }
+
+    #[gpui::test]
+    fn test_input_control_resets_to_default(cx: &mut TestAppContext) {
+        let value = Rc::new(RefCell::new(SharedString::from("/tmp/custom")));
+        let item = SettingItem::new(
+            "Path",
+            SettingControl::input(
+                {
+                    let value = value.clone();
+                    move |_| value.borrow().clone()
+                },
+                {
+                    let value = value.clone();
+                    move |next, _| *value.borrow_mut() = next
+                },
+            )
+            .default_value("/usr/local/bin/bash"),
+        );
+
+        assert!(item_is_resettable(cx, &item));
+
+        with_window(cx, |window, cx| item.reset(window, cx));
+
+        assert_eq!(&*value.borrow(), "/usr/local/bin/bash");
+        assert!(!item_is_resettable(cx, &item));
+    }
+
+    #[gpui::test]
+    fn test_dropdown_control_resets_to_default(cx: &mut TestAppContext) {
+        let value = Rc::new(RefCell::new(SharedString::from("dark")));
+        let item = SettingItem::new(
+            "Mode",
+            SettingControl::dropdown(
+                vec![
+                    ("system".into(), "System".into()),
+                    ("light".into(), "Light".into()),
+                    ("dark".into(), "Dark".into()),
+                ],
+                {
+                    let value = value.clone();
+                    move |_| value.borrow().clone()
+                },
+                {
+                    let value = value.clone();
+                    move |next, _| *value.borrow_mut() = next
+                },
+            )
+            .default_value("system"),
+        );
+
+        assert!(item_is_resettable(cx, &item));
+
+        with_window(cx, |window, cx| item.reset(window, cx));
+
+        assert_eq!(&*value.borrow(), "system");
+        assert!(!item_is_resettable(cx, &item));
+    }
+
+    #[gpui::test]
+    fn test_number_control_resets_to_default(cx: &mut TestAppContext) {
+        let value = Rc::new(Cell::new(18.0));
+        let item = SettingItem::new(
+            "Font Size",
+            SettingControl::number_input(
+                crate::setting::NumberFieldOptions {
+                    min: 8.0,
+                    max: 72.0,
+                    step: 1.0,
+                },
+                {
+                    let value = value.clone();
+                    move |_| value.get()
+                },
+                {
+                    let value = value.clone();
+                    move |next, _| value.set(next)
+                },
+            )
+            .default_value(14.0),
+        );
+
+        assert!(item_is_resettable(cx, &item));
+
+        with_window(cx, |window, cx| item.reset(window, cx));
+
+        assert_eq!(value.get(), 14.0);
+        assert!(!item_is_resettable(cx, &item));
+    }
+
+    #[gpui::test]
+    fn test_custom_control_is_not_resettable(cx: &mut TestAppContext) {
+        let item = SettingItem::new(
+            "Custom",
+            SettingControl::render(|_, _, _| div().child("custom field")),
+        );
+
+        assert!(!item_is_resettable(cx, &item));
     }
 }

@@ -19,9 +19,9 @@ So if you want use the colors from the current theme, you should keep your compo
 
 ## Theme Registry
 
-There have more than 20 built-in themes available in [themes](https://github.com/longbridge/gpui-component/tree/main/themes) folder.
+There have more than 20 built-in themes available in [themes](https://github.com/BumpyClock/gpui-component/tree/main/themes) folder.
 
-https://github.com/longbridge/gpui-component/tree/main/themes
+https://github.com/BumpyClock/gpui-component/tree/main/themes
 
 And we have a [ThemeRegistry] to help us to load themes.
 

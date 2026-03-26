@@ -25,7 +25,7 @@ use rust_i18n::t;
 ///     SettingGroup
 ///       SettingItem
 ///         Label
-///         SettingField (e.g., Switch, Dropdown, Input)
+///         SettingControl (e.g., Switch, Dropdown, Input)
 /// ```
 #[derive(IntoElement)]
 pub struct Settings {

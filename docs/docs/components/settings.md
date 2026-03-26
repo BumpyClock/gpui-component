@@ -13,7 +13,7 @@ We can search by title and description to filter the settings to display only re
 ## Import
 
 ```rust
-use gpui_component::setting::{Settings, SettingPage, SettingGroup, SettingItem, SettingField};
+use gpui_component::setting::{Settings, SettingPage, SettingGroup, SettingItem, SettingControl};
 ```
 
 ## Usage
@@ -26,7 +26,7 @@ Here we have components that can be used to build a settings page.
 - [SettingPage] - A page of related setting groups.
 - [SettingGroup] - A group of related setting items based on [GroupBox] style.
 - [SettingItem] - A single setting item with title, description, and field.
-- [SettingField] - Provide different field types like Input, Dropdown, Switch, etc.
+- [SettingControl] - Provide different field types like Input, Dropdown, Switch, etc.
 
 The layout of the settings is like this:
 
@@ -37,13 +37,13 @@ Settings
       SettingItem
         Title
         Description (optional)
-        SettingField
+        SettingControl
 ```
 
 ### Basic Settings
 
 ```rust
-use gpui_component::setting::{Settings, SettingPage, SettingGroup, SettingItem, SettingField};
+use gpui_component::setting::{Settings, SettingPage, SettingGroup, SettingItem, SettingControl};
 
 Settings::new("my-settings")
     .pages(vec![
@@ -54,7 +54,7 @@ Settings::new("my-settings")
                     .item(
                         SettingItem::new(
                             "Enable Feature",
-                            SettingField::switch(
+                            SettingControl::switch(
                                 |cx: &App| true,
                                 |val: bool, cx: &mut App| {
                                     println!("Feature enabled: {}", val);
@@ -186,7 +186,7 @@ SettingGroup::new()
 ### Basic Item
 
 ```rust
-SettingItem::new("Title", SettingField::switch(...))
+SettingItem::new("Title", SettingControl::switch(...))
     .description("Description text")
 ```
 
@@ -216,7 +216,7 @@ By default, setting items use horizontal layout. Use `layout(Axis::Vertical)` fo
 ```rust
 SettingItem::new(
     "CLI Path",
-    SettingField::input(...)
+    SettingControl::input(...)
 )
 .layout(Axis::Vertical)
 .description("This item uses vertical layout.")
@@ -229,14 +229,14 @@ use gpui_component::text::markdown;
 
 SettingItem::new(
     "Documentation",
-    SettingField::element(...)
+    SettingControl::element(...)
 )
 .description(markdown("Rust doc for the `gpui-component` crate."))
 ```
 
 ## Setting Fields
 
-The [SettingField] enum provides different field types for various input needs.
+The [SettingControl] enum provides different field types for various input needs.
 
 ### Switch
 
@@ -245,7 +245,7 @@ The switch field represents a `boolean` on/off state.
 ```rust
 SettingItem::new(
     "Dark Mode",
-    SettingField::switch(
+    SettingControl::switch(
         |cx: &App| cx.theme().mode.is_dark(),
         |val: bool, cx: &mut App| {
             // Handle value change
@@ -262,7 +262,7 @@ Like the switch, but uses a checkbox UI.
 ```rust
 SettingItem::new(
     "Auto Switch Theme",
-    SettingField::checkbox(
+    SettingControl::checkbox(
         |cx: &App| AppSettings::global(cx).auto_switch_theme,
         |val: bool, cx: &mut App| {
             AppSettings::global_mut(cx).auto_switch_theme = val;
@@ -279,7 +279,7 @@ Display a single line text input.
 ```rust
 SettingItem::new(
     "CLI Path",
-    SettingField::input(
+    SettingControl::input(
         |cx: &App| AppSettings::global(cx).cli_path.clone(),
         |val: SharedString, cx: &mut App| {
             AppSettings::global_mut(cx).cli_path = val;
@@ -298,7 +298,7 @@ A dropdown with a list of options.
 ```rust
 SettingItem::new(
     "Font Family",
-    SettingField::dropdown(
+    SettingControl::dropdown(
         vec![
             ("Arial".into(), "Arial".into()),
             ("Helvetica".into(), "Helvetica".into()),
@@ -320,7 +320,7 @@ use gpui_component::setting::NumberFieldOptions;
 
 SettingItem::new(
     "Font Size",
-    SettingField::number_input(
+    SettingControl::number_input(
         NumberFieldOptions {
             min: 8.0,
             max: 72.0,
@@ -337,12 +337,12 @@ SettingItem::new(
 
 ### Custom Field by Render Closure
 
-The `SettingField::render` method allows you to create a custom field using a closure that returns an element.
+The `SettingControl::render` method allows you to create a custom field using a closure that returns an element.
 
 ```rust
 SettingItem::new(
     "GitHub Repository",
-    SettingField::render(|options, _window, _cx| {
+    SettingControl::render(|options, _window, _cx| {
         Button::new("open-url")
             .outline()
             .label("Repository...")
@@ -389,9 +389,9 @@ Then use it in the setting item:
 ```rust
 SettingItem::new(
     "GitHub Repository",
-    SettingField::element(OpenURLSettingField {
+    SettingControl::element(OpenURLSettingField {
         label: "Repository...".into(),
-        url: "https://github.com/longbridge/gpui-component".into(),
+        url: "https://github.com/BumpyClock/gpui-component".into(),
     })
 )
 ```
@@ -402,7 +402,7 @@ SettingItem::new(
 - [SettingPage]
 - [SettingGroup]
 - [SettingItem]
-- [SettingField]
+- [SettingControl]
 - [NumberFieldOptions]
 
 ### Sizing
@@ -422,7 +422,7 @@ Implements [Sizable] trait:
 ```rust
 use gpui::{App, SharedString};
 use gpui_component::{
-    Settings, SettingPage, SettingGroup, SettingItem, SettingField,
+    Settings, SettingPage, SettingGroup, SettingItem, SettingControl,
     setting::NumberFieldOptions,
     group_box::GroupBoxVariant,
     Size,
@@ -441,7 +441,7 @@ Settings::new("app-settings")
                     .items(vec![
                         SettingItem::new(
                             "Dark Mode",
-                            SettingField::switch(
+                            SettingControl::switch(
                                 |cx: &App| cx.theme().mode.is_dark(),
                                 |val: bool, cx: &mut App| {
                                     // Handle theme change
@@ -455,7 +455,7 @@ Settings::new("app-settings")
                     .items(vec![
                         SettingItem::new(
                             "Font Family",
-                            SettingField::dropdown(
+                            SettingControl::dropdown(
                                 vec![
                                     ("Arial".into(), "Arial".into()),
                                     ("Helvetica".into(), "Helvetica".into()),
@@ -468,7 +468,7 @@ Settings::new("app-settings")
                         ),
                         SettingItem::new(
                             "Font Size",
-                            SettingField::number_input(
+                            SettingControl::number_input(
                                 NumberFieldOptions {
                                     min: 8.0,
                                     max: 72.0,
@@ -490,7 +490,7 @@ Settings::new("app-settings")
                     .items(vec![
                         SettingItem::new(
                             "Auto Update",
-                            SettingField::switch(
+                            SettingControl::switch(
                                 |cx: &App| true,
                                 |val: bool, cx: &mut App| {
                                     // Handle auto update
@@ -507,7 +507,7 @@ Settings::new("app-settings")
 [SettingPage]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.SettingPage.html
 [SettingGroup]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.SettingGroup.html
 [SettingItem]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.SettingItem.html
-[SettingField]: https://docs.rs/gpui-component/latest/gpui_component/setting/enum.SettingField.html
+[SettingControl]: https://docs.rs/gpui-component/latest/gpui_component/setting/enum.SettingControl.html
 [SettingFieldElement]: https://docs.rs/gpui-component/latest/gpui_component/setting/trait.SettingFieldElement.html
 [NumberFieldOptions]: https://docs.rs/gpui-component/latest/gpui_component/setting/struct.NumberFieldOptions.html
 [GroupBox]: ./group-box.md

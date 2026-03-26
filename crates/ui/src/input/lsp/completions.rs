@@ -8,6 +8,7 @@ use lsp_types::{
 use ropey::Rope;
 use std::{cell::RefCell, ops::Range, rc::Rc, time::Duration};
 
+use crate::input::lsp::{log_dropped_ui_target, log_provider_failure};
 use crate::input::{
     InputState,
     popovers::{CompletionMenu, ContextMenu},
@@ -172,15 +173,18 @@ impl InputState {
             provider.completions(&self.text, new_offset, completion_context, window, cx);
         self._context_menu_task = cx.spawn_in(window, async move |editor, cx| {
             let mut completions: Vec<CompletionItem> = vec![];
-            if let Some(provider_responses) = provider_responses.await.ok() {
-                match provider_responses {
+            match provider_responses.await {
+                Ok(provider_responses) => match provider_responses {
                     CompletionResponse::Array(items) => completions.extend(items),
                     CompletionResponse::List(list) => completions.extend(list.items),
+                },
+                Err(err) => {
+                    log_provider_failure("completions", &err);
                 }
             }
 
             if completions.is_empty() {
-                _ = menu.update(cx, |menu, cx| {
+                menu.update(cx, |menu, cx| {
                     menu.hide(cx);
                     cx.notify();
                 });
@@ -188,19 +192,22 @@ impl InputState {
                 return Ok(());
             }
 
-            editor
+            if editor
                 .update_in(cx, |editor, window, cx| {
                     if !editor.focus_handle.is_focused(window) {
                         return;
                     }
 
-                    _ = menu.update(cx, |menu, cx| {
+                    menu.update(cx, |menu, cx| {
                         menu.show(new_offset, completions, window, cx);
                     });
 
                     cx.notify();
                 })
-                .ok();
+                .is_err()
+            {
+                log_dropped_ui_target("update editor with completions");
+            }
 
             Ok(())
         });
@@ -251,27 +258,40 @@ impl InputState {
                 return Ok(InlineCompletionResponse::Array(vec![]));
             };
 
-            let response = task.await?;
-
-            editor.update_in(cx, |editor, _window, cx| {
-                // Only apply if cursor still hasn't moved
-                if editor.cursor() != offset {
-                    return;
+            let response = match task.await {
+                Ok(response) => response,
+                Err(err) => {
+                    log_provider_failure("inline completion", &err);
+                    return Ok(InlineCompletionResponse::Array(vec![]));
                 }
+            };
 
-                // Don't show if completion menu opened while we were fetching
-                if editor.is_context_menu_open(cx) {
-                    return;
-                }
+            if editor
+                .update_in(cx, |editor, _window, cx| {
+                    // Only apply if cursor still hasn't moved
+                    if editor.cursor() != offset {
+                        return;
+                    }
 
-                if let Some(item) = match response.clone() {
-                    InlineCompletionResponse::Array(items) => items.into_iter().next(),
-                    InlineCompletionResponse::List(comp_list) => comp_list.items.into_iter().next(),
-                } {
-                    editor.inline_completion.item = Some(item);
-                    cx.notify();
-                }
-            })?;
+                    // Don't show if completion menu opened while we were fetching
+                    if editor.is_context_menu_open(cx) {
+                        return;
+                    }
+
+                    if let Some(item) = match response.clone() {
+                        InlineCompletionResponse::Array(items) => items.into_iter().next(),
+                        InlineCompletionResponse::List(comp_list) => {
+                            comp_list.items.into_iter().next()
+                        }
+                    } {
+                        editor.inline_completion.item = Some(item);
+                        cx.notify();
+                    }
+                })
+                .is_err()
+            {
+                log_dropped_ui_target("apply inline completion");
+            }
 
             Ok(response)
         });

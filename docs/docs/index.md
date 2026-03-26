@@ -82,9 +82,9 @@ fn main() {
 
 ## Community & Support
 
-- [GitHub Repository](https://github.com/longbridge/gpui-component)
-- [Issue Tracker](https://github.com/longbridge/gpui-component/issues)
-- [Contributing Guide](https://github.com/longbridge/gpui-component/blob/main/CONTRIBUTING.md)
+- [GitHub Repository](https://github.com/BumpyClock/gpui-component)
+- [Issue Tracker](https://github.com/BumpyClock/gpui-component/issues)
+- [Contributing Guide](https://github.com/BumpyClock/gpui-component/blob/main/CONTRIBUTING.md)
 
 ## License
 

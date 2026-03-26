@@ -1,12 +1,13 @@
 use anyhow::{Context as _, Result};
 use gpui::*;
 use gpui_component::{
-    ActiveTheme, Root, Sizable, TitleBar,
+    ActiveTheme, Root, Sizable, TitleBar, WindowExt as _,
     dock::{
         DockArea, DockAreaState, DockEvent, DockItem, Panel, PanelEvent, PanelInfo, PanelRegistry,
         PanelState, PanelView, register_panel,
     },
     input::{Input, InputState},
+    notification::Notification,
     scroll::ScrollbarShow,
 };
 use gpui_component_assets::Assets;
@@ -154,6 +155,8 @@ struct DockAreaTab {
     version: usize,
 }
 
+struct TilesLayoutResetNotification;
+
 impl StoryTiles {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let dock_area = cx.new(|cx| {
@@ -262,35 +265,28 @@ impl StoryTiles {
         let fname = "target/tiles.json";
         let json = std::fs::read_to_string(fname)?;
         let state = serde_json::from_str::<DockAreaState>(&json)?;
+        let weak_dock_area = dock_area.downgrade();
 
-        // Check if the saved layout version is different from the current version
-        // Notify the user and ask if they want to reset the layout to default.
-        if state.version != Some(TILES_DOCK_AREA.version) {
-            let answer = window.prompt(
-                PromptLevel::Info,
-                "The default tiles layout has been updated.\n\
-                Do you want to reset the layout to default?",
-                None,
-                &["Yes", "No"],
-                cx,
-            );
-
-            let weak_dock_area = dock_area.downgrade();
-            cx.spawn_in(window, async move |this, window| {
-                if answer.await == Ok(0) {
-                    _ = this.update_in(window, |_, window, cx| {
-                        Self::reset_default_layout(weak_dock_area, window, cx);
-                    });
-                }
-            })
-            .detach();
+        match dock_area.update(cx, |dock_area, cx| dock_area.load(state, window, cx)) {
+            Ok(()) => {
+                dock_area.update(cx, |dock_area, cx| {
+                    Self::set_scrollbar_show(dock_area, cx);
+                });
+                Ok(())
+            }
+            Err(gpui_component::dock::DockLoadError::IncompatibleVersion { .. }) => {
+                Self::reset_default_layout(weak_dock_area, window, cx);
+                window.push_notification(
+                    Notification::warning(
+                        "Saved tiles layout was reset because it is incompatible with this version.",
+                    )
+                    .id::<TilesLayoutResetNotification>(),
+                    cx,
+                );
+                Ok(())
+            }
+            Err(err) => Err(anyhow::Error::new(err).context("load layout")),
         }
-
-        dock_area.update(cx, |dock_area, cx| {
-            dock_area.load(state, window, cx).context("load layout")?;
-            Self::set_scrollbar_show(dock_area, cx);
-            Ok::<(), anyhow::Error>(())
-        })
     }
 
     fn reset_default_layout(

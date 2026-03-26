@@ -5,8 +5,6 @@ mod stack_panel;
 mod state;
 mod tab_panel;
 mod tiles;
-
-use anyhow::Result;
 use gpui::{
     AnyElement, AnyView, App, AppContext, Axis, Bounds, Context, Edges, Entity, EntityId,
     EventEmitter, InteractiveElement as _, IntoElement, ParentElement as _, Pixels, Render,
@@ -924,23 +922,36 @@ impl DockArea {
         state: DockAreaState,
         window: &mut Window,
         cx: &mut Context<Self>,
-    ) -> Result<()> {
-        self.version = state.version;
+    ) -> std::result::Result<(), DockLoadError> {
+        state.validate_for_load(self.version, cx)?;
+
+        let DockAreaState {
+            version,
+            center,
+            left_dock,
+            right_dock,
+            bottom_dock,
+        } = state;
         let weak_self = cx.entity().downgrade();
 
-        if let Some(left_dock_state) = state.left_dock {
-            self.left_dock = Some(left_dock_state.to_dock(weak_self.clone(), window, cx));
+        self.version = version;
+        self.left_dock = None;
+        self.right_dock = None;
+        self.bottom_dock = None;
+
+        if let Some(left_dock_state) = left_dock {
+            self.left_dock = Some(left_dock_state.to_dock(weak_self.clone(), window, cx)?);
         }
 
-        if let Some(right_dock_state) = state.right_dock {
-            self.right_dock = Some(right_dock_state.to_dock(weak_self.clone(), window, cx));
+        if let Some(right_dock_state) = right_dock {
+            self.right_dock = Some(right_dock_state.to_dock(weak_self.clone(), window, cx)?);
         }
 
-        if let Some(bottom_dock_state) = state.bottom_dock {
-            self.bottom_dock = Some(bottom_dock_state.to_dock(weak_self.clone(), window, cx));
+        if let Some(bottom_dock_state) = bottom_dock {
+            self.bottom_dock = Some(bottom_dock_state.to_dock(weak_self.clone(), window, cx)?);
         }
 
-        self.center = state.center.to_item(weak_self, window, cx);
+        self.center = center.to_item(weak_self, window, cx)?;
         self.update_toggle_button_tab_panels(window, cx);
         Ok(())
     }

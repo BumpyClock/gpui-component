@@ -1737,7 +1737,7 @@ impl InputState {
     pub(super) fn previous_boundary(&self, offset: usize) -> usize {
         let mut offset = self.text.clip_offset(offset.saturating_sub(1), Bias::Left);
         if let Some(ch) = self.text.char_at(offset) {
-            if ch == '\r' {
+            if ch == '\n' && offset > 0 && matches!(self.text.char_at(offset - 1), Some('\r')) {
                 offset -= 1;
             }
         }
@@ -1748,7 +1748,7 @@ impl InputState {
     pub(super) fn next_boundary(&self, offset: usize) -> usize {
         let mut offset = self.text.clip_offset(offset + 1, Bias::Right);
         if let Some(ch) = self.text.char_at(offset) {
-            if ch == '\r' {
+            if ch == '\n' && offset > 0 && matches!(self.text.char_at(offset - 1), Some('\r')) {
                 offset += 1;
             }
         }
@@ -2245,5 +2245,93 @@ impl Render for InputState {
             .children(self.diagnostic_popover.clone())
             .children(self.context_menu.as_ref().map(|menu| menu.render()))
             .children(self.hover_popover.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::TestAppContext;
+
+    fn new_input_state(
+        cx: &mut TestAppContext,
+        value: &'static str,
+    ) -> (gpui::WindowHandle<InputState>, gpui::VisualTestContext) {
+        let window = cx.update(|cx| {
+            crate::init(cx);
+            cx.open_window(Default::default(), |window, cx| {
+                cx.new(|cx| {
+                    InputState::new(window, cx)
+                        .multi_line(true)
+                        .default_value(value)
+                })
+            })
+            .unwrap()
+        });
+        let visual_cx = gpui::VisualTestContext::from_window(window.into(), cx);
+        (window, visual_cx)
+    }
+
+    #[gpui::test]
+    fn test_input_utf16_ranges_round_trip(cx: &mut TestAppContext) {
+        let (window, cx) = &mut new_input_state(cx, "a\r\n💝b");
+        let input = window.root(cx).unwrap();
+
+        input.read_with(cx, |input, _| {
+            assert_eq!(input.offset_to_utf16(7), 5);
+            assert_eq!(input.offset_from_utf16(5), 7);
+            assert_eq!(input.range_to_utf16(&(1..7)), 1..5);
+            assert_eq!(input.range_from_utf16(&(1..5)), 1..7);
+        });
+    }
+
+    #[gpui::test]
+    fn test_input_boundaries_treat_crlf_as_single_step(cx: &mut TestAppContext) {
+        let (window, cx) = &mut new_input_state(cx, "a\r\n💝b");
+        let input = window.root(cx).unwrap();
+
+        input.read_with(cx, |input, _| {
+            assert_eq!(input.next_boundary(1), 3);
+            assert_eq!(input.previous_boundary(3), 1);
+        });
+    }
+
+    #[gpui::test]
+    fn test_input_undo_redo_restores_multibyte_replacement(cx: &mut TestAppContext) {
+        let (window, cx) = &mut new_input_state(cx, "a\r\n💝b");
+        let input = window.root(cx).unwrap();
+
+        input.update_in(cx, |input, window, cx| {
+            input.selected_range = (3..7).into();
+            input.replace("z", window, cx);
+            assert_eq!(input.value(), "a\r\nzb");
+
+            input.undo(&Undo, window, cx);
+            assert_eq!(input.value(), "a\r\n💝b");
+
+            input.redo(&Redo, window, cx);
+            assert_eq!(input.value(), "a\r\nzb");
+        });
+    }
+
+    #[gpui::test]
+    fn test_input_select_to_flips_reversed_selection_when_crossing_anchor(cx: &mut TestAppContext) {
+        let (window, cx) = &mut new_input_state(cx, "abcd");
+        let input = window.root(cx).unwrap();
+
+        input.update_in(cx, |input, _, cx| {
+            input.selected_range = (3..3).into();
+            input.selection_reversed = true;
+
+            input.select_to(1, cx);
+            assert_eq!(input.selected_range, (1..3).into());
+            assert!(input.selection_reversed);
+            assert_eq!(input.cursor(), 1);
+
+            input.select_to(4, cx);
+            assert_eq!(input.selected_range, (3..4).into());
+            assert!(!input.selection_reversed);
+            assert_eq!(input.cursor(), 4);
+        });
     }
 }

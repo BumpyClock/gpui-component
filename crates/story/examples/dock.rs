@@ -1,10 +1,11 @@
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use gpui::*;
 use gpui_component::{
-    IconName, Root, Sizable,
+    IconName, Root, Sizable, WindowExt as _,
     button::{Button, ButtonVariants as _},
     dock::{ClosePanel, DockArea, DockAreaState, DockEvent, DockItem, DockPlacement, ToggleZoom},
     menu::DropdownMenu,
+    notification::Notification,
 };
 
 use gpui_component_assets::Assets;
@@ -61,6 +62,8 @@ struct DockAreaTab {
     id: &'static str,
     version: usize,
 }
+
+struct DockLayoutResetNotification;
 
 impl StoryWorkspace {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -217,45 +220,45 @@ impl StoryWorkspace {
     ) -> Result<()> {
         let json = std::fs::read_to_string(STATE_FILE)?;
         let state = serde_json::from_str::<DockAreaState>(&json)?;
+        let weak_dock_area = dock_area.downgrade();
 
-        // Check if the saved layout version is different from the current version
-        // Notify the user and ask if they want to reset the layout to default.
-        if state.version != Some(MAIN_DOCK_AREA.version) {
-            let answer = window.prompt(
-                PromptLevel::Info,
-                "The default main layout has been updated.\n\
-                Do you want to reset the layout to default?",
-                None,
-                &["Yes", "No"],
-                cx,
-            );
-
-            let weak_dock_area = dock_area.downgrade();
-            cx.spawn_in(window, async move |this, window| {
-                if answer.await == Ok(0) {
-                    _ = this.update_in(window, |_, window, cx| {
-                        Self::reset_default_layout(weak_dock_area, window, cx);
-                    });
-                }
-            })
-            .detach();
+        match dock_area.update(cx, |dock_area, cx| dock_area.load(state, window, cx)) {
+            Ok(()) => {
+                dock_area.update(cx, |dock_area, cx| {
+                    Self::set_dock_collapsible(dock_area, window, cx);
+                });
+                Ok(())
+            }
+            Err(gpui_component::dock::DockLoadError::IncompatibleVersion { .. }) => {
+                Self::reset_default_layout(weak_dock_area, window, cx);
+                window.push_notification(
+                    Notification::warning(
+                        "Saved dock layout was reset because it is incompatible with this version.",
+                    )
+                    .id::<DockLayoutResetNotification>(),
+                    cx,
+                );
+                Ok(())
+            }
+            Err(err) => Err(anyhow::Error::new(err).context("load layout")),
         }
+    }
 
-        dock_area.update(cx, |dock_area, cx| {
-            dock_area.load(state, window, cx).context("load layout")?;
-            dock_area.set_dock_collapsible(
-                Edges {
-                    left: true,
-                    bottom: true,
-                    right: true,
-                    ..Default::default()
-                },
-                window,
-                cx,
-            );
-
-            Ok::<(), anyhow::Error>(())
-        })
+    fn set_dock_collapsible(
+        dock_area: &mut DockArea,
+        window: &mut Window,
+        cx: &mut Context<DockArea>,
+    ) {
+        dock_area.set_dock_collapsible(
+            Edges {
+                left: true,
+                bottom: true,
+                right: true,
+                ..Default::default()
+            },
+            window,
+            cx,
+        );
     }
 
     fn reset_default_layout(dock_area: WeakEntity<DockArea>, window: &mut Window, cx: &mut App) {
@@ -326,6 +329,7 @@ impl StoryWorkspace {
             view.set_left_dock(left_panels, Some(px(350.)), true, window, cx);
             view.set_bottom_dock(bottom_panels, Some(px(200.)), true, window, cx);
             view.set_right_dock(right_panels, Some(px(320.)), true, window, cx);
+            Self::set_dock_collapsible(view, window, cx);
 
             Self::save_state(&view.dump(cx)).unwrap();
         });

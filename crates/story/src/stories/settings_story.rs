@@ -10,7 +10,7 @@ use gpui_component::{
     h_flex,
     label::Label,
     setting::{
-        NumberFieldOptions, RenderOptions, SettingField, SettingFieldElement, SettingGroup,
+        NumberFieldOptions, RenderOptions, SettingControl, SettingFieldElement, SettingGroup,
         SettingItem, SettingPage, Settings,
     },
     text::markdown,
@@ -133,7 +133,7 @@ impl SettingsStory {
                     SettingGroup::new().title("Appearance").items(vec![
                         SettingItem::new(
                             "Color Theme",
-                            SettingField::dropdown(
+                            SettingControl::dropdown(
                                 {
                                     let sets = ThemeRegistry::global(cx).sorted_theme_sets();
                                     sets.iter()
@@ -155,7 +155,7 @@ impl SettingsStory {
                         .description("Select the color theme for the application."),
                         SettingItem::new(
                             "Mode",
-                            SettingField::dropdown(
+                            SettingControl::dropdown(
                                 vec![
                                     ("system".into(), "System".into()),
                                     ("light".into(), "Light".into()),
@@ -189,7 +189,7 @@ impl SettingsStory {
                         .description("Choose System to follow OS appearance, or force Light/Dark."),
                         SettingItem::new(
                             "resettable",
-                            SettingField::switch(
+                            SettingControl::switch(
                                 |cx: &App| AppSettings::global(cx).resettable,
                                 |checked: bool, cx: &mut App| {
                                     AppSettings::global_mut(cx).resettable = checked
@@ -199,7 +199,7 @@ impl SettingsStory {
                         .description("Enable/Disable reset button for settings."),
                         SettingItem::new(
                             "Group Variant",
-                            SettingField::dropdown(
+                            SettingControl::dropdown(
                                 vec![
                                     (GroupBoxVariant::Normal.as_str().into(), "Normal".into()),
                                     (GroupBoxVariant::Outline.as_str().into(), "Outline".into()),
@@ -229,7 +229,7 @@ impl SettingsStory {
                         .description("Select the variant for setting groups."),
                         SettingItem::new(
                             "Group Size",
-                            SettingField::dropdown(
+                            SettingControl::dropdown(
                                 vec![
                                     (Size::Medium.as_str().into(), "Medium".into()),
                                     (Size::Small.as_str().into(), "Small".into()),
@@ -259,7 +259,7 @@ impl SettingsStory {
                         .item(
                             SettingItem::new(
                                 "Font Family",
-                                SettingField::dropdown(
+                                SettingControl::dropdown(
                                     vec![
                                         ("Arial".into(), "Arial".into()),
                                         ("Helvetica".into(), "Helvetica".into()),
@@ -278,7 +278,7 @@ impl SettingsStory {
                         .item(
                             SettingItem::new(
                                 "Font Size",
-                                SettingField::number_input(
+                                SettingControl::number_input(
                                     NumberFieldOptions {
                                         min: 8.0,
                                         max: 72.0,
@@ -298,7 +298,7 @@ impl SettingsStory {
                         .item(
                             SettingItem::new(
                                 "Line Height",
-                                SettingField::number_input(
+                                SettingControl::number_input(
                                     NumberFieldOptions {
                                         min: 8.0,
                                         max: 32.0,
@@ -331,7 +331,7 @@ impl SettingsStory {
                                         .with_size(options.size)
                                         .on_click(|_, _, cx| {
                                             cx.open_url(
-                                                "https://github.com/longbridge/gpui-component",
+                                                "https://github.com/BumpyClock/gpui-component",
                                             );
                                         }),
                                 )
@@ -339,7 +339,7 @@ impl SettingsStory {
                         }),
                         SettingItem::new(
                             "CLI Path",
-                            SettingField::input(
+                            SettingControl::input(
                                 |cx: &App| AppSettings::global(cx).cli_path.clone(),
                                 |val: SharedString, cx: &mut App| {
                                     println!("cli-path set value: {}", val);
@@ -361,7 +361,7 @@ impl SettingsStory {
                 .groups(vec![SettingGroup::new().title("Updates").items(vec![
                     SettingItem::new(
                         "Enable Notifications",
-                        SettingField::switch(
+                        SettingControl::switch(
                             |cx: &App| AppSettings::global(cx).notifications_enabled,
                             |val: bool, cx: &mut App| {
                                 AppSettings::global_mut(cx).notifications_enabled = val;
@@ -372,7 +372,7 @@ impl SettingsStory {
                     .description("Receive notifications about updates and news."),
                     SettingItem::new(
                         "Auto Update",
-                        SettingField::switch(
+                        SettingControl::switch(
                             |cx: &App| AppSettings::global(cx).auto_update,
                             |val: bool, cx: &mut App| {
                                 AppSettings::global_mut(cx).auto_update = val;
@@ -407,15 +407,15 @@ impl SettingsStory {
                 .group(SettingGroup::new().title("Links").items(vec![
                         SettingItem::new(
                             "GitHub Repository",
-                            SettingField::element(OpenURLSettingField::new(
+                            SettingControl::element(OpenURLSettingField::new(
                                 "Repository...",
-                                "https://github.com/longbridge/gpui-component",
+                                "https://github.com/BumpyClock/gpui-component",
                             )),
                         )
                         .description("Open the GitHub repository in your default browser."),
                         SettingItem::new(
                             "Documentation",
-                            SettingField::element(OpenURLSettingField::new(
+                            SettingControl::element(OpenURLSettingField::new(
                                 "Rust Docs...",
                                 "https://docs.rs/gpui-component"
                             )),
@@ -425,13 +425,13 @@ impl SettingsStory {
                         )),
                         SettingItem::new(
                             "Website",
-                            SettingField::render(|options, _window, _cx| {
+                            SettingControl::render(|options, _window, _cx| {
                                 Button::new("open-url")
                                     .outline()
                                     .label("Website...")
                                     .with_size(options.size)
                                     .on_click(|_, _window, cx| {
-                                        cx.open_url("https://longbridge.github.io/gpui-component/");
+                                        cx.open_url("https://bumpyclock.github.io/gpui-component/");
                                     })
                             }),
                         )
