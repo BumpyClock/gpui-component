@@ -8,3 +8,5 @@ index.scip
 node_modules/
 .ai_agents/
 .tasque/specs
+.codex/session-context
+.codex/subagent-summaries
