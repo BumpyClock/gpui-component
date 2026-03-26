@@ -20,7 +20,7 @@ pub enum SettingItem {
         title: SharedString,
         description: Option<Text>,
         layout: Axis,
-        field: SettingControl,
+        field: Box<SettingControl>,
     },
     /// A full custom element to render.
     Element {
@@ -38,7 +38,7 @@ impl SettingItem {
             title: title.into(),
             description: None,
             layout: Axis::Horizontal,
-            field: field.into(),
+            field: Box::new(field.into()),
         }
     }
 
