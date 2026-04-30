@@ -1,6 +1,7 @@
 ---
 title: Avatar
 description: Displays a user avatar image with fallback options.
+summary: "Displays a user avatar image with fallback options."
 ---
 
 # Avatar

@@ -1,6 +1,7 @@
 ---
 title: Spinner
-description: Displays an animated loading showing the completion progress of a task.
+description: Displays a loading indicator showing the completion progress of a task.
+summary: "Loading indicator for task progress."
 ---
 
 # Spinner

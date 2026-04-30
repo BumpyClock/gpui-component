@@ -1,6 +1,7 @@
 ---
 title: Calendar
 description: A flexible calendar component for displaying months, navigating dates, and selecting single dates or date ranges.
+summary: "A flexible calendar component for displaying months, navigating dates, and selecting single dates or date ranges."
 ---
 
 # Calendar

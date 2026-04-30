@@ -1,6 +1,7 @@
 ---
 title: Kbd
 description: Displays keyboard shortcuts with platform-specific formatting.
+summary: "Displays keyboard shortcuts with platform-specific formatting."
 ---
 
 # Kbd

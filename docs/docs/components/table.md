@@ -1,6 +1,7 @@
 ---
 title: Table
 description: High-performance data table with virtual scrolling, sorting, filtering, and column management.
+summary: "High-performance data table with virtual scrolling, sorting, filtering, and column management."
 ---
 
 # Table

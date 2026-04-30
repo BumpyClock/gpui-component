@@ -1,6 +1,7 @@
 ---
 title: DropdownButton
 description: A DropdownButton is a combination of a button and a trigger button. It allows us to display a dropdown menu when the trigger is clicked, but the left Button can still respond to independent events.
+summary: "A DropdownButton is a combination of a button and a trigger button. It allows us to display a dropdown menu when the trigger is clicked, but the left Button can still respond to independent events."
 ---
 
 # DropdownButton

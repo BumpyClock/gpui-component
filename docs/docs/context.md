@@ -1,6 +1,7 @@
 ---
 title: Context
 description: Learn about the Window and Context in GPUI.
+summary: "Learn about the Window and Context in GPUI."
 order: -4
 ---
 

@@ -1,3 +1,8 @@
+---
+title: "Theme Motion Search Notes"
+summary: "Notes on ThemeMotion tokens, default easing values, and components that consume motion helpers."
+read_when: "changing theme motion tokens, animation helpers, or component motion docs"
+---
 # Theme Motion Search Notes
 
 Date: 2026-02-10

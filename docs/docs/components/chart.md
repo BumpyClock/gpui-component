@@ -1,6 +1,7 @@
 ---
 title: Chart
 description: Beautiful charts and graphs for data visualization including line, bar, area, pie, and candlestick charts.
+summary: "Beautiful charts and graphs for data visualization including line, bar, area, pie, and candlestick charts."
 ---
 
 # Chart

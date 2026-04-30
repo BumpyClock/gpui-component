@@ -1,6 +1,7 @@
 ---
 title: Dialog
-description: A dialog dialog for displaying content in a layer above the app.
+description: A dialog component for displaying content in a layer above the app.
+summary: "Layered app dialog component."
 ---
 
 # Dialog

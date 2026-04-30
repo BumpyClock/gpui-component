@@ -1,6 +1,7 @@
 ---
 title: Introduction
 description: Rust GUI components for building fantastic cross-platform desktop application by using GPUI.
+summary: "Rust GUI components for building fantastic cross-platform desktop application by using GPUI."
 ---
 
 # GPUI Component Introduction

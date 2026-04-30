@@ -1,6 +1,9 @@
+---
+title: "Asset Source Composition"
+summary: "Notes on composing app assets with bundled GPUI Component assets without path compatibility aliases."
+read_when: "changing asset packaging, adding bundled component assets, or updating downstream setup docs"
+---
 # Asset Source Composition
-
-read_when: changing asset packaging, adding bundled component assets, or updating downstream setup docs
 
 - `gpui-component-assets` owns bundled component assets beyond icons, including `surface/NoiseAsset_256.png`.
 - Downstream apps with custom assets should compose their `AssetSource` with `gpui_component_assets::Assets` instead of replacing it.

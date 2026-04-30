@@ -1,6 +1,7 @@
 ---
 title: Slider
 description: A control that allows the user to select values from a range using a draggable thumb.
+summary: "A control that allows the user to select values from a range using a draggable thumb."
 ---
 
 # Slider

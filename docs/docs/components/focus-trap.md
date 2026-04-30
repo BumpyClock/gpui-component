@@ -1,6 +1,7 @@
 ---
 title: Focus Trap
 description: A utility element that traps keyboard focus within a container, preventing Tab navigation from escaping.
+summary: "A utility element that traps keyboard focus within a container, preventing Tab navigation from escaping."
 ---
 
 # Focus Trap

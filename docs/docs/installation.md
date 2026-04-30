@@ -1,5 +1,6 @@
 ---
 title: Installation
+summary: "How to install gpui-component and configure project dependencies."
 order: -1
 ---
 

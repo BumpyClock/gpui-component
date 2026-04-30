@@ -1,4 +1,6 @@
 ---
+title: "Home"
+summary: "Project home page for GPUI Component with install guidance and component highlights."
 layout: home
 ---
 

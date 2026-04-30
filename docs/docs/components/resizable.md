@@ -1,6 +1,7 @@
 ---
 title: Resizable
 description: A flexible panel layout system with draggable resize handles and adjustable panels.
+summary: "A flexible panel layout system with draggable resize handles and adjustable panels."
 ---
 
 # Resizable

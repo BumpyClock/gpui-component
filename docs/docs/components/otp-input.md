@@ -1,6 +1,7 @@
 ---
 title: OtpInput
 description: One-time password input component with multiple fields, auto-focus, and paste handling.
+summary: "One-time password input component with multiple fields, auto-focus, and paste handling."
 ---
 
 # OtpInput

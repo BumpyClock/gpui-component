@@ -1,3 +1,8 @@
+---
+title: "Menu and Popover Animation Notes"
+summary: "Notes on popover, popup menu, submenu, and sidebar flyout animation constraints."
+read_when: "changing popover, menu, submenu, dropdown cleanup, or collapsed sidebar flyout animation"
+---
 # Menu and Popover Animation Notes
 
 Date: 2026-02-10

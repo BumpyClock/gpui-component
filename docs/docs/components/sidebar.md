@@ -1,6 +1,7 @@
 ---
 title: Sidebar
 description: A composable, themeable and customizable sidebar component for navigation and content organization.
+summary: "A composable, themeable and customizable sidebar component for navigation and content organization."
 ---
 
 # Sidebar

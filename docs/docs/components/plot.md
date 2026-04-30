@@ -1,6 +1,7 @@
 ---
 title: Plot
 description: A low-level plotting library for creating custom charts and data visualizations.
+summary: "A low-level plotting library for creating custom charts and data visualizations."
 ---
 
 # Plot

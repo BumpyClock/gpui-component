@@ -1,6 +1,7 @@
 ---
 title: Accordion
 description: Collapsible content panels with animated expand/collapse transitions.
+summary: "Collapsible content panels with animated expand/collapse transitions."
 ---
 
 # Accordion

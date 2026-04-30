@@ -1,6 +1,7 @@
 ---
 title: Pagination
 description: Pagination with page navigation, next and previous links.
+summary: "Pagination with page navigation, next and previous links."
 ---
 
 # Pagination

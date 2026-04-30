@@ -1,6 +1,7 @@
 ---
 title: Menu
 description: Context menus and popup menus with support for icons, shortcuts, submenus, and various menu item types.
+summary: "Context menus and popup menus with support for icons, shortcuts, submenus, and various menu item types."
 ---
 
 # PopupMenu

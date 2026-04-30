@@ -1,3 +1,8 @@
+---
+title: "Command Palette Animation Notes"
+summary: "Notes on command palette staged open animation, shortcut alignment, and nested entity update crashes."
+read_when: "changing command palette animation, dialog animation toggles, or shortcut row layout"
+---
 # Command Palette Animation Notes
 
 Date: 2026-02-10

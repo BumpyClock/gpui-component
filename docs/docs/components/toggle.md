@@ -1,6 +1,7 @@
 ---
 title: Toggle
 description: A button-style toggle component for binary on/off or selected states.
+summary: "A button-style toggle component for binary on/off or selected states."
 ---
 
 # Toggle

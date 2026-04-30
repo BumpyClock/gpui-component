@@ -1,6 +1,7 @@
 ---
 title: Settings
 description: A settings UI with grouped setting items and pages.
+summary: "Grouped settings pages and controls."
 ---
 
 # Settings

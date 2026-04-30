@@ -1,6 +1,7 @@
 ---
 title: HoverCard
 description: A floating overlay that displays rich content when hovering over a trigger element.
+summary: "A floating overlay that displays rich content when hovering over a trigger element."
 ---
 
 # HoverCard

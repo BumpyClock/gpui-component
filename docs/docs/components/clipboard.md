@@ -1,6 +1,7 @@
 ---
 title: Clipboard
 description: A button component that helps you copy text or other content to your clipboard.
+summary: "A button component that helps you copy text or other content to your clipboard."
 ---
 
 # Clipboard

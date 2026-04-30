@@ -1,4 +1,6 @@
 ---
+title: "Root View"
+summary: "How Root wraps each GPUI window and enables sheets, dialogs, notifications, and keyboard navigation."
 order: -7
 ---
 

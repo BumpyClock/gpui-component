@@ -1,5 +1,6 @@
 ---
 title: Components
+summary: "Index of available GPUI Component UI components."
 order: 2
 collapsed: false
 ---

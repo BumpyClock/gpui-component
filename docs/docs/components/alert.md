@@ -1,6 +1,7 @@
 ---
 title: Alert
 description: Displays a callout for user attention.
+summary: "Displays a callout for user attention."
 ---
 
 # Alert

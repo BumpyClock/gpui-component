@@ -1,6 +1,7 @@
 ---
 title: Icon
 description: Display SVG icons with various sizes, colors, and transformations.
+summary: "Display SVG icons with various sizes, colors, and transformations."
 ---
 
 # Icon

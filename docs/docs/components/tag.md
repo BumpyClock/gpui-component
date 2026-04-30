@@ -1,6 +1,7 @@
 ---
 title: Tag
 description: A short item that can be used to categorize or label content.
+summary: "A short item that can be used to categorize or label content."
 ---
 
 # Tag

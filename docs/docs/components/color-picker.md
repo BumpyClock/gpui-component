@@ -1,6 +1,7 @@
 ---
 title: ColorPicker
 description: A comprehensive color selection interface with support for multiple color formats, presets, and alpha channel.
+summary: "A comprehensive color selection interface with support for multiple color formats, presets, and alpha channel."
 ---
 
 # ColorPicker

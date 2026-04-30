@@ -1,6 +1,7 @@
 ---
 title: Getting Started
 description: Learn how to set up and use GPUI Component in your project
+summary: "Learn how to set up and use GPUI Component in your project"
 order: -2
 ---
 

@@ -1,6 +1,7 @@
 ---
 title: Tooltip
 description: Display helpful information on hover or focus, with support for keyboard shortcuts and custom content.
+summary: "Display helpful information on hover or focus, with support for keyboard shortcuts and custom content."
 ---
 
 # Tooltip
