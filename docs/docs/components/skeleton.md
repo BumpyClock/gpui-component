@@ -1,6 +1,7 @@
 ---
 title: Skeleton
 description: Use to show a placeholder while content is loading.
+summary: "Use to show a placeholder while content is loading."
 ---
 
 # Skeleton

@@ -1,6 +1,7 @@
 ---
 title: Collapsible
 description: An interactive element which expands/collapses.
+summary: "An interactive element which expands/collapses."
 ---
 
 # Collapsible

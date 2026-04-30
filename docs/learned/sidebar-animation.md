@@ -1,3 +1,8 @@
+---
+title: "Sidebar Animation Notes"
+summary: "Notes on sidebar width animation, submenu open and close animation, and reduced-motion handling."
+read_when: "changing sidebar collapse, submenu animation, or reduced-motion behavior"
+---
 # Sidebar Animation Notes
 
 Date: 2026-02-10

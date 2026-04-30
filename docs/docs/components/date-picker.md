@@ -1,6 +1,7 @@
 ---
 title: DatePicker
 description: A date picker component for selecting single dates or date ranges with calendar interface.
+summary: "A date picker component for selecting single dates or date ranges with calendar interface."
 ---
 
 # DatePicker

@@ -1,6 +1,7 @@
 ---
 title: Stepper
 description: A step-by-step progress for users to navigate through a series of steps or stages.
+summary: "A step-by-step progress for users to navigate through a series of steps or stages."
 ---
 
 # Stepper

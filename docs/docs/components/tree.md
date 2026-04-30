@@ -1,6 +1,7 @@
 ---
 title: Tree
 description: A hierarchical tree view component for displaying and navigating tree-structured data.
+summary: "A hierarchical tree view component for displaying and navigating tree-structured data."
 ---
 
 # Tree

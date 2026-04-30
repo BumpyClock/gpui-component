@@ -1,6 +1,7 @@
 ---
 title: Label
 description: Text labels for form elements with highlighting and styling options.
+summary: "Styled labels for form elements."
 ---
 
 # Label

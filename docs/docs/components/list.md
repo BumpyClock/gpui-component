@@ -1,6 +1,7 @@
 ---
 title: List
 description: A flexible list component that displays a series of items with support for sections, search, selection, and infinite scrolling.
+summary: "A flexible list component that displays a series of items with support for sections, search, selection, and infinite scrolling."
 ---
 
 # List

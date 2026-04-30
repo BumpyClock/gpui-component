@@ -1,6 +1,7 @@
 ---
 title: Image
 description: A flexible image display component with loading states, fallbacks, and responsive sizing options.
+summary: "A flexible image display component with loading states, fallbacks, and responsive sizing options."
 ---
 
 # Image

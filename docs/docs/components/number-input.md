@@ -1,6 +1,7 @@
 ---
 title: NumberInput
 description: Number input component with increment/decrement controls and numeric formatting.
+summary: "Numeric field with stepper controls."
 ---
 
 # NumberInput

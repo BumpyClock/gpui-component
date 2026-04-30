@@ -1,6 +1,7 @@
 ---
 title: Form
 description: Flexible form container with support for field layout, validation, and multi-column layouts.
+summary: "Flexible form container with support for field layout, validation, and multi-column layouts."
 ---
 
 # Form

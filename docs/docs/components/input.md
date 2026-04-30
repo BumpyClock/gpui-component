@@ -1,6 +1,7 @@
 ---
 title: Input
 description: Text input component with validation, masking, and various features.
+summary: "Text input component with validation, masking, and various features."
 ---
 
 # Input

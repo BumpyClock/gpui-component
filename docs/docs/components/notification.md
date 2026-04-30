@@ -1,6 +1,7 @@
 ---
 title: Notification
 description: Display toast notifications that appear at the top right of the window with auto-dismiss functionality.
+summary: "Display toast notifications that appear at the top right of the window with auto-dismiss functionality."
 ---
 
 # Notification

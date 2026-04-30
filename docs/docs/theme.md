@@ -1,4 +1,6 @@
 ---
+title: "Theme"
+summary: "How to use GPUI Component theme colors, theme registry, and runtime theme switching."
 order: -4
 ---
 

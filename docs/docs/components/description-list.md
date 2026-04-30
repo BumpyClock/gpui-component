@@ -1,6 +1,7 @@
 ---
 title: DescriptionList
 description: Use to display details with a tidy layout for key-value pairs.
+summary: "Use to display details with a tidy layout for key-value pairs."
 ---
 
 # DescriptionList

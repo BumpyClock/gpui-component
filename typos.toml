@@ -3,6 +3,7 @@ ignore-files = true
 ignore-hidden = false
 extend-exclude = [
     ".git/",
+    "vendor/gpui/",
     # Fixtures may contain intentional test data
     "**/fixtures/*",
 ]

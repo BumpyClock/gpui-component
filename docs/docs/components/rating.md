@@ -1,6 +1,7 @@
 ---
 title: Rating
 description: A simple interactive star rating component.
+summary: "A simple interactive star rating component."
 ---
 
 # Rating

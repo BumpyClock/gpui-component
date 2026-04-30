@@ -1,6 +1,7 @@
 ---
 title: VirtualList
 description: High-performance virtualized list component for rendering large datasets with variable item sizes.
+summary: "Virtualized list for large datasets."
 ---
 
 # VirtualList

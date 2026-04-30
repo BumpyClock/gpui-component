@@ -1,6 +1,7 @@
 ---
 title: Scrollable
 description: Scrollable container with custom scrollbars, scroll tracking, and virtualization support.
+summary: "Scrollable container with custom scrollbars, scroll tracking, and virtualization support."
 ---
 
 # Scrollable

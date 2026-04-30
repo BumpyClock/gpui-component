@@ -1,6 +1,7 @@
 ---
 title: Tabs
 description: A set of layered sections of content—known as tab panels—that are displayed one at a time.
+summary: "Layered tab panels, one visible at a time."
 ---
 
 # Tabs

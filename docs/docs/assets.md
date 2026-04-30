@@ -1,5 +1,6 @@
 ---
 title: Icons & Assets
+summary: "How to register GPUI Component bundled assets and compose custom app asset sources."
 order: -4
 ---
 

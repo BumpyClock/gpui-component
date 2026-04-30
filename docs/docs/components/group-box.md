@@ -1,6 +1,7 @@
 ---
 title: GroupBox
 description: A styled container element with an optional title to group related content together.
+summary: "Styled container with optional title."
 ---
 
 # GroupBox

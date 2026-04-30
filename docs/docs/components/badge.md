@@ -1,6 +1,7 @@
 ---
 title: Badge
 description: A red dot that indicates the number of unread messages, status, or other notifications.
+summary: "A red dot that indicates the number of unread messages, status, or other notifications."
 ---
 
 # Badge

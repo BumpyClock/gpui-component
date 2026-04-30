@@ -1,6 +1,7 @@
 ---
 title: Button
 description: Displays a button or a component that looks like a button.
+summary: "Displays a button or a component that looks like a button."
 ---
 
 # Button

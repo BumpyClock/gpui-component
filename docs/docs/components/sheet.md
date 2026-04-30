@@ -1,6 +1,7 @@
 ---
 title: Sheet
 description: A sliding panel that appears from the edges of the screen for displaying content.
+summary: "A sliding panel that appears from the edges of the screen for displaying content."
 ---
 
 # Sheet

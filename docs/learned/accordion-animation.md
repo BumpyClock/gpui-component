@@ -1,3 +1,8 @@
+---
+title: "Accordion Animation Notes"
+summary: "Notes on accordion enter and exit animation patterns using keyed presence and theme motion tokens."
+read_when: "changing accordion animation, keyed presence, or size reveal behavior"
+---
 # Accordion Animation Notes
 
 Date: 2026-02-10

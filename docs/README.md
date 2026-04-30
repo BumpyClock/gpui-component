@@ -1,3 +1,7 @@
+---
+title: "GPUI Component Docs"
+summary: "Docs site setup notes for installing dependencies and running the VitePress dev server."
+---
 # gpui-component-docs
 
 To install dependencies:

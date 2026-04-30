@@ -1,6 +1,7 @@
 ---
 title: Popover
 description: A floating overlay that displays rich content relative to a trigger element.
+summary: "A floating overlay that displays rich content relative to a trigger element."
 ---
 
 # Popover

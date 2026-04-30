@@ -1,6 +1,7 @@
 ---
 title: Editor
 description: Multi-line text input component with auto-resize, validation, and advanced editing features.
+summary: "Multi-line text input component with auto-resize, validation, and advanced editing features."
 ---
 
 # Editor

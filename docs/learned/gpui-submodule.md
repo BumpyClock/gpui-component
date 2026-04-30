@@ -1,3 +1,8 @@
+---
+title: "GPUI Submodule Workflow"
+summary: "Notes on keeping the GPUI submodule and workspace git dependency revision in sync."
+read_when: "updating GPUI, touching vendor/gpui, or changing workspace GPUI dependency pins"
+---
 # GPUI Submodule Workflow
 
 Date: 2026-02-10

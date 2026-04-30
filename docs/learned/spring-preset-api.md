@@ -1,3 +1,8 @@
+---
+title: "Spring Preset API"
+summary: "Notes on tokenized spring preset helpers and when spring motion is safe for transform-only animation."
+read_when: "changing animation helpers, spring presets, or theme motion token usage"
+---
 # Spring Preset API
 
 Date: 2026-02-11
