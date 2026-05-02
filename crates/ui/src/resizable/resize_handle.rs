@@ -110,6 +110,7 @@ impl<T: 'static, E: 'static + Render> Element for ResizeHandle<T, E> {
             } else {
                 cx.theme().border
             };
+            let hover_color = cx.theme().drag_border;
 
             let mut el = div()
                 .id(self.id.clone())
@@ -155,7 +156,7 @@ impl<T: 'static, E: 'static + Render> Element for ResizeHandle<T, E> {
                 .child(
                     div()
                         .bg(bg_color)
-                        .group_hover("handle", |this| this.bg(bg_color))
+                        .group_hover("handle", move |this| this.bg(hover_color))
                         .when(axis.is_horizontal(), |this| this.h_full().w(HANDLE_SIZE))
                         .when(axis.is_vertical(), |this| this.w_full().h(HANDLE_SIZE)),
                 )
