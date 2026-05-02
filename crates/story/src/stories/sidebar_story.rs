@@ -486,7 +486,6 @@ impl Render for SidebarStory {
                 .child(self.render_content(window, cx)),
         );
         let on_resize = {
-            let view = view.clone();
             move |state: &gpui::Entity<gpui_component::resizable::ResizableState>, _: &mut Window, cx: &mut gpui::App| {
                 let Some(width) = state.read(cx).sizes().get(sidebar_panel_ix).copied() else {
                     return;
