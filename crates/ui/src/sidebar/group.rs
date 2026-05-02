@@ -1,8 +1,21 @@
-use crate::{ActiveTheme, Collapsible, h_flex, sidebar::SidebarItem, v_flex};
+use crate::{
+    ActiveTheme, Collapsible,
+    animation::{
+        PresenceOptions, PresencePhase, SpringPreset, expand_collapse_durations,
+        expand_collapse_layout_animation, keyed_presence,
+    },
+    global_state::GlobalState,
+    h_flex,
+    sidebar::SidebarItem,
+    v_flex,
+};
 use gpui::{
-    App, ElementId, IntoElement, ParentElement, SharedString, Styled as _, Window, div,
+    AnimationExt as _, App, ElementId, IntoElement, ParentElement, SharedString, Styled as _,
+    Window, div, px,
     prelude::FluentBuilder as _,
 };
+
+const SIDEBAR_GROUP_LABEL_HEIGHT: gpui::Pixels = px(32.0);
 
 /// A group of items in the [`super::Sidebar`].
 #[derive(Clone)]
@@ -56,19 +69,68 @@ impl<E: SidebarItem> SidebarItem for SidebarGroup<E> {
         cx: &mut App,
     ) -> impl IntoElement {
         let id = id.into();
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let motion = cx.theme().motion.clone();
+        let (open_duration, close_duration) =
+            expand_collapse_durations(&motion, reduced_motion, SpringPreset::Mild);
+        let label_presence = keyed_presence(
+            SharedString::from(format!("{}-group-label-presence", id)),
+            !self.collapsed,
+            !reduced_motion,
+            open_duration,
+            close_duration,
+            PresenceOptions::default(),
+            window,
+            cx,
+        );
 
         v_flex()
             .relative()
-            .when(!self.collapsed, |this| {
+            .when(label_presence.should_render(), |this| {
                 this.child(
-                    h_flex()
-                        .flex_shrink_0()
-                        .px_2()
-                        .rounded(cx.theme().radius)
-                        .text_xs()
-                        .text_color(cx.theme().sidebar_foreground.opacity(0.7))
-                        .h_8()
-                        .child(self.label),
+                    div()
+                        .overflow_hidden()
+                        .child(
+                            h_flex()
+                                .flex_shrink_0()
+                                .px_2()
+                                .rounded(cx.theme().radius)
+                                .text_xs()
+                                .text_color(cx.theme().sidebar_foreground.opacity(0.7))
+                                .h_8()
+                                .child(self.label),
+                        )
+                        .map(|el| {
+                            if !label_presence.transition_active() {
+                                return el.into_any_element();
+                            }
+
+                            let Some(anim) = expand_collapse_layout_animation(
+                                &motion,
+                                reduced_motion,
+                                matches!(label_presence.phase, PresencePhase::Entering),
+                            ) else {
+                                return el.into_any_element();
+                            };
+
+                            el.with_animation(
+                                SharedString::from(format!(
+                                    "{}-group-label-{}",
+                                    id,
+                                    u8::from(matches!(
+                                        label_presence.phase,
+                                        PresencePhase::Entering
+                                    ))
+                                )),
+                                anim,
+                                move |el, delta| {
+                                    let progress = label_presence.progress(delta);
+                                    el.max_h(SIDEBAR_GROUP_LABEL_HEIGHT * progress)
+                                        .opacity(progress)
+                                },
+                            )
+                            .into_any_element()
+                        }),
                 )
             })
             .child(

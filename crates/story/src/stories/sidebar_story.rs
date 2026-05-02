@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gpui::{
     Action, App, AppContext, ClickEvent, Context, Entity, Focusable, IntoElement, ParentElement,
-    Render, SharedString, Styled, Window, div, prelude::FluentBuilder, px, relative,
+    Pixels, Render, SharedString, Styled, Window, div, prelude::FluentBuilder, px, relative,
 };
 
 use gpui_component::{
@@ -12,6 +12,7 @@ use gpui_component::{
     divider::Divider,
     h_flex,
     menu::DropdownMenu,
+    resizable::{h_resizable, resizable_panel},
     sidebar::{
         Sidebar, SidebarFooter, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem,
         SidebarToggleButton,
@@ -34,6 +35,7 @@ pub struct SidebarStory {
     click_to_open_submenu: bool,
     focus_handle: gpui::FocusHandle,
     checked: bool,
+    sidebar_width: Pixels,
 }
 
 impl SidebarStory {
@@ -54,6 +56,7 @@ impl SidebarStory {
             focus_handle: cx.focus_handle(),
             checked: false,
             click_to_open_submenu: false,
+            sidebar_width: px(255.),
         }
     }
 
@@ -266,6 +269,13 @@ impl Render for SidebarStory {
         window: &mut gpui::Window,
         cx: &mut gpui::Context<Self>,
     ) -> impl gpui::IntoElement {
+        let view = cx.entity();
+        let sidebar_panel_ix = if self.side.is_right() { 1 } else { 0 };
+        let effective_sidebar_width = if self.collapsed {
+            px(48.0)
+        } else {
+            self.sidebar_width
+        };
         let groups: [Vec<Item>; 2] = [
             vec![
                 Item::Playground,
@@ -280,207 +290,231 @@ impl Render for SidebarStory {
             ],
         ];
 
+        let sidebar_panel = resizable_panel().size(effective_sidebar_width).size_range(px(240.)..px(420.)).child(
+            Sidebar::new("sidebar-story")
+                .side(self.side)
+                .collapsed(self.collapsed)
+                .width(self.sidebar_width)
+                .gap_0()
+                .header_with(|collapsed, _, cx| {
+                    SidebarHeader::new()
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(cx.theme().radius)
+                                .bg(cx.theme().success)
+                                .text_color(cx.theme().success_foreground)
+                                .size_8()
+                                .flex_shrink_0()
+                                .when(!collapsed, |this| {
+                                    this.child(Icon::new(IconName::GalleryVerticalEnd))
+                                })
+                                .when(collapsed, |this| {
+                                    this.size_4()
+                                        .bg(cx.theme().transparent)
+                                        .text_color(cx.theme().foreground)
+                                        .child(Icon::new(IconName::GalleryVerticalEnd))
+                                }),
+                        )
+                        .when(!collapsed, |this| {
+                            this.child(
+                                v_flex()
+                                    .gap_0()
+                                    .text_sm()
+                                    .flex_1()
+                                    .line_height(relative(1.25))
+                                    .overflow_hidden()
+                                    .text_ellipsis()
+                                    .child("Company Name")
+                                    .child(div().child("Enterprise").text_xs()),
+                            )
+                        })
+                        .when(!collapsed, |this| {
+                            this.child(Icon::new(IconName::ChevronsUpDown).size_4().flex_shrink_0())
+                        })
+                        .dropdown_menu(|menu, _, _| {
+                            menu.menu(
+                                "Twitter Inc.",
+                                Box::new(SelectCompany(SharedString::from("twitter"))),
+                            )
+                            .menu(
+                                "Meta Platforms",
+                                Box::new(SelectCompany(SharedString::from("meta"))),
+                            )
+                            .menu(
+                                "Google Inc.",
+                                Box::new(SelectCompany(SharedString::from("google"))),
+                            )
+                        })
+                })
+                .child(
+                    SidebarGroup::new("Platform").child(SidebarMenu::new().children(
+                        groups[0].iter().enumerate().map(|(ix, item)| {
+                            let is_active =
+                                self.last_active_item == *item && self.active_subitem == None;
+                            SidebarMenuItem::new(item.label())
+                                .icon(item.icon())
+                                .active(is_active)
+                                .default_open(ix == 0)
+                                .click_to_open(self.click_to_open_submenu)
+                                .when(ix == 0, |this| {
+                                    this.context_menu({
+                                        move |this, _, _| {
+                                            this.link(
+                                                "About",
+                                                "https://github.com/longbridge/gpui-component",
+                                            )
+                                        }
+                                    })
+                                })
+                                .children(item.items().into_iter().enumerate().map(
+                                    |(ix, sub_item)| {
+                                        SidebarMenuItem::new(sub_item.label())
+                                            .active(self.active_subitem == Some(sub_item))
+                                            .disable(sub_item.is_disabled())
+                                            .when(ix == 0, |this| {
+                                                this.suffix({
+                                                    let checked = self.checked;
+                                                    let view = cx.entity();
+                                                    move |window, _| {
+                                                        Switch::new("switch")
+                                                            .xsmall()
+                                                            .checked(checked)
+                                                            .on_click(window.listener_for(
+                                                                &view,
+                                                                Self::switch_checked_handler,
+                                                            ))
+                                                    }
+                                                })
+                                                .context_menu({
+                                                    move |this, _, _| {
+                                                        this.label("This is a label")
+                                                    }
+                                                })
+                                            })
+                                            .on_click(cx.listener(sub_item.handler(&item)))
+                                    },
+                                ))
+                                .on_click(cx.listener(item.handler()))
+                        }),
+                    )),
+                )
+                .child(
+                    SidebarGroup::new("Projects").child(SidebarMenu::new().children(
+                        groups[1].iter().enumerate().map(|(ix, item)| {
+                            let is_active =
+                                self.last_active_item == *item && self.active_subitem == None;
+                            SidebarMenuItem::new(item.label())
+                                .icon(item.icon())
+                                .active(is_active)
+                                .disable(item.is_disabled())
+                                .click_to_open(self.click_to_open_submenu)
+                                .when(ix == 0, |this| {
+                                    this.suffix(|_, _| {
+                                        Badge::new().dot().count(1).child(
+                                            div().p_0p5().child(Icon::new(IconName::Bell)),
+                                        )
+                                    })
+                                })
+                                .when(ix == 1, |this| {
+                                    this.suffix(|_, _| Icon::new(IconName::Settings2))
+                                })
+                                .on_click(cx.listener(item.handler()))
+                        }),
+                    )),
+                )
+                .footer_with(|collapsed, _, _| {
+                    SidebarFooter::new()
+                        .justify_between()
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(IconName::CircleUser)
+                                .when(!collapsed, |this| this.child("Jason Lee")),
+                        )
+                        .when(!collapsed, |this| {
+                            this.child(Icon::new(IconName::ChevronsUpDown).size_4())
+                        })
+                }),
+        );
+        let content_panel = resizable_panel().child(
+            v_flex()
+                .size_full()
+                .gap_4()
+                .p_4()
+                .child(
+                    h_flex()
+                        .items_center()
+                        .gap_3()
+                        .when(self.side.is_right(), |this| {
+                            this.flex_row_reverse().justify_between()
+                        })
+                        .child(
+                            SidebarToggleButton::new()
+                                .side(self.side)
+                                .collapsed(self.collapsed)
+                                .on_click(cx.listener(|this, _, _, cx| {
+                                    this.collapsed = !this.collapsed;
+                                    cx.notify();
+                                })),
+                        )
+                        .child(Divider::vertical().h_4())
+                        .child(
+                            Breadcrumb::new()
+                                .child("Breadcrumb")
+                                .child(BreadcrumbItem::new("Home").on_click(cx.listener(
+                                    |this, _, _, cx| {
+                                        this.last_active_item = Item::Playground;
+                                        cx.notify();
+                                    },
+                                )))
+                                .child(
+                                    BreadcrumbItem::new(self.last_active_item.label()).on_click(
+                                        cx.listener(|this, _, _, cx| {
+                                            this.active_subitem = None;
+                                            cx.notify();
+                                        }),
+                                    ),
+                                )
+                                .when_some(self.active_subitem, |this, subitem| {
+                                    this.child(BreadcrumbItem::new(subitem.label()))
+                                }),
+                        ),
+                )
+                .child(self.render_content(window, cx)),
+        );
+        let on_resize = {
+            let view = view.clone();
+            move |state: &gpui::Entity<gpui_component::resizable::ResizableState>, _: &mut Window, cx: &mut gpui::App| {
+                let Some(width) = state.read(cx).sizes().get(sidebar_panel_ix).copied() else {
+                    return;
+                };
+                view.update(cx, |this, cx| {
+                    this.sidebar_width = width;
+                    cx.notify();
+                });
+            }
+        };
+
+        let layout = if self.side.is_right() {
+            h_resizable("sidebar-story-layout")
+                .on_resize(on_resize.clone())
+                .child(content_panel)
+                .child(sidebar_panel)
+        } else {
+            h_resizable("sidebar-story-layout")
+                .on_resize(on_resize)
+                .child(sidebar_panel)
+                .child(content_panel)
+        };
+
         h_flex()
             .rounded(cx.theme().radius)
             .border_1()
             .border_color(cx.theme().border)
             .h_full()
-            .when(self.side.is_right(), |this| this.flex_row_reverse())
-            .child(
-                Sidebar::new("sidebar-story")
-                    .side(self.side)
-                    .collapsed(self.collapsed)
-                    .width(px(220.))
-                    .gap_0()
-                    .header_with(|collapsed, _, cx| {
-                        SidebarHeader::new()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .justify_center()
-                                    .rounded(cx.theme().radius)
-                                    .bg(cx.theme().success)
-                                    .text_color(cx.theme().success_foreground)
-                                    .size_8()
-                                    .flex_shrink_0()
-                                    .when(!collapsed, |this| {
-                                        this.child(Icon::new(IconName::GalleryVerticalEnd))
-                                    })
-                                    .when(collapsed, |this| {
-                                        this.size_4()
-                                            .bg(cx.theme().transparent)
-                                            .text_color(cx.theme().foreground)
-                                            .child(Icon::new(IconName::GalleryVerticalEnd))
-                                    }),
-                            )
-                            .when(!collapsed, |this| {
-                                this.child(
-                                    v_flex()
-                                        .gap_0()
-                                        .text_sm()
-                                        .flex_1()
-                                        .line_height(relative(1.25))
-                                        .overflow_hidden()
-                                        .text_ellipsis()
-                                        .child("Company Name")
-                                        .child(div().child("Enterprise").text_xs()),
-                                )
-                            })
-                            .when(!collapsed, |this| {
-                                this.child(
-                                    Icon::new(IconName::ChevronsUpDown).size_4().flex_shrink_0(),
-                                )
-                            })
-                            .dropdown_menu(|menu, _, _| {
-                                menu.menu(
-                                    "Twitter Inc.",
-                                    Box::new(SelectCompany(SharedString::from("twitter"))),
-                                )
-                                .menu(
-                                    "Meta Platforms",
-                                    Box::new(SelectCompany(SharedString::from("meta"))),
-                                )
-                                .menu(
-                                    "Google Inc.",
-                                    Box::new(SelectCompany(SharedString::from("google"))),
-                                )
-                            })
-                    })
-                    .child(
-                        SidebarGroup::new("Platform").child(SidebarMenu::new().children(
-                            groups[0].iter().enumerate().map(|(ix, item)| {
-                                let is_active =
-                                    self.last_active_item == *item && self.active_subitem == None;
-                                SidebarMenuItem::new(item.label())
-                                    .icon(item.icon())
-                                    .active(is_active)
-                                    .default_open(ix == 0)
-                                    .click_to_open(self.click_to_open_submenu)
-                                    .when(ix == 0, |this| {
-                                        this.context_menu({
-                                            move |this, _, _| {
-                                                this.link(
-                                                    "About",
-                                                    "https://github.com/longbridge/gpui-component",
-                                                )
-                                            }
-                                        })
-                                    })
-                                    .children(item.items().into_iter().enumerate().map(
-                                        |(ix, sub_item)| {
-                                            SidebarMenuItem::new(sub_item.label())
-                                                .active(self.active_subitem == Some(sub_item))
-                                                .disable(sub_item.is_disabled())
-                                                .when(ix == 0, |this| {
-                                                    this.suffix({
-                                                        let checked = self.checked;
-                                                        let view = cx.entity();
-                                                        move |window, _| {
-                                                            Switch::new("switch")
-                                                                .xsmall()
-                                                                .checked(checked)
-                                                                .on_click(window.listener_for(
-                                                                    &view,
-                                                                    Self::switch_checked_handler,
-                                                                ))
-                                                        }
-                                                    })
-                                                    .context_menu({
-                                                        move |this, _, _| {
-                                                            this.label("This is a label")
-                                                        }
-                                                    })
-                                                })
-                                                .on_click(cx.listener(sub_item.handler(&item)))
-                                        },
-                                    ))
-                                    .on_click(cx.listener(item.handler()))
-                            }),
-                        )),
-                    )
-                    .child(
-                        SidebarGroup::new("Projects").child(SidebarMenu::new().children(
-                            groups[1].iter().enumerate().map(|(ix, item)| {
-                                let is_active =
-                                    self.last_active_item == *item && self.active_subitem == None;
-                                SidebarMenuItem::new(item.label())
-                                    .icon(item.icon())
-                                    .active(is_active)
-                                    .disable(item.is_disabled())
-                                    .click_to_open(self.click_to_open_submenu)
-                                    .when(ix == 0, |this| {
-                                        this.suffix(|_, _| {
-                                            Badge::new().dot().count(1).child(
-                                                div().p_0p5().child(Icon::new(IconName::Bell)),
-                                            )
-                                        })
-                                    })
-                                    .when(ix == 1, |this| {
-                                        this.suffix(|_, _| Icon::new(IconName::Settings2))
-                                    })
-                                    .on_click(cx.listener(item.handler()))
-                            }),
-                        )),
-                    )
-                    .footer_with(|collapsed, _, _| {
-                        SidebarFooter::new()
-                            .justify_between()
-                            .child(
-                                h_flex()
-                                    .gap_2()
-                                    .child(IconName::CircleUser)
-                                    .when(!collapsed, |this| this.child("Jason Lee")),
-                            )
-                            .when(!collapsed, |this| {
-                                this.child(Icon::new(IconName::ChevronsUpDown).size_4())
-                            })
-                    }),
-            )
-            .child(
-                v_flex()
-                    .size_full()
-                    .gap_4()
-                    .p_4()
-                    .child(
-                        h_flex()
-                            .items_center()
-                            .gap_3()
-                            .when(self.side.is_right(), |this| {
-                                this.flex_row_reverse().justify_between()
-                            })
-                            .child(
-                                SidebarToggleButton::new()
-                                    .side(self.side)
-                                    .collapsed(self.collapsed)
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.collapsed = !this.collapsed;
-                                        cx.notify();
-                                    })),
-                            )
-                            .child(Divider::vertical().h_4())
-                            .child(
-                                Breadcrumb::new()
-                                    .child("Breadcrumb")
-                                    .child(BreadcrumbItem::new("Home").on_click(cx.listener(
-                                        |this, _, _, cx| {
-                                            this.last_active_item = Item::Playground;
-                                            cx.notify();
-                                        },
-                                    )))
-                                    .child(
-                                        BreadcrumbItem::new(self.last_active_item.label())
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                this.active_subitem = None;
-                                                cx.notify();
-                                            })),
-                                    )
-                                    .when_some(self.active_subitem, |this, subitem| {
-                                        this.child(BreadcrumbItem::new(subitem.label()))
-                                    }),
-                            ),
-                    )
-                    .child(self.render_content(window, cx)),
-            )
+            .child(layout)
     }
 }

@@ -178,6 +178,57 @@ pub fn spring_preset_animation(
     )
 }
 
+/// Shared open/close durations for expand-collapse patterns.
+pub fn expand_collapse_durations(
+    motion: &ThemeMotion,
+    reduced_motion: bool,
+    preset: SpringPreset,
+) -> (Duration, Duration) {
+    let open_duration_ms = if reduced_motion {
+        motion.fast_duration_ms
+    } else {
+        spring_preset_duration_ms(motion, preset).max(motion.fast_duration_ms)
+    };
+    let close_duration_ms = motion.soft_dismiss_duration_ms;
+
+    (
+        Duration::from_millis(u64::from(open_duration_ms)),
+        Duration::from_millis(u64::from(close_duration_ms)),
+    )
+}
+
+/// Shared layout animation for expand-collapse wrappers.
+pub fn expand_collapse_layout_animation(
+    motion: &ThemeMotion,
+    reduced_motion: bool,
+    entering: bool,
+) -> Option<Animation> {
+    if entering {
+        theme_animation(motion.fast_duration_ms, &motion.fast_invoke_easing, reduced_motion)
+    } else {
+        theme_animation(
+            motion.soft_dismiss_duration_ms,
+            &motion.soft_dismiss_easing,
+            reduced_motion,
+        )
+    }
+}
+
+/// Shared subtle spring for transform-only content reveal motion.
+///
+/// This is a semantic wrapper over `spring_preset_animation` for call sites that
+/// animate inner content translation/scale/rotation during reveal, as opposed to
+/// `expand_collapse_layout_animation` which is for layout-driven expand/collapse
+/// wrappers. It delegates to `spring_preset_animation` with the provided motion,
+/// reduced-motion flag, and spring preset.
+pub fn subtle_reveal_transform_animation(
+    motion: &ThemeMotion,
+    reduced_motion: bool,
+    preset: SpringPreset,
+) -> Option<Animation> {
+    spring_preset_animation(motion, reduced_motion, preset)
+}
+
 /// Spring invoke animation (uses unbounded easing, transform-only).
 pub fn spring_invoke_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
     spring_preset_animation(motion, reduced_motion, SpringPreset::Mild)

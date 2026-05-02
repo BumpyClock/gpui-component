@@ -1,8 +1,9 @@
 use crate::{
     ActiveTheme as _, Anchor, Collapsible, Icon, IconName, Selectable, Sizable as _, StyledExt,
     animation::{
-        PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
-        spring_preset_animation, spring_preset_duration_ms,
+        PresenceOptions, PresencePhase, PresenceTransition, SpringPreset, expand_collapse_durations,
+        expand_collapse_layout_animation, keyed_presence, subtle_reveal_transform_animation,
+        theme_animation,
     },
     button::{Button, ButtonVariants as _},
     global_state::GlobalState,
@@ -13,19 +14,77 @@ use crate::{
     v_flex,
 };
 use gpui::{
-    AnimationExt as _, AnyElement, App, ClickEvent, Context, DismissEvent, ElementId, Entity,
-    Focusable, InteractiveElement as _, IntoElement, MouseButton, ParentElement as _, RenderOnce,
-    SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
-    percentage, prelude::FluentBuilder, px,
+    Animation, AnimationExt as _, AnyElement, App, ClickEvent, Context, DismissEvent, Div,
+    ElementId, Entity, Focusable, InteractiveElement as _, IntoElement, MouseButton,
+    ParentElement as _, RenderOnce, SharedString, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, Window, div, percentage, prelude::FluentBuilder, px,
 };
 use std::rc::Rc;
 use std::time::Duration;
 
 /// Generous max for animated submenu reveal.
 const SUBMENU_CONTENT_MAX_H: f32 = 1200.0;
+const SIDEBAR_ITEM_CONTENT_MAX_W: f32 = 320.0;
 
 fn submenu_height_progress(progress: f32) -> f32 {
     progress.clamp(0.0, 1.0).powf(3.0)
+}
+
+fn sidebar_item_content_progress(progress: f32) -> f32 {
+    progress.clamp(0.0, 1.0).powf(1.35)
+}
+
+fn animate_item_content(
+    el: Div,
+    id: &ElementId,
+    presence: PresenceTransition,
+    layout_anim: Option<Animation>,
+    transform_anim: Option<Animation>,
+) -> AnyElement {
+    if !presence.transition_active() {
+        return el.into_any_element();
+    }
+
+    let entering = matches!(presence.phase, PresencePhase::Entering);
+    let layout_animated = if let Some(anim) = layout_anim {
+        el.with_animation(
+            SharedString::from(format!(
+                "{}-item-content-layout-{}",
+                id,
+                u8::from(entering)
+            )),
+            anim,
+            move |el, delta| {
+                let progress = presence.progress(delta);
+                let shaped = sidebar_item_content_progress(progress);
+                el.max_w(px(SIDEBAR_ITEM_CONTENT_MAX_W * shaped))
+                    .opacity(progress)
+            },
+        )
+        .into_any_element()
+    } else {
+        el.into_any_element()
+    };
+
+    if let Some(anim) = transform_anim {
+        return div()
+            .child(layout_animated)
+            .with_animation(
+                SharedString::from(format!(
+                    "{}-item-content-transform-{}",
+                    id,
+                    u8::from(entering)
+                )),
+                anim,
+                move |el, delta| {
+                    let progress = if entering { delta } else { 1.0 - delta };
+                    el.translate_x(px(6.0 * (1.0 - progress)))
+                },
+            )
+            .into_any_element();
+    }
+
+    layout_animated
 }
 
 #[derive(Default)]
@@ -357,29 +416,46 @@ impl SidebarItem for SidebarMenuItem {
         let show_collapsed_submenu = is_submenu && is_collapsed;
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
-        let open_duration = if reduced_motion {
-            motion.fast_duration_ms
-        } else {
-            spring_preset_duration_ms(&motion, SpringPreset::Mild).max(motion.fast_duration_ms)
-        };
+        let (open_duration, close_duration) =
+            expand_collapse_durations(&motion, reduced_motion, SpringPreset::Mild);
         let submenu_presence = keyed_presence(
             SharedString::from(format!("{}-submenu-presence", state_key)),
             is_open,
             !reduced_motion,
-            Duration::from_millis(u64::from(open_duration)),
-            Duration::from_millis(u64::from(motion.fast_duration_ms)),
+            open_duration,
+            close_duration,
             PresenceOptions::default(),
             window,
             cx,
         );
         let submenu_visible = submenu_presence.should_render();
-        let open_layout_anim = point_to_point_animation(&motion, reduced_motion);
-        let open_transform_anim =
-            spring_preset_animation(&motion, reduced_motion, SpringPreset::Mild);
-        let close_anim = point_to_point_animation(&motion, reduced_motion);
+        let submenu_entering = matches!(submenu_presence.phase, PresencePhase::Entering);
+        let submenu_layout_anim =
+            expand_collapse_layout_animation(&motion, reduced_motion, submenu_entering);
+        let submenu_transform_anim =
+            subtle_reveal_transform_animation(&motion, reduced_motion, SpringPreset::Mild);
         let chevron_open_anim =
-            spring_preset_animation(&motion, reduced_motion, SpringPreset::Mild);
-        let chevron_close_anim = close_anim.clone();
+            subtle_reveal_transform_animation(&motion, reduced_motion, SpringPreset::Mild);
+        let chevron_close_anim =
+            theme_animation(motion.soft_dismiss_duration_ms, &motion.soft_dismiss_easing, reduced_motion);
+        let item_content_presence = keyed_presence(
+            SharedString::from(format!("{}-item-content-presence", state_key)),
+            !is_collapsed,
+            !reduced_motion,
+            open_duration,
+            close_duration,
+            PresenceOptions::default(),
+            window,
+            cx,
+        );
+        let item_content_visible = item_content_presence.should_render();
+        let item_content_layout_anim = expand_collapse_layout_animation(
+            &motion,
+            reduced_motion,
+            matches!(item_content_presence.phase, PresencePhase::Entering),
+        );
+        let item_content_transform_anim =
+            subtle_reveal_transform_animation(&motion, reduced_motion, SpringPreset::Mild);
 
         let item_element = h_flex()
             .size_full()
@@ -402,28 +478,50 @@ impl SidebarItem for SidebarMenuItem {
                     .text_color(cx.theme().sidebar_accent_foreground)
             })
             .when_some(self.icon.clone(), |this, icon| this.child(icon))
-            .when(is_collapsed, |this| {
+            .when(!item_content_visible, |this| {
                 this.justify_center().when(is_active, |this| {
                     this.bg(cx.theme().sidebar_accent)
                         .text_color(cx.theme().sidebar_accent_foreground)
                 })
             })
-            .when(!is_collapsed, |this| {
+            .when(item_content_visible, |this| {
                 this.h_7()
                     .child(
-                        h_flex()
+                        div()
                             .flex_1()
-                            .gap_x_2()
-                            .justify_between()
-                            .overflow_x_hidden()
+                            .min_w_0()
+                            .overflow_hidden()
                             .child(
                                 h_flex()
                                     .flex_1()
+                                    .w_full()
+                                    .min_w_0()
+                                    .gap_x_2()
+                                    .justify_between()
                                     .overflow_x_hidden()
-                                    .child(self.label.clone()),
-                            )
+                                    .child(
+                                        h_flex()
+                                            .flex_1()
+                                            .min_w_0()
+                                            .overflow_x_hidden()
+                                            .child(self.label.clone()),
+                                    )
                             .when_some(self.suffix.clone(), |this, suffix| {
-                                this.child(suffix(window, cx).into_any_element())
+                                        this.child(
+                                            div()
+                                                .flex_shrink_0()
+                                                .child(suffix(window, cx).into_any_element()),
+                                        )
+                                    }),
+                            )
+                            .map(|el| {
+                                animate_item_content(
+                                    el,
+                                    &id,
+                                    item_content_presence,
+                                    item_content_layout_anim,
+                                    item_content_transform_anim,
+                                )
                             }),
                     )
                     .when(is_submenu, |this| {
@@ -615,29 +713,31 @@ impl SidebarItem for SidebarMenuItem {
             .child(item_element)
             .when(submenu_visible, |this| {
                 this.child(
-                    v_flex()
-                        .id("submenu")
-                        .border_l_1()
-                        .border_color(cx.theme().sidebar_border)
-                        .gap_1()
-                        .ml_3p5()
-                        .pl_2p5()
-                        .py_0p5()
-                        .children(self.children.into_iter().enumerate().map(|(ix, item)| {
-                            let id = format!("{}-{}", id, ix);
-                            item.render(id, window, cx).into_any_element()
-                        }))
+                    div()
+                        .id("submenu-wrapper")
+                        .overflow_hidden()
+                        .w_full()
+                        .child(
+                            v_flex()
+                                .id("submenu")
+                                .w_full()
+                                .border_l_1()
+                                .border_color(cx.theme().sidebar_border)
+                                .gap_1()
+                                .ml_3p5()
+                                .pl_2p5()
+                                .py_0p5()
+                                .children(self.children.into_iter().enumerate().map(|(ix, item)| {
+                                    let id = format!("{}-{}", id, ix);
+                                    item.render(id, window, cx).into_any_element()
+                                })),
+                        )
                         .map(|el| {
                             if !submenu_presence.transition_active() {
                                 return el.into_any_element();
                             }
 
-                            let layout_anim =
-                                if matches!(submenu_presence.phase, PresencePhase::Entering) {
-                                    open_layout_anim
-                                } else {
-                                    close_anim
-                                };
+                            let layout_anim = submenu_layout_anim;
                             let layout_animated = if let Some(anim) = layout_anim {
                                 el.with_animation(
                                     SharedString::from(format!(
@@ -652,8 +752,10 @@ impl SidebarItem for SidebarMenuItem {
                                     move |el, delta| {
                                         let progress = submenu_presence.progress(delta);
                                         let clamped = progress.clamp(0.0, 1.0);
-                                        el.max_h(px(SUBMENU_CONTENT_MAX_H
-                                            * submenu_height_progress(clamped)))
+                                        el.max_h(px(
+                                            SUBMENU_CONTENT_MAX_H
+                                                * submenu_height_progress(clamped),
+                                        ))
                                             .opacity(clamped)
                                     },
                                 )
@@ -662,22 +764,34 @@ impl SidebarItem for SidebarMenuItem {
                                 el.into_any_element()
                             };
 
-                            if matches!(submenu_presence.phase, PresencePhase::Entering) {
-                                if let Some(anim) = open_transform_anim {
-                                    return div()
-                                        .child(layout_animated)
-                                        .with_animation(
-                                            SharedString::from(format!(
-                                                "{}-submenu-open-transform",
-                                                id
-                                            )),
-                                            anim,
-                                            move |el, delta| {
-                                                el.translate_y(px(3.0 * (1.0 - delta)))
-                                            },
-                                        )
-                                        .into_any_element();
-                                }
+                            let transform_anim = submenu_transform_anim;
+
+                            if let Some(anim) = transform_anim {
+                                return div()
+                                    .child(layout_animated)
+                                    .with_animation(
+                                        SharedString::from(format!(
+                                            "{}-submenu-transform-{}",
+                                            id,
+                                            u8::from(matches!(
+                                                submenu_presence.phase,
+                                                PresencePhase::Entering
+                                            ))
+                                        )),
+                                        anim,
+                                        move |el, delta| {
+                                            let progress = if matches!(
+                                                submenu_presence.phase,
+                                                PresencePhase::Entering
+                                            ) {
+                                                delta
+                                            } else {
+                                                1.0 - delta
+                                            };
+                                            el.translate_y(px(3.0 * (1.0 - progress)))
+                                        },
+                                    )
+                                    .into_any_element();
                             }
 
                             layout_animated
