@@ -69,18 +69,21 @@ pub fn sidebar_shadow() -> Vec<BoxShadow> {
             offset: point(px(0.0), px(1.0)),
             blur_radius: px(6.0),
             spread_radius: px(0.0),
+            inset: false,
         },
         BoxShadow {
             color: hsla(0., 0., 0., 0.08),
             offset: point(px(0.0), px(8.0)),
             blur_radius: px(22.0),
             spread_radius: px(0.0),
+            inset: false,
         },
         BoxShadow {
             color: hsla(0., 0., 0., 0.12),
             offset: point(px(0.0), px(22.0)),
             blur_radius: px(54.0),
             spread_radius: px(0.0),
+            inset: false,
         },
     ]
 }

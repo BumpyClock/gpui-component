@@ -167,7 +167,7 @@ impl ThemeRegistry {
 
     pub fn sorted_theme_sets(&self) -> Vec<&ThemeSetEntry> {
         let mut sets = self.theme_sets.values().collect::<Vec<_>>();
-        sets.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        sets.sort_by_key(|a| a.name.to_lowercase());
         sets
     }
 

@@ -38,6 +38,7 @@ impl ThemeElevation {
             blur_radius: px(dir_blur),
             spread_radius: px(0.),
             color: hsla(0., 0., 0., dir_opacity),
+            inset: false,
         });
 
         // Ambient shadow (high elevations only)
@@ -56,6 +57,7 @@ impl ThemeElevation {
                 blur_radius: px(amb_blur),
                 spread_radius: px(0.),
                 color: hsla(0., 0., 0., amb_opacity),
+                inset: false,
             });
         }
 
