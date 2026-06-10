@@ -204,7 +204,11 @@ pub fn expand_collapse_layout_animation(
     entering: bool,
 ) -> Option<Animation> {
     if entering {
-        theme_animation(motion.fast_duration_ms, &motion.fast_invoke_easing, reduced_motion)
+        theme_animation(
+            motion.fast_duration_ms,
+            &motion.fast_invoke_easing,
+            reduced_motion,
+        )
     } else {
         theme_animation(
             motion.soft_dismiss_duration_ms,

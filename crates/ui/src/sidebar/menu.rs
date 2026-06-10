@@ -1,9 +1,9 @@
 use crate::{
     ActiveTheme as _, Anchor, Collapsible, Icon, IconName, Selectable, Sizable as _, StyledExt,
     animation::{
-        PresenceOptions, PresencePhase, PresenceTransition, SpringPreset, expand_collapse_durations,
-        expand_collapse_layout_animation, keyed_presence, subtle_reveal_transform_animation,
-        theme_animation,
+        PresenceOptions, PresencePhase, PresenceTransition, SpringPreset,
+        expand_collapse_durations, expand_collapse_layout_animation, keyed_presence,
+        subtle_reveal_transform_animation, theme_animation,
     },
     button::{Button, ButtonVariants as _},
     global_state::GlobalState,
@@ -16,8 +16,8 @@ use crate::{
 use gpui::{
     Animation, AnimationExt as _, AnyElement, App, ClickEvent, Context, DismissEvent, Div,
     ElementId, Entity, Focusable, InteractiveElement as _, IntoElement, MouseButton,
-    ParentElement as _, RenderOnce, SharedString, StatefulInteractiveElement as _,
-    StyleRefinement, Styled, Window, div, percentage, prelude::FluentBuilder, px,
+    ParentElement as _, RenderOnce, SharedString, StatefulInteractiveElement as _, StyleRefinement,
+    Styled, Window, div, percentage, prelude::FluentBuilder, px,
 };
 use std::rc::Rc;
 use std::time::Duration;
@@ -48,11 +48,7 @@ fn animate_item_content(
     let entering = matches!(presence.phase, PresencePhase::Entering);
     let layout_animated = if let Some(anim) = layout_anim {
         el.with_animation(
-            SharedString::from(format!(
-                "{}-item-content-layout-{}",
-                id,
-                u8::from(entering)
-            )),
+            SharedString::from(format!("{}-item-content-layout-{}", id, u8::from(entering))),
             anim,
             move |el, delta| {
                 let progress = presence.progress(delta);
@@ -436,8 +432,11 @@ impl SidebarItem for SidebarMenuItem {
             subtle_reveal_transform_animation(&motion, reduced_motion, SpringPreset::Mild);
         let chevron_open_anim =
             subtle_reveal_transform_animation(&motion, reduced_motion, SpringPreset::Mild);
-        let chevron_close_anim =
-            theme_animation(motion.soft_dismiss_duration_ms, &motion.soft_dismiss_easing, reduced_motion);
+        let chevron_close_anim = theme_animation(
+            motion.soft_dismiss_duration_ms,
+            &motion.soft_dismiss_easing,
+            reduced_motion,
+        );
         let item_content_presence = keyed_presence(
             SharedString::from(format!("{}-item-content-presence", state_key)),
             !is_collapsed,
@@ -506,7 +505,7 @@ impl SidebarItem for SidebarMenuItem {
                                             .overflow_x_hidden()
                                             .child(self.label.clone()),
                                     )
-                            .when_some(self.suffix.clone(), |this, suffix| {
+                                    .when_some(self.suffix.clone(), |this, suffix| {
                                         this.child(
                                             div()
                                                 .flex_shrink_0()
@@ -727,10 +726,12 @@ impl SidebarItem for SidebarMenuItem {
                                 .ml_3p5()
                                 .pl_2p5()
                                 .py_0p5()
-                                .children(self.children.into_iter().enumerate().map(|(ix, item)| {
-                                    let id = format!("{}-{}", id, ix);
-                                    item.render(id, window, cx).into_any_element()
-                                })),
+                                .children(self.children.into_iter().enumerate().map(
+                                    |(ix, item)| {
+                                        let id = format!("{}-{}", id, ix);
+                                        item.render(id, window, cx).into_any_element()
+                                    },
+                                )),
                         )
                         .map(|el| {
                             if !submenu_presence.transition_active() {
@@ -752,10 +753,8 @@ impl SidebarItem for SidebarMenuItem {
                                     move |el, delta| {
                                         let progress = submenu_presence.progress(delta);
                                         let clamped = progress.clamp(0.0, 1.0);
-                                        el.max_h(px(
-                                            SUBMENU_CONTENT_MAX_H
-                                                * submenu_height_progress(clamped),
-                                        ))
+                                        el.max_h(px(SUBMENU_CONTENT_MAX_H
+                                            * submenu_height_progress(clamped)))
                                             .opacity(clamped)
                                     },
                                 )

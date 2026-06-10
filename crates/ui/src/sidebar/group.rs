@@ -11,8 +11,7 @@ use crate::{
 };
 use gpui::{
     AnimationExt as _, App, ElementId, IntoElement, ParentElement, SharedString, Styled as _,
-    Window, div, px,
-    prelude::FluentBuilder as _,
+    Window, div, prelude::FluentBuilder as _, px,
 };
 
 const SIDEBAR_GROUP_LABEL_HEIGHT: gpui::Pixels = px(32.0);

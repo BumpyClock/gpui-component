@@ -1,8 +1,8 @@
 use crate::{
     ActiveTheme, Collapsible, Icon, IconName, Side, Sizable, StyledExt,
     animation::{
-        PresenceOptions, PresencePhase, SpringPreset, keyed_presence,
-        spring_preset_duration_ms, theme_animation,
+        PresenceOptions, PresencePhase, SpringPreset, keyed_presence, spring_preset_duration_ms,
+        theme_animation,
     },
     button::{Button, ButtonVariants},
     global_state::GlobalState,
@@ -361,7 +361,9 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         let inner = v_flex()
             .id("sidebar-inner")
             .size_full()
-            .when(closing_transition, |this| this.w(expanded_width).flex_shrink_0())
+            .when(closing_transition, |this| {
+                this.w(expanded_width).flex_shrink_0()
+            })
             .when(visual_collapsed, |this| this.gap_2())
             .when_some(header, |this, header| {
                 this.child(
@@ -433,8 +435,11 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         if !transition_active {
             sidebar.into_any_element()
         } else {
-            let width_anim =
-                theme_animation(width_duration_ms, &motion.point_to_point_easing, reduced_motion);
+            let width_anim = theme_animation(
+                width_duration_ms,
+                &motion.point_to_point_easing,
+                reduced_motion,
+            );
             if let Some(width_anim) = width_anim {
                 sidebar
                     .with_animation(
