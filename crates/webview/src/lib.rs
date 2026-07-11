@@ -246,14 +246,14 @@ impl Element for WebViewElement {
             )),
         }) {
             let message: SharedString = format!("Failed to resize webview: {err}").into();
-            let _ = self.parent.update(cx, |parent, cx| {
+            self.parent.update(cx, |parent, cx| {
                 parent.set_error(message.clone());
                 cx.notify();
             });
             return None;
         }
 
-        let _ = self.parent.update(cx, |parent, cx| {
+        self.parent.update(cx, |parent, cx| {
             if parent.last_error.is_some() {
                 parent.clear_error();
                 cx.notify();
