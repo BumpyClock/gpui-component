@@ -1,7 +1,3 @@
-# Agent Instructions
-
-This project uses **tsq** (tasque) for task management. Use the tasque skill. 
-
 **Platform parity** is critical. When implementing a feature, we must implement it across macOS, Windows, and Linux. If a feature is not supported on a platform, we must document the reason and any potential workarounds.
 
 ## Project Overview
