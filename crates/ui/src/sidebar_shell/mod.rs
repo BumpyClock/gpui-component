@@ -2,7 +2,7 @@
 //!
 //! This module provides a reusable sidebar shell that handles:
 //! - Resizable panel with configurable min/max width constraints
-//! - Built-in shadow elevation effects
+//! - Theme-controlled panel shadow elevation
 //! - Glass surface effects via SurfacePreset
 //! - Draggable resize handle on the inner edge
 //! - Support for left/right placement
@@ -88,13 +88,16 @@ pub fn sidebar_shadow() -> Vec<BoxShadow> {
     ]
 }
 
-/// A resizable sidebar panel with built-in shadow and glass surface effects.
+/// A resizable sidebar panel with a theme-controlled shadow and glass surface effects.
 ///
 /// SidebarShell provides a container for sidebar content that handles:
 /// - Absolute positioning with configurable inset from window edges
-/// - 3-layer shadow elevation for depth perception
+/// - A single complete panel shadow, controlled by its elevation
 /// - Glass blur and noise effects via SurfacePreset::panel()
 /// - Draggable resize handle with hover feedback
+///
+/// The default elevation is [`ElevationToken::Sm`]. Large elevations may require
+/// a larger inset near window edges to avoid native-window clipping.
 ///
 /// The component uses a builder pattern for configuration and implements
 /// `ParentElement` for adding child content, `Styled` for style refinement,
@@ -110,12 +113,10 @@ pub fn sidebar_shadow() -> Vec<BoxShadow> {
 ///
 /// ```text
 /// +-- Outer Container (absolute, inset from edges) --+
-/// |  +-- Shadow Wrapper (3-layer shadow) ----------+ |
-/// |  |  +-- Surface (glass effects) -------------+ | |
-/// |  |  |                                        | | |
-/// |  |  |  [Child Content]                       | | |
-/// |  |  |                                        | | |
-/// |  |  +----------------------------------------+ | |
+/// |  +-- Surface (shadow + glass effects) --------+ |
+/// |  |                                            | |
+/// |  |  [Child Content]                           | |
+/// |  |                                            | |
 /// |  +--------------------------------------------+ |
 /// |  [Resizer Handle] (on inner edge)              |
 /// +------------------------------------------------+
@@ -137,8 +138,8 @@ pub struct SidebarShell {
     on_resize_start: Option<Rc<dyn Fn(Pixels, Pixels, &mut Window, &mut App)>>,
     /// Callback invoked when resize ends (mouse up).
     on_resize_end: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-    /// Shadow elevation level for the sidebar panel.
-    /// Default: `ElevationToken::Lg` for a prominent floating appearance.
+    /// Shadow elevation level for the complete sidebar panel.
+    /// Default: `ElevationToken::Sm`.
     elevation: ElevationToken,
     /// Placement side (left or right).
     side: Side,
@@ -196,7 +197,7 @@ impl SidebarShell {
             resizer_hover_bg: None,
             on_resize_start: None,
             on_resize_end: None,
-            elevation: ElevationToken::Lg,
+            elevation: ElevationToken::Sm,
             side,
             inset: None,
             top_inset: px(0.0),
@@ -322,11 +323,11 @@ impl SidebarShell {
         self
     }
 
-    /// Sets the shadow elevation level for the sidebar panel.
+    /// Sets the shadow elevation level for the complete sidebar panel.
     ///
-    /// Controls the shadow depth and intensity using the theme's elevation
-    /// system. Higher values create more pronounced floating appearance.
-    /// Default: `ElevationToken::Lg`.
+    /// Controls the single panel shadow using the theme's elevation system.
+    /// Default: `ElevationToken::Sm`. Large elevations may require a larger
+    /// inset near window edges to avoid native-window clipping.
     ///
     /// # Example
     ///
@@ -375,6 +376,7 @@ impl RenderOnce for SidebarShell {
             .unwrap_or_else(|| GlobalState::global(cx).blur_enabled());
 
         let sidebar_surface = SurfacePreset::panel()
+            .with_elevation(self.elevation)
             .wrap_with_bounds(
                 div(),
                 sidebar_width,
@@ -411,11 +413,7 @@ impl RenderOnce for SidebarShell {
                     el.right(inset)
                 }
             })
-            .child(
-                self.elevation
-                    .apply(div().id("sidebar-shell-shadow-wrapper").size_full(), cx)
-                    .child(sidebar_surface),
-            )
+            .child(sidebar_surface)
             .child(
                 div()
                     .id("sidebar-shell-resizer")
@@ -450,5 +448,33 @@ impl RenderOnce for SidebarShell {
             .refine_style(&self.style);
 
         outer
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sidebar_shell_defaults_and_elevation_builder() {
+        let default_shell = SidebarShell::left(px(260.0));
+        assert_eq!(default_shell.elevation, ElevationToken::Sm);
+        assert_eq!(default_shell.min_width, px(DEFAULT_MIN_WIDTH));
+        assert_eq!(default_shell.max_width, px(DEFAULT_MAX_WIDTH));
+        assert_eq!(default_shell.resizer_width, px(DEFAULT_RESIZER_WIDTH));
+        assert_eq!(default_shell.inset, None);
+        assert_eq!(default_shell.side, Side::Left);
+
+        let no_shadow = SidebarShell::left(px(260.0)).elevation(ElevationToken::None);
+        assert_eq!(no_shadow.elevation, ElevationToken::None);
+
+        let large_shadow = SidebarShell::right(px(300.0))
+            .inset(px(12.0))
+            .resizer_width(px(8.0))
+            .elevation(ElevationToken::Lg);
+        assert_eq!(large_shadow.elevation, ElevationToken::Lg);
+        assert_eq!(large_shadow.inset, Some(px(12.0)));
+        assert_eq!(large_shadow.resizer_width, px(8.0));
+        assert_eq!(large_shadow.side, Side::Right);
     }
 }

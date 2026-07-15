@@ -89,7 +89,9 @@ SidebarToggleButton::new()
 ### Floating Sidebar (SidebarShell + Sidebar)
 
 `FloatingSidebar` composes `SidebarShell` with `Sidebar`, handling resize internally.
-It defaults to an 8px inset from the window edges and can be resized when expanded.
+It defaults to an 8px inset, `ElevationToken::Sm`, and can be resized when expanded.
+The shell elevation controls the complete panel shadow. Larger elevations may need a larger
+inset near window edges to avoid native-window clipping; the inset is never adjusted automatically.
 
 ```rust
 use gpui_component::{FloatingSidebar, Side};

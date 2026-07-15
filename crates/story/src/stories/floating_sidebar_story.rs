@@ -4,7 +4,8 @@ use gpui::{
 };
 
 use gpui_component::{
-    ActiveTheme, FloatingSidebar, Icon, IconName, Side, h_flex,
+    ActiveTheme, ElevationToken, FloatingSidebar, Icon, IconName, Side, h_flex,
+    radio::RadioGroup,
     sidebar::{SidebarFooter, SidebarGroup, SidebarHeader, SidebarMenu, SidebarMenuItem},
     switch::Switch,
     v_flex,
@@ -17,6 +18,7 @@ pub struct FloatingSidebarStory {
     collapsed: bool,
     side: Side,
     wide_inset: bool,
+    elevation: ElevationToken,
 }
 
 impl FloatingSidebarStory {
@@ -26,11 +28,20 @@ impl FloatingSidebarStory {
             collapsed: false,
             side: Side::Left,
             wide_inset: false,
+            elevation: ElevationToken::Sm,
         }
     }
 
     pub fn view(window: &mut Window, cx: &mut App) -> Entity<Self> {
         cx.new(|cx| Self::new(window, cx))
+    }
+
+    fn elevation_index(&self) -> usize {
+        match self.elevation {
+            ElevationToken::None => 0,
+            ElevationToken::Lg => 2,
+            _ => 1,
+        }
     }
 
     fn render_example(
@@ -46,13 +57,14 @@ impl FloatingSidebarStory {
             collapsed_width
         } else {
             sidebar_width
-        } + inset;
+        } + inset * 2.0;
 
         let sidebar = FloatingSidebar::new(id)
             .side(self.side)
             .collapsed(self.collapsed)
             .width(sidebar_width)
             .inset(inset)
+            .elevation(self.elevation)
             .header_with(|collapsed, _, _cx| {
                 SidebarHeader::new()
                     .child(Icon::new(IconName::PanelLeft).size_4())
@@ -164,6 +176,20 @@ impl Render for FloatingSidebarStory {
                                     .checked(self.wide_inset)
                                     .on_click(cx.listener(|this, checked: &bool, _, cx| {
                                         this.wide_inset = *checked;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                RadioGroup::horizontal("floating-sidebar-elevation")
+                                    .children(["None", "Small", "Large"])
+                                    .selected_index(Some(self.elevation_index()))
+                                    .on_click(cx.listener(|this, selected_ix: &usize, _, cx| {
+                                        this.elevation = match selected_ix {
+                                            0 => ElevationToken::None,
+                                            1 => ElevationToken::Sm,
+                                            2 => ElevationToken::Lg,
+                                            _ => return,
+                                        };
                                         cx.notify();
                                     })),
                             ),

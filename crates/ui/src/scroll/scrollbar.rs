@@ -531,7 +531,11 @@ impl Element for Scrollbar {
         window: &mut Window,
         cx: &mut App,
     ) -> Self::PrepaintState {
-        let hitbox = window.with_content_mask(Some(ContentMask { bounds }), |window| {
+        let content_mask = ContentMask {
+            bounds,
+            ..Default::default()
+        };
+        let hitbox = window.with_content_mask(Some(content_mask), |window| {
             window.insert_hitbox(bounds, HitboxBehavior::Normal)
         });
 
@@ -698,7 +702,11 @@ impl Element for Scrollbar {
                 )
             };
 
-            let bar_hitbox = window.with_content_mask(Some(ContentMask { bounds }), |window| {
+            let content_mask = ContentMask {
+                bounds,
+                ..Default::default()
+            };
+            let bar_hitbox = window.with_content_mask(Some(content_mask), |window| {
                 window.insert_hitbox(bounds, gpui::HitboxBehavior::Normal)
             });
 
@@ -756,6 +764,7 @@ impl Element for Scrollbar {
         window.with_content_mask(
             Some(ContentMask {
                 bounds: hitbox_bounds,
+                ..Default::default()
             }),
             |window| {
                 for state in prepaint.states.iter() {

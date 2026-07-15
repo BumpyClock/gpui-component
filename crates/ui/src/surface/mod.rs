@@ -347,10 +347,9 @@ impl SurfacePreset {
     /// Wraps content in a surface container with all configured effects.
     ///
     /// This method creates a complete surface element with:
-    /// - Background color with transparency
-    /// - Backdrop blur (if enabled and configured)
-    /// - Border/stroke styling
-    /// - Elevation shadows
+    /// - One rounded clip shared by the background, backdrop blur, noise, and content
+    /// - Border/stroke styling using the same rounded geometry
+    /// - Elevation shadows painted outside the rounded clip
     /// - Noise overlay (if blur is enabled)
     pub fn wrap_with_bounds(
         &self,
@@ -392,10 +391,9 @@ impl SurfacePreset {
         surface = elevation.apply(surface, cx);
 
         if should_render_noise {
-            surface = surface.child(render_noise_overlay(
+            surface = surface.child(render_noise_overlay_unclipped(
                 width,
                 height,
-                radius,
                 noise_opacity,
                 scale_factor,
             ));
@@ -483,40 +481,86 @@ pub fn render_noise_overlay(
     opacity: f32,
     scale_factor: f32,
 ) -> impl IntoElement {
-    let tile_size_value = (GLASS_NOISE_TILE_SIZE_BASE / scale_factor.max(1.0)).round();
-    let tile_size = px(tile_size_value);
-    let cols = ((width / tile_size).max(0.0).ceil() as usize).max(1) + 12;
-    let rows = ((height / tile_size).max(0.0).ceil() as usize).max(1) + 12;
-    let tiled_width = px(tile_size_value * cols as f32);
-    let tiled_height = px(tile_size_value * rows as f32);
-    let tiles = cols.saturating_mul(rows);
-
     div()
         .absolute()
         .inset_0()
         .size_full()
-        .overflow_hidden()
         .rounded(radius)
-        .child(
-            div()
-                .absolute()
-                .top_0()
-                .left_0()
-                .w(tiled_width)
-                .h(tiled_height)
-                .flex()
-                .flex_wrap()
-                .items_start()
-                .justify_start()
-                .children((0..tiles).map(move |_| {
-                    img(ImageSource::Resource(Resource::Embedded(
-                        GLASS_NOISE_ASSET_PATH.into(),
-                    )))
-                    .w(tile_size)
-                    .h(tile_size)
-                    .flex_none()
-                    .object_fit(ObjectFit::Cover)
-                    .opacity(opacity)
-                })),
-        )
+        .overflow_hidden()
+        .child(render_noise_tiles(width, height, opacity, scale_factor))
+}
+
+fn render_noise_overlay_unclipped(
+    width: Pixels,
+    height: Pixels,
+    opacity: f32,
+    scale_factor: f32,
+) -> Div {
+    div()
+        .absolute()
+        .inset_0()
+        .size_full()
+        .child(render_noise_tiles(width, height, opacity, scale_factor))
+}
+
+fn render_noise_tiles(width: Pixels, height: Pixels, opacity: f32, scale_factor: f32) -> Div {
+    let tile_size_value = (GLASS_NOISE_TILE_SIZE_BASE / scale_factor.max(1.0)).round();
+    let tile_size = px(tile_size_value);
+    let cols = ((width / tile_size).max(0.0).ceil() as usize).max(1);
+    let rows = ((height / tile_size).max(0.0).ceil() as usize).max(1);
+    let last_tile_width =
+        (width - px(tile_size_value * cols.saturating_sub(1) as f32)).max(px(0.0));
+    let last_tile_height =
+        (height - px(tile_size_value * rows.saturating_sub(1) as f32)).max(px(0.0));
+    let tiles = cols.saturating_mul(rows);
+
+    div()
+        .absolute()
+        .top_0()
+        .left_0()
+        .w(width)
+        .h(height)
+        .flex()
+        .flex_wrap()
+        .items_start()
+        .justify_start()
+        .children((0..tiles).map(move |ix| {
+            let col = ix % cols;
+            let row = ix / cols;
+            let tile_width = if col + 1 == cols {
+                last_tile_width
+            } else {
+                tile_size
+            };
+            let tile_height = if row + 1 == rows {
+                last_tile_height
+            } else {
+                tile_size
+            };
+
+            img(ImageSource::Resource(Resource::Embedded(
+                GLASS_NOISE_ASSET_PATH.into(),
+            )))
+            .w(tile_width)
+            .h(tile_height)
+            .flex_none()
+            .object_fit(ObjectFit::Fill)
+            .opacity(opacity)
+        }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_panel_preset_elevation_override() {
+        let panel = SurfacePreset::panel();
+        assert_eq!(panel.elevation, ElevationToken::Lg);
+        assert!(panel.use_theme_elevation_defaults);
+
+        let overridden = panel.with_elevation(ElevationToken::Sm);
+        assert_eq!(overridden.elevation, ElevationToken::Sm);
+        assert!(!overridden.use_theme_elevation_defaults);
+    }
 }
