@@ -96,8 +96,8 @@ pub fn sidebar_shadow() -> Vec<BoxShadow> {
 /// - Glass blur and noise effects via SurfacePreset::panel()
 /// - Draggable resize handle with hover feedback
 ///
-/// The default elevation is [`ElevationToken::Sm`]. Large elevations may require
-/// a larger inset near window edges to avoid native-window clipping.
+/// By default, the shell uses the theme's panel elevation. Explicit elevation overrides may
+/// require a larger inset near window edges to avoid native-window clipping.
 ///
 /// The component uses a builder pattern for configuration and implements
 /// `ParentElement` for adding child content, `Styled` for style refinement,
@@ -138,9 +138,9 @@ pub struct SidebarShell {
     on_resize_start: Option<Rc<dyn Fn(Pixels, Pixels, &mut Window, &mut App)>>,
     /// Callback invoked when resize ends (mouse up).
     on_resize_end: Option<Rc<dyn Fn(&mut Window, &mut App)>>,
-    /// Shadow elevation level for the complete sidebar panel.
-    /// Default: `ElevationToken::Sm`.
-    elevation: ElevationToken,
+    /// Optional shadow elevation override for the complete sidebar panel.
+    /// If `None`, the theme's panel elevation is used.
+    elevation: Option<ElevationToken>,
     /// Placement side (left or right).
     side: Side,
     /// Inset from window edges in pixels. If `None`, inherits from context.
@@ -197,7 +197,7 @@ impl SidebarShell {
             resizer_hover_bg: None,
             on_resize_start: None,
             on_resize_end: None,
-            elevation: ElevationToken::Sm,
+            elevation: None,
             side,
             inset: None,
             top_inset: px(0.0),
@@ -326,7 +326,7 @@ impl SidebarShell {
     /// Sets the shadow elevation level for the complete sidebar panel.
     ///
     /// Controls the single panel shadow using the theme's elevation system.
-    /// Default: `ElevationToken::Sm`. Large elevations may require a larger
+    /// When not set, the theme's panel elevation is used. Large elevations may require a larger
     /// inset near window edges to avoid native-window clipping.
     ///
     /// # Example
@@ -337,8 +337,16 @@ impl SidebarShell {
     ///     .child(content)
     /// ```
     pub fn elevation(mut self, elevation: ElevationToken) -> Self {
-        self.elevation = elevation;
+        self.elevation = Some(elevation);
         self
+    }
+
+    fn surface_preset(&self) -> SurfacePreset {
+        let mut surface_preset = SurfacePreset::panel();
+        if let Some(elevation) = self.elevation {
+            surface_preset = surface_preset.with_elevation(elevation);
+        }
+        surface_preset
     }
 }
 
@@ -375,8 +383,8 @@ impl RenderOnce for SidebarShell {
             .blur_enabled
             .unwrap_or_else(|| GlobalState::global(cx).blur_enabled());
 
-        let sidebar_surface = SurfacePreset::panel()
-            .with_elevation(self.elevation)
+        let sidebar_surface = self
+            .surface_preset()
             .wrap_with_bounds(
                 div(),
                 sidebar_width,
@@ -458,7 +466,7 @@ mod tests {
     #[test]
     fn test_sidebar_shell_defaults_and_elevation_builder() {
         let default_shell = SidebarShell::left(px(260.0));
-        assert_eq!(default_shell.elevation, ElevationToken::Sm);
+        assert_eq!(default_shell.elevation, None);
         assert_eq!(default_shell.min_width, px(DEFAULT_MIN_WIDTH));
         assert_eq!(default_shell.max_width, px(DEFAULT_MAX_WIDTH));
         assert_eq!(default_shell.resizer_width, px(DEFAULT_RESIZER_WIDTH));
@@ -466,15 +474,34 @@ mod tests {
         assert_eq!(default_shell.side, Side::Left);
 
         let no_shadow = SidebarShell::left(px(260.0)).elevation(ElevationToken::None);
-        assert_eq!(no_shadow.elevation, ElevationToken::None);
+        assert_eq!(no_shadow.elevation, Some(ElevationToken::None));
 
         let large_shadow = SidebarShell::right(px(300.0))
             .inset(px(12.0))
             .resizer_width(px(8.0))
             .elevation(ElevationToken::Lg);
-        assert_eq!(large_shadow.elevation, ElevationToken::Lg);
+        assert_eq!(large_shadow.elevation, Some(ElevationToken::Lg));
         assert_eq!(large_shadow.inset, Some(px(12.0)));
         assert_eq!(large_shadow.resizer_width, px(8.0));
         assert_eq!(large_shadow.side, Side::Right);
+    }
+
+    #[test]
+    fn test_sidebar_shell_surface_preset_elevation() {
+        let theme_default = SidebarShell::left(px(260.0)).surface_preset();
+        assert_eq!(theme_default.elevation, ElevationToken::Lg);
+        assert!(theme_default.use_theme_elevation_defaults);
+
+        let no_shadow = SidebarShell::left(px(260.0))
+            .elevation(ElevationToken::None)
+            .surface_preset();
+        assert_eq!(no_shadow.elevation, ElevationToken::None);
+        assert!(!no_shadow.use_theme_elevation_defaults);
+
+        let large_shadow = SidebarShell::left(px(260.0))
+            .elevation(ElevationToken::Lg)
+            .surface_preset();
+        assert_eq!(large_shadow.elevation, ElevationToken::Lg);
+        assert!(!large_shadow.use_theme_elevation_defaults);
     }
 }

@@ -513,7 +513,9 @@ struct NoiseTileLayout {
 }
 
 fn noise_tile_layout(width: Pixels, height: Pixels, scale_factor: f32) -> NoiseTileLayout {
-    let tile_size_value = (GLASS_NOISE_TILE_SIZE_BASE / scale_factor.max(1.0)).round();
+    let tile_size_value = (GLASS_NOISE_TILE_SIZE_BASE / scale_factor.max(1.0))
+        .round()
+        .max(1.0);
     let tile_size = px(tile_size_value);
 
     if width <= px(0.0) || height <= px(0.0) {
@@ -629,6 +631,17 @@ mod tests {
         assert_eq!(layout.rows, 1);
         assert_eq!(layout.last_tile_width, px(40.0));
         assert_eq!(layout.last_tile_height, px(60.0));
+    }
+
+    #[test]
+    fn noise_tile_layout_clamps_tile_size_at_extreme_scale_factors() {
+        let layout = noise_tile_layout(px(3.0), px(2.0), 512.0);
+
+        assert_eq!(layout.tile_size, px(1.0));
+        assert_eq!(layout.cols, 3);
+        assert_eq!(layout.rows, 2);
+        assert_eq!(layout.last_tile_width, px(1.0));
+        assert_eq!(layout.last_tile_height, px(1.0));
     }
 
     #[test]
