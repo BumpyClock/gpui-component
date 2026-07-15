@@ -39,6 +39,9 @@ impl FloatingSidebarState {
 }
 
 /// A floating sidebar that composes SidebarShell and Sidebar with internal resize handling.
+///
+/// The default elevation is [`ElevationToken::Sm`]. Large elevations may require
+/// a larger inset near window edges to avoid native-window clipping.
 #[derive(IntoElement)]
 pub struct FloatingSidebar<E: SidebarItem + 'static> {
     id: ElementId,
@@ -76,7 +79,7 @@ impl<E: SidebarItem> FloatingSidebar<E> {
             inset: Some(DEFAULT_INSET),
             top_inset: px(0.0),
             blur_enabled: None,
-            elevation: ElevationToken::Lg,
+            elevation: ElevationToken::Sm,
             on_resize_end: None,
         }
     }
@@ -161,7 +164,10 @@ impl<E: SidebarItem> FloatingSidebar<E> {
         self
     }
 
-    /// Set the shadow elevation level for the sidebar panel.
+    /// Set the shadow elevation level for the complete sidebar panel.
+    ///
+    /// Default is [`ElevationToken::Sm`]. Large elevations may require a larger
+    /// inset near window edges to avoid native-window clipping.
     pub fn elevation(mut self, elevation: ElevationToken) -> Self {
         self.elevation = elevation;
         self
@@ -351,6 +357,7 @@ impl<E: SidebarItem> RenderOnce for FloatingSidebar<E> {
                     .collapsed(collapsed)
                     .width(expanded_width)
                     .animate_width(false)
+                    .bg(gpui::transparent_black())
                     .refine_style(&style),
             )
             .child(resize_tracker)
@@ -479,6 +486,12 @@ mod tests {
 
     #[gpui::test]
     fn test_floating_sidebar_builder(_cx: &mut gpui::TestAppContext) {
+        let default_sidebar = FloatingSidebar::<SidebarMenu>::new("default-floating-sidebar");
+        assert_eq!(default_sidebar.elevation, ElevationToken::Sm);
+        assert_eq!(default_sidebar.width, DEFAULT_WIDTH);
+        assert_eq!(default_sidebar.inset, Some(DEFAULT_INSET));
+        assert_eq!(default_sidebar.resizer_width, DEFAULT_RESIZER_WIDTH);
+
         let sidebar = FloatingSidebar::<SidebarMenu>::new("floating-sidebar")
             .side(Side::Right)
             .collapsed(true)
@@ -503,8 +516,16 @@ mod tests {
         assert_eq!(sidebar.inset, Some(px(6.0)));
         assert_eq!(sidebar.top_inset, px(12.0));
         assert_eq!(sidebar.blur_enabled, Some(false));
-        assert!(matches!(sidebar.elevation, ElevationToken::Md));
+        assert_eq!(sidebar.elevation, ElevationToken::Md);
         assert!(sidebar.on_resize_end.is_some());
+
+        let no_shadow =
+            FloatingSidebar::<SidebarMenu>::new("no-shadow").elevation(ElevationToken::None);
+        assert_eq!(no_shadow.elevation, ElevationToken::None);
+
+        let large_shadow =
+            FloatingSidebar::<SidebarMenu>::new("large-shadow").elevation(ElevationToken::Lg);
+        assert_eq!(large_shadow.elevation, ElevationToken::Lg);
     }
 
     #[gpui::test]
