@@ -40,8 +40,8 @@ impl FloatingSidebarState {
 
 /// A floating sidebar that composes SidebarShell and Sidebar with internal resize handling.
 ///
-/// The default elevation is [`ElevationToken::Sm`]. Large elevations may require
-/// a larger inset near window edges to avoid native-window clipping.
+/// By default, the sidebar uses the theme's panel elevation. Explicit elevation overrides may
+/// require a larger inset near window edges to avoid native-window clipping.
 #[derive(IntoElement)]
 pub struct FloatingSidebar<E: SidebarItem + 'static> {
     id: ElementId,
@@ -57,7 +57,7 @@ pub struct FloatingSidebar<E: SidebarItem + 'static> {
     inset: Option<Pixels>,
     top_inset: Pixels,
     blur_enabled: Option<bool>,
-    elevation: ElevationToken,
+    elevation: Option<ElevationToken>,
     on_resize_end: Option<Rc<dyn Fn(Pixels, &mut Window, &mut App)>>,
 }
 
@@ -79,7 +79,7 @@ impl<E: SidebarItem> FloatingSidebar<E> {
             inset: Some(DEFAULT_INSET),
             top_inset: px(0.0),
             blur_enabled: None,
-            elevation: ElevationToken::Sm,
+            elevation: None,
             on_resize_end: None,
         }
     }
@@ -166,10 +166,10 @@ impl<E: SidebarItem> FloatingSidebar<E> {
 
     /// Set the shadow elevation level for the complete sidebar panel.
     ///
-    /// Default is [`ElevationToken::Sm`]. Large elevations may require a larger
+    /// When not set, the theme's panel elevation is used. Large elevations may require a larger
     /// inset near window edges to avoid native-window clipping.
     pub fn elevation(mut self, elevation: ElevationToken) -> Self {
-        self.elevation = elevation;
+        self.elevation = Some(elevation);
         self
     }
 
@@ -334,12 +334,14 @@ impl<E: SidebarItem> RenderOnce for FloatingSidebar<E> {
             .max_width(max_width)
             .resizer_width(resizer_width)
             .top_inset(top_inset)
-            .elevation(elevation)
             .on_resize_start(on_resize_start)
             .on_resize_end(move |window, cx| {
                 end_resize(window, cx);
             });
 
+        if let Some(elevation) = elevation {
+            shell = shell.elevation(elevation);
+        }
         if let Some(color) = resizer_hover_bg {
             shell = shell.resizer_hover_bg(color);
         }
@@ -487,7 +489,7 @@ mod tests {
     #[gpui::test]
     fn test_floating_sidebar_builder(_cx: &mut gpui::TestAppContext) {
         let default_sidebar = FloatingSidebar::<SidebarMenu>::new("default-floating-sidebar");
-        assert_eq!(default_sidebar.elevation, ElevationToken::Sm);
+        assert_eq!(default_sidebar.elevation, None);
         assert_eq!(default_sidebar.width, DEFAULT_WIDTH);
         assert_eq!(default_sidebar.inset, Some(DEFAULT_INSET));
         assert_eq!(default_sidebar.resizer_width, DEFAULT_RESIZER_WIDTH);
@@ -516,16 +518,16 @@ mod tests {
         assert_eq!(sidebar.inset, Some(px(6.0)));
         assert_eq!(sidebar.top_inset, px(12.0));
         assert_eq!(sidebar.blur_enabled, Some(false));
-        assert_eq!(sidebar.elevation, ElevationToken::Md);
+        assert_eq!(sidebar.elevation, Some(ElevationToken::Md));
         assert!(sidebar.on_resize_end.is_some());
 
         let no_shadow =
             FloatingSidebar::<SidebarMenu>::new("no-shadow").elevation(ElevationToken::None);
-        assert_eq!(no_shadow.elevation, ElevationToken::None);
+        assert_eq!(no_shadow.elevation, Some(ElevationToken::None));
 
         let large_shadow =
             FloatingSidebar::<SidebarMenu>::new("large-shadow").elevation(ElevationToken::Lg);
-        assert_eq!(large_shadow.elevation, ElevationToken::Lg);
+        assert_eq!(large_shadow.elevation, Some(ElevationToken::Lg));
     }
 
     #[gpui::test]
