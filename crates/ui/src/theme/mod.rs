@@ -16,6 +16,8 @@ mod elevation;
 mod fluent_tokens;
 mod registry;
 mod schema;
+#[cfg(test)]
+mod tests;
 mod theme_color;
 mod typography;
 

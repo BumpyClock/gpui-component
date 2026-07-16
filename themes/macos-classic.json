@@ -26,6 +26,9 @@
         "popover.foreground": "#000000",
         "primary.background": "#0060de",
         "primary.foreground": "#FFFFFF",
+        "warning.foreground": "#111111",
+        "success.foreground": "#0A0A0A",
+        "info.hover.background": "#0A838F",
         "scrollbar.background": "#FFFFFF00",
         "scrollbar.thumb.background": "#C8C8C8",
         "secondary.active.background": "#D9D9D9",
@@ -43,7 +46,12 @@
         "base.blue": "#0060de",
         "base.green": "#319a00",
         "base.magenta": "#9A0068",
-        "base.cyan": "#007E8A"
+        "base.cyan": "#007E8A",
+        "chart.1": "#0060de",
+        "chart.2": "#007E8A",
+        "chart.3": "#319a00",
+        "chart.4": "#8B7600",
+        "chart.5": "#d21f07"
       },
       "highlight": {
         "editor.foreground": "#000000",
@@ -156,7 +164,9 @@
         "popover.background": "#101010",
         "popover.foreground": "#CACCCA",
         "primary.background": "#077CFD",
-        "primary.foreground": "#F2F9FF",
+        "primary.foreground": "#111111",
+        "primary.hover.background": "#3D96FD",
+        "primary.active.background": "#4A80D8",
         "switch.background": "#393939",
         "switch.thumb.background": "#DAECFF",
         "scrollbar.background": "#13131300",
@@ -176,7 +186,12 @@
         "base.green": "#30D158",
         "base.magenta": "#A550A7",
         "base.red": "#FF5257",
-        "base.yellow": "#FFC600"
+        "base.yellow": "#FFC600",
+        "chart.1": "#419CFF",
+        "chart.2": "#07FDD3",
+        "chart.3": "#30D158",
+        "chart.4": "#FFC600",
+        "chart.5": "#FF5257"
       },
       "highlight": {
         "editor.foreground": "#CACCCA",
