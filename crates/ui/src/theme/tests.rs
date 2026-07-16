@@ -11,6 +11,7 @@ use super::{Colorize as _, ThemeColor, ThemeConfig, ThemeSet, try_parse_color};
 const MIN_TEXT_CONTRAST: f32 = 4.5;
 const MIN_CHART_CONTRAST: f32 = 3.;
 const MIN_CHART_COLOR_DISTANCE: f32 = 0.05;
+const MIN_INTERACTION_STATE_DISTANCE: f32 = 0.02;
 
 fn bundled_theme_configs() -> Vec<(PathBuf, ThemeConfig)> {
     let themes_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../themes");
@@ -235,6 +236,79 @@ fn default_theme_semantic_active_states_remain_distinct() {
         ("warning", colors.warning, colors.warning_active),
     ] {
         assert_ne!(normal, active, "default light {name} active state");
+    }
+}
+
+#[test]
+fn contrast_adjusted_interaction_states_remain_distinct() {
+    type ColorGetter = fn(&ThemeColor) -> Hsla;
+
+    let cases: [(&str, &str, [ColorGetter; 3]); 8] = [
+        (
+            "Adventure",
+            "warning",
+            [|c| c.warning, |c| c.warning_hover, |c| c.warning_active],
+        ),
+        (
+            "Catppuccin Macchiato",
+            "primary",
+            [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
+        ),
+        (
+            "Gruvbox Dark",
+            "primary",
+            [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
+        ),
+        (
+            "Alduin",
+            "primary",
+            [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
+        ),
+        (
+            "Everforest Dark",
+            "secondary",
+            [
+                |c| c.secondary,
+                |c| c.secondary_hover,
+                |c| c.secondary_active,
+            ],
+        ),
+        (
+            "Kibble",
+            "success",
+            [|c| c.success, |c| c.success_hover, |c| c.success_active],
+        ),
+        (
+            "macOS Classic Dark",
+            "primary",
+            [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
+        ),
+        (
+            "Twilight",
+            "info",
+            [|c| c.info, |c| c.info_hover, |c| c.info_active],
+        ),
+    ];
+    let configs = bundled_theme_configs();
+
+    for (theme_name, state_name, getters) in cases {
+        let (path, config) = configs
+            .iter()
+            .find(|(_, config)| config.name == theme_name)
+            .unwrap_or_else(|| panic!("bundled theme {theme_name} should exist"));
+        let colors = resolve_colors(config);
+        let states = getters.map(|get| get(&colors));
+
+        for left in 0..states.len() {
+            for right in left + 1..states.len() {
+                let distance = oklab_distance(states[left], states[right], colors.background);
+                assert!(
+                    distance >= MIN_INTERACTION_STATE_DISTANCE,
+                    "{} / {theme_name} / {state_name} states {left} and {right}: OKLab distance {distance:.3}",
+                    path.display()
+                );
+            }
+        }
     }
 }
 
