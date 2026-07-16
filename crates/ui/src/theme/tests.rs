@@ -110,6 +110,7 @@ fn bundled_themes_meet_text_contrast_floor() {
     for (path, config) in bundled_theme_configs() {
         let colors = resolve_colors(&config);
         let pairs = [
+            ("foreground", colors.foreground, colors.background),
             ("muted", colors.muted_foreground, colors.background),
             ("primary", colors.primary_foreground, colors.primary),
             ("danger", colors.danger_foreground, colors.danger),
