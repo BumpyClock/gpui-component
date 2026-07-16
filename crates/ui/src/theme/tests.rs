@@ -243,11 +243,36 @@ fn default_theme_semantic_active_states_remain_distinct() {
 fn contrast_adjusted_interaction_states_remain_distinct() {
     type ColorGetter = fn(&ThemeColor) -> Hsla;
 
-    let cases: [(&str, &str, [ColorGetter; 3]); 8] = [
+    let cases: [(&str, &str, [ColorGetter; 3]); 34] = [
+        (
+            "Adventure",
+            "primary",
+            [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
+        ),
+        (
+            "Adventure",
+            "danger",
+            [|c| c.danger, |c| c.danger_hover, |c| c.danger_active],
+        ),
         (
             "Adventure",
             "warning",
             [|c| c.warning, |c| c.warning_hover, |c| c.warning_active],
+        ),
+        (
+            "Adventure Time",
+            "primary",
+            [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
+        ),
+        (
+            "Adventure Time",
+            "success",
+            [|c| c.success, |c| c.success_hover, |c| c.success_active],
+        ),
+        (
+            "Catppuccin Latte",
+            "danger",
+            [|c| c.danger, |c| c.danger_hover, |c| c.danger_active],
         ),
         (
             "Catppuccin Macchiato",
@@ -255,7 +280,16 @@ fn contrast_adjusted_interaction_states_remain_distinct() {
             [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
         ),
         (
-            "Gruvbox Dark",
+            "Everforest Light",
+            "secondary",
+            [
+                |c| c.secondary,
+                |c| c.secondary_hover,
+                |c| c.secondary_active,
+            ],
+        ),
+        (
+            "Everforest Dark",
             "primary",
             [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
         ),
@@ -274,7 +308,72 @@ fn contrast_adjusted_interaction_states_remain_distinct() {
             ],
         ),
         (
+            "Flexoki Light",
+            "danger",
+            [|c| c.danger, |c| c.danger_hover, |c| c.danger_active],
+        ),
+        (
+            "Flexoki Light",
+            "info",
+            [|c| c.info, |c| c.info_hover, |c| c.info_active],
+        ),
+        (
+            "Flexoki Dark",
+            "success",
+            [|c| c.success, |c| c.success_hover, |c| c.success_active],
+        ),
+        (
+            "Gruvbox Light",
+            "info",
+            [|c| c.info, |c| c.info_hover, |c| c.info_active],
+        ),
+        (
+            "Gruvbox Dark",
+            "info",
+            [|c| c.info, |c| c.info_hover, |c| c.info_active],
+        ),
+        (
+            "Gruvbox Dark",
+            "primary",
+            [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
+        ),
+        (
+            "Hybrid Light",
+            "warning",
+            [|c| c.warning, |c| c.warning_hover, |c| c.warning_active],
+        ),
+        (
+            "Hybrid Dark",
+            "warning",
+            [|c| c.warning, |c| c.warning_hover, |c| c.warning_active],
+        ),
+        (
+            "Hybrid Dark",
+            "success",
+            [|c| c.success, |c| c.success_hover, |c| c.success_active],
+        ),
+        (
+            "Jellybeans",
+            "info",
+            [|c| c.info, |c| c.info_hover, |c| c.info_active],
+        ),
+        (
             "Kibble",
+            "success",
+            [|c| c.success, |c| c.success_hover, |c| c.success_active],
+        ),
+        (
+            "Mellifluous Light",
+            "primary",
+            [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
+        ),
+        (
+            "Mellifluous Light",
+            "success",
+            [|c| c.success, |c| c.success_hover, |c| c.success_active],
+        ),
+        (
+            "Mellifluous Dark",
             "success",
             [|c| c.success, |c| c.success_hover, |c| c.success_active],
         ),
@@ -282,6 +381,41 @@ fn contrast_adjusted_interaction_states_remain_distinct() {
             "macOS Classic Dark",
             "primary",
             [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
+        ),
+        (
+            "Solarized Light",
+            "success",
+            [|c| c.success, |c| c.success_hover, |c| c.success_active],
+        ),
+        (
+            "Solarized Light",
+            "warning",
+            [|c| c.warning, |c| c.warning_hover, |c| c.warning_active],
+        ),
+        (
+            "Solarized Light",
+            "info",
+            [|c| c.info, |c| c.info_hover, |c| c.info_active],
+        ),
+        (
+            "Spaceduck",
+            "primary",
+            [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
+        ),
+        (
+            "Tokyo Storm",
+            "primary",
+            [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
+        ),
+        (
+            "Tokyo Moon",
+            "primary",
+            [|c| c.primary, |c| c.primary_hover, |c| c.primary_active],
+        ),
+        (
+            "Twilight",
+            "danger",
+            [|c| c.danger, |c| c.danger_hover, |c| c.danger_active],
         ),
         (
             "Twilight",

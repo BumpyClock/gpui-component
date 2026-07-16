@@ -27,7 +27,7 @@
         "popover.foreground": "#a3a49d",
         "primary.background": "#089CC5",
         "primary.foreground": "#111111",
-        "primary.active.background": "#089CC5",
+        "primary.active.background": "#2FAECD",
         "danger.foreground": "#000000",
         "danger.hover.background": "#DC3301",
         "danger.active.background": "#e03804",
