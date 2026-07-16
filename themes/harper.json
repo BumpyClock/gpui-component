@@ -24,6 +24,7 @@
         "popover.foreground": "#a8a49d",
         "primary.background": "#B196C6",
         "primary.foreground": "#000000",
+        "success.active.background": "#3C833C",
         "scrollbar.background": "#003a5b00",
         "scrollbar.thumb.background": "#726E69",
         "secondary.background": "#1b1b1b",

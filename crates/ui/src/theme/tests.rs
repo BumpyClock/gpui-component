@@ -24,6 +24,7 @@ fn bundled_theme_configs() -> Vec<(PathBuf, ThemeConfig)> {
                 .is_some_and(|extension| extension == "json")
         })
         .collect::<Vec<_>>();
+    paths.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("src/theme/default-theme.json"));
     paths.sort();
 
     paths
@@ -74,6 +75,9 @@ fn hsla_to_rgba(color: Hsla) -> [f32; 4] {
 
 fn composite(foreground: [f32; 4], background: [f32; 4]) -> [f32; 4] {
     let alpha = foreground[3] + background[3] * (1. - foreground[3]);
+    if alpha == 0. {
+        return [0.; 4];
+    }
     let channel = |index| {
         (foreground[index] * foreground[3]
             + background[index] * background[3] * (1. - foreground[3]))
@@ -113,15 +117,68 @@ fn bundled_themes_meet_text_contrast_floor() {
             ("foreground", colors.foreground, colors.background),
             ("muted", colors.muted_foreground, colors.background),
             ("primary", colors.primary_foreground, colors.primary),
+            (
+                "primary hover",
+                colors.primary_foreground,
+                colors.primary_hover,
+            ),
+            (
+                "primary active",
+                colors.primary_foreground,
+                colors.primary_active,
+            ),
+            ("secondary", colors.secondary_foreground, colors.secondary),
+            (
+                "secondary hover",
+                colors.secondary_foreground,
+                colors.secondary_hover,
+            ),
+            (
+                "secondary active",
+                colors.secondary_foreground,
+                colors.secondary_active,
+            ),
             ("danger", colors.danger_foreground, colors.danger),
+            (
+                "danger hover",
+                colors.danger_foreground,
+                colors.danger_hover,
+            ),
+            (
+                "danger active",
+                colors.danger_foreground,
+                colors.danger_active,
+            ),
             ("success", colors.success_foreground, colors.success),
+            (
+                "success hover",
+                colors.success_foreground,
+                colors.success_hover,
+            ),
+            (
+                "success active",
+                colors.success_foreground,
+                colors.success_active,
+            ),
             ("warning", colors.warning_foreground, colors.warning),
+            (
+                "warning hover",
+                colors.warning_foreground,
+                colors.warning_hover,
+            ),
+            (
+                "warning active",
+                colors.warning_foreground,
+                colors.warning_active,
+            ),
             ("info", colors.info_foreground, colors.info),
+            ("info hover", colors.info_foreground, colors.info_hover),
+            ("info active", colors.info_foreground, colors.info_active),
         ];
 
         for (name, foreground, surface) in pairs {
             let ratio = contrast_ratio(foreground, surface, colors.background);
-            if ratio < MIN_TEXT_CONTRAST {
+            if !ratio.is_finite() || ratio < MIN_TEXT_CONTRAST {
                 failures.push(format!(
                     "{} / {} / {name}: {ratio:.2}:1",
                     path.display(),
