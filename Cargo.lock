@@ -197,6 +197,7 @@ dependencies = [
  "anyhow",
  "gpui",
  "gpui-component",
+ "gpui-component-assets",
  "gpui_platform",
  "rust-embed",
 ]
@@ -3160,6 +3161,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpui-component-app"
+version = "0.5.1"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "gpui-component",
+ "gpui-component-assets",
+ "gpui-component-manifest",
+ "gpui-component-storage",
+ "gpui_platform",
+ "log",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "gpui-component-assets"
 version = "0.5.1"
 dependencies = [
@@ -3175,6 +3193,28 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "gpui-component-manifest"
+version = "0.5.1"
+dependencies = [
+ "serde",
+ "tempfile",
+ "thiserror 2.0.18",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
+name = "gpui-component-storage"
+version = "0.5.1"
+dependencies = [
+ "dirs 6.0.0",
+ "log",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.18",
+ "toml 0.9.12+spec-1.1.0",
 ]
 
 [[package]]

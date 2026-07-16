@@ -1,0 +1,19 @@
+[package]
+name = "downstream-fixture-app"
+version = "0.4.2"
+edition = "2024"
+publish = false
+
+[dependencies]
+gpui-component-manifest = { path = "../../.." }
+
+[build-dependencies]
+gpui-component-manifest = { path = "../../.." }
+
+[package.metadata.gpui-app]
+app_id = "com.example.downstreamfixture"
+display_name = "Downstream Fixture"
+url_schemes = ["fixtureapp"]
+categories = ["Development"]
+
+[workspace]

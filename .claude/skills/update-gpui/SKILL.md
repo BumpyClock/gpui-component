@@ -47,7 +47,12 @@ Update the GPUI git submodule and all related Cargo.toml references to the lates
    cargo clippy -- --deny warnings
    ```
 
-8. **Report summary**: Show old commit, new commit, what changed (list new commits), and whether build/clippy passed.
+8. **Version + compatibility bookkeeping** (this skill is the ONLY place a gpui rev changes — see docs/learned/app-platform-plan.md D6):
+   - Bump `[workspace.package] version` in the root `Cargo.toml` (minor bump for a gpui rev change or breaking API change while pre-1.0; patch otherwise). Keep the `version = "X.Y.Z"` values inside `[workspace.dependencies]` for the path crates (`gpui-component`, `gpui-component-*`) in sync.
+   - Add a row to `docs/COMPATIBILITY.md` pairing the new workspace version with the new gpui rev.
+   - After the change lands on `main`, create the annotated tag: `git tag -a v<version> -m "gpui-component v<version> (gpui <shortsha>)"` and push it. Apps pin these tags — never bare revs.
+
+9. **Report summary**: Show old commit, new commit, what changed (list new commits), whether build/clippy passed, and the new workspace version + tag.
 
 ### Notes
 

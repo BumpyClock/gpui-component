@@ -60,6 +60,11 @@ jobs:
       - name: Lint (Windows)
         if: ${{ matrix.run_on == 'windows-latest' }}
         run: ./script/clippy.ps1
+      # Platform crates are pure-Rust (no display server) and their tests are
+      # MANDATORY on every OS — unlike the rest of the repo, where tests are
+      # optional. See docs/learned/app-platform-plan.md §5 Phase 0 item 2/3.
+      - name: Test platform crates
+        run: cargo test -p gpui-component-storage -p gpui-component-manifest
       - name: Test Linux
         if: ${{ matrix.run_on == 'ubuntu-latest' }}
         run: |
@@ -73,3 +78,38 @@ jobs:
         run: |
           cargo test --all
           cargo test -p gpui-component --doc
+
+  # Phase-1 placeholder: native launch smoke test for the app-platform conformance
+  # examples (examples/app-shell single-window, examples/app-shell-tray tray-first).
+  # Those examples do not exist yet — see docs/learned/app-platform-plan.md §5 Phase 1
+  # and §6 gate 7 ("CI launches native smoke apps on 3 OSes and checks min/max feature
+  # sets"). This job is intentionally DISABLED (`if: false`); it only pins the OS matrix
+  # and step structure so Phase 1 can drop in the real launch + feature-set commands.
+  # Keep the matrix in sync with the `test` job above.
+  native-launch-smoke:
+    name: Native launch smoke (Phase 1 placeholder)
+    if: false # TODO(phase-1): enable once examples/app-shell{,-tray} exist
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            run_on: macos-latest
+          - target: x86_64-linux-gnu
+            run_on: ubuntu-latest
+          - target: x86_64-windows-msvc
+            run_on: windows-latest
+    runs-on: ${{ matrix.run_on }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install system dependencies
+        if: ${{ matrix.run_on != 'windows-latest' }}
+        run: script/bootstrap
+      # TODO(phase-1): launch each conformance example, assert it reaches a ready
+      # state, then exits cleanly; repeat for min/max feature sets (none/default/tray/all).
+      # Linux has no display on stock runners and must launch under a virtual one:
+      #   Linux:         xvfb-run -a cargo run --example app-shell -- --smoke
+      #   macOS/Windows: cargo run --example app-shell -- --smoke
+      - name: Native launch smoke
+        run: echo "Phase-1 placeholder — see docs/learned/app-platform-plan.md §5/§6 gate 7"
