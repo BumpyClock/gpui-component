@@ -18,7 +18,7 @@
         "list.active.border": "#B196C699",
         "list.even.background": "#18151B77",
         "muted.background": "#171717",
-        "muted.foreground": "#726E69",
+        "muted.foreground": "#79756f",
         "panel.background": "#003a5b",
         "popover.background": "#010101",
         "popover.foreground": "#a8a49d",
@@ -45,7 +45,12 @@
         "base.magenta": "#b296c6",
         "base.magenta.light": "#b296c699",
         "base.yellow": "#f8b63f",
-        "base.yellow.light": "#f8b63f99"
+        "base.yellow.light": "#f8b63f99",
+        "chart.1": "#7fb5e1",
+        "chart.2": "#bff5e5",
+        "chart.3": "#489e48",
+        "chart.4": "#f8b63f",
+        "chart.5": "#ff5874"
       },
       "highlight": {
         "editor.foreground": "#a8a49d",

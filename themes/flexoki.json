@@ -23,7 +23,8 @@
         "muted.background": "#F2F0E5",
         "muted.foreground": "#6F6E69",
         "primary.background": "#3AA99F",
-        "primary.foreground": "#FAFAFA",
+        "primary.foreground": "#111111",
+        "danger.foreground": "#000000",
         "info.background": "#4385BE",
         "scrollbar.background": "#FAFAFA00",
         "scrollbar.thumb.background": "#E6E4D9",
@@ -44,7 +45,12 @@
         "base.blue": "#4385BE",
         "base.green": "#879A39",
         "base.magenta": "#CE5D97",
-        "base.cyan": "#3AA99F"
+        "base.cyan": "#3AA99F",
+        "chart.1": "#4385BE",
+        "chart.2": "#3AA99F",
+        "chart.3": "#879A39",
+        "chart.4": "#D0A215",
+        "chart.5": "#D14D41"
       },
       "highlight": {
         "editor.foreground": "#100F0F",
@@ -188,8 +194,10 @@
         "popover.background": "#100F0F",
         "popover.foreground": "#CECDC3",
         "primary.background": "#24837B",
-        "primary.foreground": "#FFFCF0",
+        "primary.foreground": "#000000",
+        "danger.foreground": "#fafafa",
         "info.background": "#205EA6",
+        "info.foreground": "#fafafa",
         "scrollbar.background": "#100F0F00",
         "scrollbar.thumb.background": "#282726",
         "scrollbar.thumb.hover.background": "#343331",
@@ -214,7 +222,12 @@
         "base.magenta": "#A02F6F",
         "base.magenta.light": "#CE5D97",
         "base.cyan": "#24837B",
-        "base.cyan.light": "#3AA99F"
+        "base.cyan.light": "#3AA99F",
+        "chart.1": "#205EA6",
+        "chart.2": "#24837B",
+        "chart.3": "#66800B",
+        "chart.4": "#AD8301",
+        "chart.5": "#AF3029"
       },
       "highlight": {
         "editor.foreground": "#CECDC3",

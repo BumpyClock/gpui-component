@@ -19,12 +19,13 @@
         "list.active.border": "#586E75",
         "list.even.background": "#EEE8D599",
         "muted.background": "#eee8d5",
-        "muted.foreground": "#93a1a1",
+        "muted.foreground": "#5f747b",
         "panel.background": "#fdf6e3",
         "popover.background": "#fdf6e3",
         "popover.foreground": "#073642",
         "primary.background": "#586E75",
         "primary.foreground": "#fdf6e3",
+        "success.foreground": "#fafafa",
         "scrollbar.background": "#EEE8D500",
         "scrollbar.thumb.background": "#d5cbaf",
         "secondary.background": "#EEE8D5",
@@ -44,7 +45,12 @@
         "base.yellow": "#756e58",
         "base.blue": "#586975",
         "base.magenta": "#755866",
-        "base.cyan": "#587573"
+        "base.cyan": "#587573",
+        "chart.1": "#586975",
+        "chart.2": "#587573",
+        "chart.3": "#717558",
+        "chart.4": "#756e58",
+        "chart.5": "#755858"
       },
       "highlight": {
         "editor.foreground": "#586E75",
@@ -184,7 +190,12 @@
         "base.yellow": "#7d650d",
         "base.blue": "#0d507d",
         "base.magenta": "#7d0d43",
-        "base.cyan": "#0d7d70"
+        "base.cyan": "#0d7d70",
+        "chart.1": "#0d507d",
+        "chart.2": "#0d7d70",
+        "chart.3": "#0d7d3f",
+        "chart.4": "#7d650d",
+        "chart.5": "#7d2f0d"
       },
       "highlight": {
         "editor.foreground": "#DDDDDD",

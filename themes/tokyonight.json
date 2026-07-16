@@ -22,7 +22,7 @@
         "list.active.border": "#7aa2f7",
         "list.even.background": "#2C304599",
         "muted.background": "#2C304544",
-        "muted.foreground": "#565f89",
+        "muted.foreground": "#7982ac",
         "panel.background": "#292e42",
         "popover.background": "#1a1b26",
         "popover.foreground": "#c0caf5",
@@ -42,7 +42,12 @@
         "base.yellow": "#e0af68",
         "base.blue": "#7aa2f7",
         "base.magenta": "#565f89",
-        "base.cyan": "#7dcfff"
+        "base.cyan": "#7dcfff",
+        "chart.1": "#7aa2f7",
+        "chart.2": "#7dcfff",
+        "chart.3": "#9ece6a",
+        "chart.4": "#e0af68",
+        "chart.5": "#f7768e"
       },
       "highlight": {
         "editor.foreground": "#c0caf5",
@@ -162,7 +167,7 @@
         "list.active.border": "#7aa2f7",
         "list.even.background": "#41486844",
         "muted.background": "#292e42",
-        "muted.foreground": "#565f89",
+        "muted.foreground": "#858eb9",
         "panel.background": "#292e42",
         "popover.background": "#24283b",
         "popover.foreground": "#c0caf5",
@@ -181,7 +186,12 @@
         "base.yellow": "#e0af68",
         "base.blue": "#7aa2f7",
         "base.magenta": "#b283f8",
-        "base.cyan": "#7dcfff"
+        "base.cyan": "#7dcfff",
+        "chart.1": "#7aa2f7",
+        "chart.2": "#7dcfff",
+        "chart.3": "#9ece6a",
+        "chart.4": "#e0af68",
+        "chart.5": "#f7768e"
       },
       "highlight": {
         "editor.foreground": "#B0B9E2",
@@ -296,7 +306,7 @@
         "list.background": "#222436",
         "list.even.background": "#282a40",
         "muted.background": "#2d3149",
-        "muted.foreground": "#6e738d",
+        "muted.foreground": "#848baa",
         "panel.background": "#2d3149",
         "popover.background": "#222436",
         "popover.foreground": "#c0caf5",
@@ -316,7 +326,12 @@
         "base.yellow": "#ffc777",
         "base.blue": "#82aaff",
         "base.magenta": "#6e738d",
-        "base.cyan": "#86e1fc"
+        "base.cyan": "#86e1fc",
+        "chart.1": "#82aaff",
+        "chart.2": "#86e1fc",
+        "chart.3": "#c3e88d",
+        "chart.4": "#ffc777",
+        "chart.5": "#ff757f"
       },
       "highlight": {
         "editor.foreground": "#c0caf5",
