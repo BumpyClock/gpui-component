@@ -46,11 +46,11 @@
         "base.green": "#85b304",
         "base.magenta": "#9371f0",
         "base.cyan": "#4dbf99",
-        "chart.1": "#55b4d3",
-        "chart.2": "#4dbf99",
-        "chart.3": "#85b304",
-        "chart.4": "#F1AD49",
-        "chart.5": "#F07171"
+        "chart.1": "#337084",
+        "chart.2": "#2F765F",
+        "chart.3": "#527003",
+        "chart.4": "#957331",
+        "chart.5": "#AC5151"
       },
       "highlight": {
         "editor.foreground": "#5C6773",

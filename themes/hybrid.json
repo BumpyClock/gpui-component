@@ -209,11 +209,11 @@
         "base.magenta.light": "#B294BB",
         "base.cyan": "#15678a",
         "base.cyan.light": "#7fbfb4",
-        "chart.1": "#15678a",
+        "chart.1": "#3E7C97",
         "chart.2": "#7fbfb4",
-        "chart.3": "#7c8a15",
-        "chart.4": "#8a7c15",
-        "chart.5": "#8a1515"
+        "chart.3": "#6FA34A",
+        "chart.4": "#B59A32",
+        "chart.5": "#A25555"
       },
       "highlight": {
         "editor.foreground": "#DDDDDD",

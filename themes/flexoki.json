@@ -49,9 +49,9 @@
         "base.magenta": "#CE5D97",
         "base.cyan": "#3AA99F",
         "chart.1": "#4385BE",
-        "chart.2": "#3AA99F",
+        "chart.2": "#2B7D75",
         "chart.3": "#879A39",
-        "chart.4": "#D0A215",
+        "chart.4": "#9C7810",
         "chart.5": "#D14D41"
       },
       "highlight": {
@@ -229,11 +229,11 @@
         "base.magenta.light": "#CE5D97",
         "base.cyan": "#24837B",
         "base.cyan.light": "#3AA99F",
-        "chart.1": "#205EA6",
+        "chart.1": "#477EBE",
         "chart.2": "#24837B",
         "chart.3": "#66800B",
         "chart.4": "#AD8301",
-        "chart.5": "#AF3029"
+        "chart.5": "#C05E58"
       },
       "highlight": {
         "editor.foreground": "#CECDC3",

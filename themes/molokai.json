@@ -41,11 +41,11 @@
         "base.blue.light": "#e16032",
         "base.magenta": "#7058be",
         "base.cyan": "#0acc78",
-        "chart.1": "#e16032",
-        "chart.2": "#0acc78",
-        "chart.3": "#82cc0a",
-        "chart.4": "#ccac0a",
-        "chart.5": "#e17047"
+        "chart.1": "#5A43A7",
+        "chart.2": "#087D49",
+        "chart.3": "#4F7D06",
+        "chart.4": "#806C06",
+        "chart.5": "#AB5030"
       },
       "highlight": {
         "editor.foreground": "#0a0a0a",
@@ -185,7 +185,7 @@
         "base.blue": "#075880",
         "base.magenta": "#800780",
         "base.cyan": "#07807e",
-        "chart.1": "#075880",
+        "chart.1": "#3E7894",
         "chart.2": "#07807e",
         "chart.3": "#82cc0a",
         "chart.4": "#807607",

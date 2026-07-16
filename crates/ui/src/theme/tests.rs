@@ -9,6 +9,8 @@ use gpui::Hsla;
 use super::{Colorize as _, ThemeColor, ThemeConfig, ThemeSet, try_parse_color};
 
 const MIN_TEXT_CONTRAST: f32 = 4.5;
+const MIN_CHART_CONTRAST: f32 = 3.;
+const MIN_CHART_COLOR_DISTANCE: f32 = 0.05;
 
 fn bundled_theme_configs() -> Vec<(PathBuf, ThemeConfig)> {
     let themes_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../themes");
@@ -86,15 +88,16 @@ fn composite(foreground: [f32; 4], background: [f32; 4]) -> [f32; 4] {
     [channel(0), channel(1), channel(2), alpha]
 }
 
+fn linear_srgb(channel: f32) -> f32 {
+    if channel <= 0.04045 {
+        channel / 12.92
+    } else {
+        ((channel + 0.055) / 1.055).powf(2.4)
+    }
+}
+
 fn relative_luminance(color: [f32; 4]) -> f32 {
-    let linear = |channel: f32| {
-        if channel <= 0.04045 {
-            channel / 12.92
-        } else {
-            ((channel + 0.055) / 1.055).powf(2.4)
-        }
-    };
-    0.2126 * linear(color[0]) + 0.7152 * linear(color[1]) + 0.0722 * linear(color[2])
+    0.2126 * linear_srgb(color[0]) + 0.7152 * linear_srgb(color[1]) + 0.0722 * linear_srgb(color[2])
 }
 
 fn contrast_ratio(foreground: Hsla, surface: Hsla, background: Hsla) -> f32 {
@@ -105,6 +108,28 @@ fn contrast_ratio(foreground: Hsla, surface: Hsla, background: Hsla) -> f32 {
     let surface_luminance = relative_luminance(surface);
     (foreground_luminance.max(surface_luminance) + 0.05)
         / (foreground_luminance.min(surface_luminance) + 0.05)
+}
+
+fn oklab(color: Hsla, background: Hsla) -> [f32; 3] {
+    let color = composite(hsla_to_rgba(color), hsla_to_rgba(background));
+    let red = linear_srgb(color[0]);
+    let green = linear_srgb(color[1]);
+    let blue = linear_srgb(color[2]);
+    let lightness = (0.412_221_46 * red + 0.536_332_55 * green + 0.051_445_995 * blue).cbrt();
+    let medium = (0.211_903_5 * red + 0.680_699_5 * green + 0.107_396_96 * blue).cbrt();
+    let short = (0.088_302_46 * red + 0.281_718_85 * green + 0.629_978_7 * blue).cbrt();
+    [
+        0.210_454_26 * lightness + 0.793_617_8 * medium - 0.004_072_047 * short,
+        1.977_998_5 * lightness - 2.428_592_2 * medium + 0.450_593_7 * short,
+        0.025_904_037 * lightness + 0.782_771_77 * medium - 0.808_675_77 * short,
+    ]
+}
+
+fn oklab_distance(left: Hsla, right: Hsla, background: Hsla) -> f32 {
+    let left = oklab(left, background);
+    let right = oklab(right, background);
+    ((left[0] - right[0]).powi(2) + (left[1] - right[1]).powi(2) + (left[2] - right[2]).powi(2))
+        .sqrt()
 }
 
 #[test]
@@ -196,6 +221,24 @@ fn bundled_themes_meet_text_contrast_floor() {
 }
 
 #[test]
+fn default_theme_semantic_active_states_remain_distinct() {
+    let (_, config) = bundled_theme_configs()
+        .into_iter()
+        .find(|(_, config)| config.name == "Default Light")
+        .expect("default light theme should exist");
+    let colors = resolve_colors(&config);
+
+    for (name, normal, active) in [
+        ("danger", colors.danger, colors.danger_active),
+        ("info", colors.info, colors.info_active),
+        ("success", colors.success, colors.success_active),
+        ("warning", colors.warning, colors.warning_active),
+    ] {
+        assert_ne!(normal, active, "default light {name} active state");
+    }
+}
+
+#[test]
 fn bundled_themes_define_distinct_chart_palettes() {
     let mut failures = Vec::new();
 
@@ -230,18 +273,46 @@ fn bundled_themes_define_distinct_chart_palettes() {
 
         let colors = resolve_colors(&config);
         let palette = [
-            colors.chart_1.to_hex(),
-            colors.chart_2.to_hex(),
-            colors.chart_3.to_hex(),
-            colors.chart_4.to_hex(),
-            colors.chart_5.to_hex(),
+            colors.chart_1,
+            colors.chart_2,
+            colors.chart_3,
+            colors.chart_4,
+            colors.chart_5,
         ];
-        if palette.iter().collect::<BTreeSet<_>>().len() != palette.len() {
+        let hex = palette.map(|color| color.to_hex());
+        if hex.iter().collect::<BTreeSet<_>>().len() != hex.len() {
             failures.push(format!(
-                "{} / {}: duplicate chart colors {palette:?}",
+                "{} / {}: duplicate chart colors {hex:?}",
                 path.display(),
                 config.name
             ));
+        }
+
+        for (index, color) in palette.iter().enumerate() {
+            let ratio = contrast_ratio(*color, colors.background, colors.background);
+            if !ratio.is_finite() || ratio < MIN_CHART_CONTRAST {
+                failures.push(format!(
+                    "{} / {} / chart.{}: {ratio:.2}:1 against background",
+                    path.display(),
+                    config.name,
+                    index + 1
+                ));
+            }
+        }
+
+        for left in 0..palette.len() {
+            for right in left + 1..palette.len() {
+                let distance = oklab_distance(palette[left], palette[right], colors.background);
+                if !distance.is_finite() || distance < MIN_CHART_COLOR_DISTANCE {
+                    failures.push(format!(
+                        "{} / {} / chart.{} and chart.{}: OKLab distance {distance:.3}",
+                        path.display(),
+                        config.name,
+                        left + 1,
+                        right + 1
+                    ));
+                }
+            }
         }
     }
 

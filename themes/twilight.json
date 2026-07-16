@@ -53,10 +53,10 @@
         "base.magenta.light": "#d0dc8e99",
         "base.cyan": "#778385",
         "base.cyan.light": "#8a989b",
-        "chart.1": "#44474a",
+        "chart.1": "#626467",
         "chart.2": "#778385",
-        "chart.3": "#afb97a",
-        "chart.4": "#c2a86c",
+        "chart.3": "#8FB35F",
+        "chart.4": "#D4A34A",
         "chart.5": "#c06d44"
       },
       "highlight": {
