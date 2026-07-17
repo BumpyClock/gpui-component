@@ -16,7 +16,7 @@
 //!   flush per write and is only needed for data you cannot afford to lose to an
 //!   abrupt machine failure. Plain [`write_atomic`] does not promise durability.
 
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -101,6 +101,16 @@ fn write_impl(path: &Path, bytes: &[u8], durable: bool) -> Result<(), StorageErr
         return Err(e);
     }
 
+    // Preserve the target's restrictive permissions across the replacement. The
+    // staging file was created under the process umask (typically `0644`), so
+    // renaming it over a `0600` settings/secrets file would silently widen it to
+    // world-readable. New files get a restrictive `0600` default.
+    #[cfg(unix)]
+    if let Err(e) = preserve_permissions(path, &temp) {
+        let _ = fs::remove_file(&temp);
+        return Err(e);
+    }
+
     if let Err(e) = fs::rename(&temp, path) {
         // Clean up the orphaned temp file; ignore any failure removing it.
         let _ = fs::remove_file(&temp);
@@ -112,6 +122,22 @@ fn write_impl(path: &Path, bytes: &[u8], durable: bool) -> Result<(), StorageErr
     }
 
     Ok(())
+}
+
+/// Match the staging file's permissions to the target's before the rename, so an
+/// atomic replacement never widens a restrictive mode. A not-yet-existing target
+/// gets a restrictive `0600` default; genuine `stat` failures are propagated.
+#[cfg(unix)]
+fn preserve_permissions(target: &Path, temp: &Path) -> Result<(), StorageError> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let mode = match fs::metadata(target) {
+        Ok(meta) => meta.permissions().mode() & 0o777,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0o600,
+        Err(e) => return Err(StorageError::io(target, e)),
+    };
+    fs::set_permissions(temp, fs::Permissions::from_mode(mode))
+        .map_err(|e| StorageError::io(temp, e))
 }
 
 /// `fsync` the parent directory so the rename entry itself is durable.
@@ -129,7 +155,7 @@ fn sync_parent_dir(path: &Path) -> Result<(), StorageError> {
         } else {
             parent
         };
-        let f = File::open(dir).map_err(|e| StorageError::io(dir, e))?;
+        let f = fs::File::open(dir).map_err(|e| StorageError::io(dir, e))?;
         f.sync_all().map_err(|e| StorageError::io(dir, e))?;
         Ok(())
     }
@@ -184,5 +210,30 @@ mod tests {
         let path = dir.path().join("durable.bin");
         write_atomic_durable(&path, b"safe").unwrap();
         assert_eq!(fs::read(&path).unwrap(), b"safe");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn preserves_restrictive_permissions_on_overwrite() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("secret.bin");
+
+        // A brand-new file is created with a restrictive default.
+        write_atomic(&path, b"first").unwrap();
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+
+        // Tighten further, then overwrite: the mode must survive the rename.
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o400)).unwrap();
+        write_atomic(&path, b"second").unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"second");
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o400
+        );
     }
 }

@@ -110,10 +110,22 @@ fn backup_generations_rotate() {
         s.push(suffix);
         std::path::PathBuf::from(s)
     };
-    assert!(path.exists(), "primary exists");
-    assert!(bak(".bak").exists(), ".bak exists");
-    assert!(bak(".bak.1").exists(), ".bak.1 exists");
-    assert!(bak(".bak.2").exists(), ".bak.2 exists");
+
+    // Existence alone passes even if rotation duplicated or misordered
+    // generations, so assert each file's actual value. The newest generation is
+    // the primary and each `.bak*` holds the next-older value. Backups are read
+    // by pointing a fresh store at their path (their lock is independent of the
+    // still-open primary store).
+    let read_backup = |p: std::path::PathBuf| {
+        let store = DebouncedStore::<Doc>::open(&p, cfg()).unwrap();
+        let value = load_value(&store);
+        store.shutdown().unwrap();
+        value
+    };
+    assert_eq!(load_value(&store), Some(doc("gen", 3)), "primary");
+    assert_eq!(read_backup(bak(".bak")), Some(doc("gen", 2)), ".bak");
+    assert_eq!(read_backup(bak(".bak.1")), Some(doc("gen", 1)), ".bak.1");
+    assert_eq!(read_backup(bak(".bak.2")), Some(doc("gen", 0)), ".bak.2");
 }
 
 #[test]

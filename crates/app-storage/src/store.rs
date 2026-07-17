@@ -211,9 +211,14 @@ impl<T: Serialize + DeserializeOwned + Send + 'static> DebouncedStore<T> {
                         Ok(LoadOutcome::FutureVersion { found }) => {
                             LoadOutcome::FutureVersion { found }
                         }
-                        // Missing / Corrupt backup, or an I/O error probing it:
-                        // try the next generation.
-                        _ => continue,
+                        // A Missing or Corrupt backup is genuinely unusable: skip
+                        // it and give the next generation a chance.
+                        Ok(LoadOutcome::Missing | LoadOutcome::Corrupt { .. }) => continue,
+                        // An I/O error (permissions, device) is NOT evidence the
+                        // backup is absent. Swallowing it here would let the
+                        // caller initialize defaults over still-recoverable data,
+                        // so surface it instead.
+                        Err(error) => return Err(error),
                     };
                     log::warn!(
                         "recovered {} from backup {}",
