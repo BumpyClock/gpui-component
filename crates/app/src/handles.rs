@@ -12,11 +12,10 @@
 use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
 
-use gpui::App;
+use gpui::{App, MainThreadPoster};
 use gpui_component_manifest::schema::IdentityRef;
 use gpui_component_storage::AppPaths;
 
@@ -26,14 +25,6 @@ use crate::lifecycle::{AppEvent, OpenRequest, ShutdownReason};
 use crate::liveness::{Liveness, ShellHold};
 use crate::phases::PhaseTracker;
 use crate::plugin::{AppPlugin, EventHandler};
-
-/// How long the cross-thread drain loop sleeps between polls.
-///
-/// WART (flagged): the gpui fork exposes no dependency-free way to wake the main
-/// thread from a `Send` context (see the report). The proxy therefore *polls*
-/// its command channel on the foreground executor. A proper fix is a gpui
-/// `spawn_on_main(impl FnOnce(&mut App) + Send)` primitive or an async channel.
-const PROXY_POLL_INTERVAL: Duration = Duration::from_millis(16);
 
 /// Immutable application identity, resolved paths, and capability snapshot.
 ///
@@ -96,61 +87,79 @@ impl AppInfo {
     }
 }
 
-type ProxyCommand = Box<dyn FnOnce(&mut App) + Send + 'static>;
-
 /// Cross-thread dispatch handle: schedules work onto the main thread.
 ///
 /// `Clone + Send + Sync`. Serves tray/hotkey/watcher/audio callbacks alike.
 /// After shutdown begins, [`AppProxy::dispatch`] returns [`AppClosed`].
+///
+/// Backed by the gpui fork's [`MainThreadPoster`]: posting wakes the main run
+/// loop through the platform dispatcher, so an idle app stays parked (no poll
+/// loop). The `closed` flag is our own shutdown boundary, set at
+/// `ShutdownRequested` — which precedes app teardown, so it fires strictly
+/// before the poster's own after-teardown rejection (see [`AppProxy::dispatch`]).
 #[derive(Clone)]
 pub struct AppProxy {
     inner: Arc<ProxyInner>,
 }
 
 struct ProxyInner {
-    /// `None` once closed. The closed state lives *inside* the mutex so the
-    /// closed-check and the send are one atomic operation — nothing can be
-    /// accepted after `close()` wins the lock.
-    sender: Mutex<Option<Sender<ProxyCommand>>>,
+    poster: MainThreadPoster,
+    /// Set at the `ShutdownRequested` boundary. Two roles: `dispatch` rejects
+    /// new work once it is set, and every posted closure re-checks it on the
+    /// main thread before running so work already queued behind a callback that
+    /// triggered shutdown is discarded rather than run mid-teardown.
+    closed: AtomicBool,
 }
 
 impl AppProxy {
-    /// Create a proxy and its receiver. The receiver is consumed by the
-    /// main-thread drain loop; the proxy is cloned to background consumers.
-    fn new() -> (Self, Receiver<ProxyCommand>) {
-        let (tx, rx) = channel();
-        let inner = Arc::new(ProxyInner {
-            sender: Mutex::new(Some(tx)),
-        });
-        (Self { inner }, rx)
+    /// Create a proxy backed by the app's [`MainThreadPoster`]. Cloned to
+    /// background consumers; posts run on the main thread via the app's pump.
+    fn new(cx: &mut App) -> Self {
+        Self {
+            inner: Arc::new(ProxyInner {
+                poster: cx.main_thread_poster(),
+                closed: AtomicBool::new(false),
+            }),
+        }
     }
 
     /// Schedule `f` to run on the main thread with `&mut App`.
     ///
-    /// Returns [`AppClosed`] once shutdown has begun (the proxy is closed at the
-    /// `ShutdownRequested` boundary). The closed-check and send are atomic under
-    /// one lock, so no callback is enqueued past that boundary.
+    /// Returns [`AppClosed`] once shutdown has begun — the proxy is closed at the
+    /// `ShutdownRequested` boundary, which precedes app teardown. Two layers
+    /// enforce the boundary:
+    ///
+    /// - a fast pre-check rejects if `closed` is already visible here, and
+    /// - the posted closure re-checks `closed` on the main thread before running
+    ///   `f`. Since `close()` also runs on the main thread, any closure the pump
+    ///   dispatches after `close()` sees the flag and drops its payload. So a
+    ///   dispatch that races `close()` may return `Ok`, but its `f` never runs
+    ///   past the boundary — matching the old drain-loop's discard-after-close.
+    ///
+    /// A `false` from the poster (the main-thread receiver is gone, i.e. the app
+    /// has fully torn down past `close()`) also maps to [`AppClosed`].
     pub fn dispatch(&self, f: impl FnOnce(&mut App) + Send + 'static) -> Result<(), AppClosed> {
-        let guard = self.inner.sender.lock().expect("proxy sender poisoned");
-        match guard.as_ref() {
-            Some(tx) => tx.send(Box::new(f)).map_err(|_| AppClosed),
-            None => Err(AppClosed),
+        if self.inner.closed.load(Ordering::Acquire) {
+            return Err(AppClosed);
         }
+        let inner = Arc::clone(&self.inner);
+        let posted = self.inner.poster.post(move |app| {
+            if !inner.closed.load(Ordering::Acquire) {
+                f(app);
+            }
+        });
+        if posted { Ok(()) } else { Err(AppClosed) }
     }
 
     /// Whether the proxy has been closed.
     pub fn is_closed(&self) -> bool {
-        self.inner
-            .sender
-            .lock()
-            .expect("proxy sender poisoned")
-            .is_none()
+        self.inner.closed.load(Ordering::Acquire)
     }
 
-    /// Close the proxy: reject all future dispatches and let the drain loop
-    /// observe disconnection and exit. Idempotent.
+    /// Close the proxy: reject future dispatches and cause already-queued posts
+    /// to discard their payload when the pump reaches them. Idempotent.
     fn close(&self) {
-        *self.inner.sender.lock().expect("proxy sender poisoned") = None;
+        self.inner.closed.store(true, Ordering::Release);
     }
 }
 
@@ -195,7 +204,6 @@ pub struct ShellState {
     pending_exit_reason: Option<ShutdownReason>,
     shutdown_requested: bool,
     will_exit_done: bool,
-    _drain_task: gpui::Task<()>,
 }
 
 impl gpui::Global for ShellState {}
@@ -289,7 +297,8 @@ impl AppShellExt for App {
     }
 }
 
-/// Install the shell global and start the cross-thread drain loop.
+/// Install the shell global. Wires the cross-thread proxy to the app's
+/// [`MainThreadPoster`]; no poll loop — posts wake the main run loop directly.
 ///
 /// Called during the `CoreServices` phase with the constructed `AppInfo` and the
 /// plugins/handlers/state accumulated by the builder.
@@ -304,8 +313,7 @@ pub(crate) fn install(
     state: HashMap<TypeId, Box<dyn Any>>,
     phases: PhaseTracker,
 ) -> AppProxy {
-    let (proxy, rx) = AppProxy::new();
-    let drain_task = spawn_drain_loop(cx, proxy.clone(), rx);
+    let proxy = AppProxy::new(cx);
 
     cx.set_global(ShellState {
         app_info,
@@ -321,36 +329,8 @@ pub(crate) fn install(
         pending_exit_reason: None,
         shutdown_requested: false,
         will_exit_done: false,
-        _drain_task: drain_task,
     });
     proxy
-}
-
-fn spawn_drain_loop(cx: &App, proxy: AppProxy, rx: Receiver<ProxyCommand>) -> gpui::Task<()> {
-    cx.spawn(async move |cx| {
-        loop {
-            // Drain queued commands, applying each on the main thread. Re-check
-            // closed state BETWEEN callbacks: if one triggers shutdown (closing
-            // the proxy), discard everything still queued behind it rather than
-            // running it mid-teardown.
-            loop {
-                match rx.try_recv() {
-                    Ok(cmd) => {
-                        cx.update(|app| cmd(app));
-                        if proxy.is_closed() {
-                            return;
-                        }
-                    }
-                    Err(std::sync::mpsc::TryRecvError::Empty) => break,
-                    Err(std::sync::mpsc::TryRecvError::Disconnected) => return,
-                }
-            }
-            if proxy.is_closed() {
-                return;
-            }
-            cx.background_executor().timer(PROXY_POLL_INTERVAL).await;
-        }
-    })
 }
 
 /// Register lifecycle observers (window-closed, app-quit) after readiness.
@@ -587,24 +567,79 @@ const _: fn() = || {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::TestAppContext;
 
-    #[test]
-    fn dispatch_enqueues_until_closed() {
-        let (proxy, rx) = AppProxy::new();
+    /// Posted work runs on the main thread; once closed, `dispatch` rejects.
+    #[gpui::test]
+    fn dispatch_runs_until_closed(cx: &mut TestAppContext) {
+        let proxy = cx.update(AppProxy::new);
+        let log = Arc::new(Mutex::new(Vec::<u32>::new()));
+
         assert!(!proxy.is_closed());
-        proxy.dispatch(|_app| {}).expect("dispatch before close");
-        assert!(rx.try_recv().is_ok(), "command should be queued");
+        let sink = log.clone();
+        proxy
+            .dispatch(move |_app| sink.lock().unwrap().push(1))
+            .expect("dispatch before close");
+        cx.run_until_parked();
+        assert_eq!(
+            *log.lock().unwrap(),
+            vec![1],
+            "posted work ran on main thread"
+        );
 
         proxy.close();
         assert!(proxy.is_closed());
-        assert_eq!(proxy.dispatch(|_app| {}), Err(AppClosed));
+        assert_eq!(
+            proxy.dispatch(|_app| {}),
+            Err(AppClosed),
+            "dispatch rejected after close"
+        );
     }
 
-    #[test]
-    fn dispatch_fails_when_receiver_dropped() {
-        let (proxy, rx) = AppProxy::new();
-        drop(rx);
-        // Sender still present but disconnected → AppClosed.
-        assert_eq!(proxy.dispatch(|_app| {}), Err(AppClosed));
+    /// Work accepted before the boundary is discarded if shutdown wins before
+    /// the pump drains it (the run-time re-check in the posted closure).
+    #[gpui::test]
+    fn queued_work_discarded_after_close(cx: &mut TestAppContext) {
+        let proxy = cx.update(AppProxy::new);
+        let log = Arc::new(Mutex::new(Vec::<u32>::new()));
+
+        let sink = log.clone();
+        proxy
+            .dispatch(move |_app| sink.lock().unwrap().push(1))
+            .expect("dispatch before close");
+        proxy.close();
+        cx.run_until_parked();
+        assert!(
+            log.lock().unwrap().is_empty(),
+            "payload queued before close is discarded, not run mid-teardown"
+        );
+    }
+
+    /// A callback that triggers shutdown discards work queued behind it, in FIFO
+    /// order — the equivalent of the old drain loop's between-callback re-check.
+    #[gpui::test]
+    fn callback_shutdown_discards_following_work(cx: &mut TestAppContext) {
+        let proxy = cx.update(AppProxy::new);
+        let log = Arc::new(Mutex::new(Vec::<char>::new()));
+
+        let sink = log.clone();
+        let closer = proxy.clone();
+        proxy
+            .dispatch(move |_app| {
+                sink.lock().unwrap().push('a');
+                closer.close();
+            })
+            .expect("first dispatch");
+        let sink = log.clone();
+        proxy
+            .dispatch(move |_app| sink.lock().unwrap().push('b'))
+            .expect("second dispatch");
+
+        cx.run_until_parked();
+        assert_eq!(
+            *log.lock().unwrap(),
+            vec!['a'],
+            "work behind the shutdown-triggering callback is discarded"
+        );
     }
 }

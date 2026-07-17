@@ -9,7 +9,7 @@ repository = "https://github.com/BumpyClock/gpui-component"
 readme = "README.md"
 edition.workspace = true
 publish = true
-version = "0.5.1"
+version = "0.6.0"
 
 [lib]
 doctest = false

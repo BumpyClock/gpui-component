@@ -24,6 +24,7 @@ toml.workspace = true
 fix-path-env.workspace = true
 
 [dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
 serde_json.workspace = true
 tempfile.workspace = true
 

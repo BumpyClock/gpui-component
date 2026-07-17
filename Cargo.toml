@@ -26,19 +26,19 @@ resolver = "2"
 [workspace.package]
 publish = false
 edition = "2024"
-version = "0.5.1"
+version = "0.6.0"
 
 [workspace.dependencies]
-gpui-component = { path = "crates/ui", version = "0.5.1" }
-gpui-component-app = { path = "crates/app", version = "0.5.1" }
-gpui-component-manifest = { path = "crates/app-manifest", version = "0.5.1" }
-gpui-component-storage = { path = "crates/app-storage", version = "0.5.1" }
-gpui-component-macros = { path = "crates/macros", version = "0.5.1" }
-gpui-component-assets = { path = "crates/assets", version = "0.5.1" }
+gpui-component = { path = "crates/ui", version = "0.6.0" }
+gpui-component-app = { path = "crates/app", version = "0.6.0" }
+gpui-component-manifest = { path = "crates/app-manifest", version = "0.6.0" }
+gpui-component-storage = { path = "crates/app-storage", version = "0.6.0" }
+gpui-component-macros = { path = "crates/macros", version = "0.6.0" }
+gpui-component-assets = { path = "crates/assets", version = "0.6.0" }
 story = { path = "crates/story" }
 
-gpui = { git = "https://github.com/BumpyClock/gpui", rev = "4332ea7deae4838c12bad6ea64292ca22a33cf98", features = ["font-kit"] }
-gpui_platform = { git = "https://github.com/BumpyClock/gpui", rev = "4332ea7deae4838c12bad6ea64292ca22a33cf98", features = ["font-kit"] }
+gpui = { git = "https://github.com/BumpyClock/gpui", rev = "2a03ae6e789b77e98f9d9bd5489758a082313c75", features = ["font-kit"] }
+gpui_platform = { git = "https://github.com/BumpyClock/gpui", rev = "2a03ae6e789b77e98f9d9bd5489758a082313c75", features = ["font-kit"] }
 gpui-macros = "0.2.2"
 sum-tree = { version = "0.2.0", package = "zed-sum-tree" }
 # reqwest = { version = "0.12.15-zed", package = "zed-reqwest" }
