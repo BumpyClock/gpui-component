@@ -79,16 +79,13 @@ jobs:
           cargo test --all
           cargo test -p gpui-component --doc
 
-  # Phase-1 placeholder: native launch smoke test for the app-platform conformance
-  # examples (examples/app-shell single-window, examples/app-shell-tray tray-first).
-  # Those examples do not exist yet — see docs/learned/app-platform-plan.md §5 Phase 1
-  # and §6 gate 7 ("CI launches native smoke apps on 3 OSes and checks min/max feature
-  # sets"). This job is intentionally DISABLED (`if: false`); it only pins the OS matrix
-  # and step structure so Phase 1 can drop in the real launch + feature-set commands.
-  # Keep the matrix in sync with the `test` job above.
+  # Native launch smoke test for the app-platform conformance examples
+  # (examples/app_shell single-window, examples/app_shell_tray tray-first). Each
+  # example boots the real shell, opens its window(s), then `--smoke` requests a
+  # clean quit and exits 0. See docs/learned/app-platform-plan.md §5 Phase 1 and
+  # §6 gate 7. Keep the matrix in sync with the `test` job above.
   native-launch-smoke:
-    name: Native launch smoke (Phase 1 placeholder)
-    if: false # TODO(phase-1): enable once examples/app-shell{,-tray} exist
+    name: Native launch smoke
     strategy:
       fail-fast: false
       matrix:
@@ -106,10 +103,27 @@ jobs:
       - name: Install system dependencies
         if: ${{ matrix.run_on != 'windows-latest' }}
         run: script/bootstrap
-      # TODO(phase-1): launch each conformance example, assert it reaches a ready
-      # state, then exits cleanly; repeat for min/max feature sets (none/default/tray/all).
-      # Linux has no display on stock runners and must launch under a virtual one:
-      #   Linux:         xvfb-run -a cargo run --example app-shell -- --smoke
-      #   macOS/Windows: cargo run --example app-shell -- --smoke
-      - name: Native launch smoke
-        run: echo "Phase-1 placeholder — see docs/learned/app-platform-plan.md §5/§6 gate 7"
+      # Build on every OS: this exercises the full D4 identity chain (build.rs +
+      # include_identity!) cross-platform, even where we do not launch a
+      # GPU-backed window below.
+      - name: Build conformance examples
+        run: cargo build -p app_shell -p app_shell_tray
+      # Launch smoke runs on macOS only. Platform parity (CLAUDE.md) requires
+      # documenting why the other two are gated off rather than silently skipped:
+      #   - macOS: GitHub arm64 runners provide a working Metal device; the
+      #     `--smoke` launch is verified to reach a ready window and exit 0.
+      #   - Linux: GPUI renders via Vulkan. Stock ubuntu runners have no display
+      #     and no Vulkan device, so a native launch needs both xvfb and a
+      #     software driver (lavapipe) that is not guaranteed present. Gated off
+      #     to avoid flaky reds; enable once the runner image ships them:
+      #         xvfb-run -a cargo run -p app_shell -- --smoke
+      #         xvfb-run -a cargo run -p app_shell_tray -- --smoke
+      #   - Windows: GPUI renders via DirectX; headless runners have no reliable
+      #     present surface. Gated off pending a WARP-backed offscreen path:
+      #         cargo run -p app_shell -- --smoke
+      #         cargo run -p app_shell_tray -- --smoke
+      - name: Native launch smoke (macOS)
+        if: ${{ matrix.run_on == 'macos-latest' }}
+        run: |
+          cargo run -p app_shell -- --smoke
+          cargo run -p app_shell_tray -- --smoke

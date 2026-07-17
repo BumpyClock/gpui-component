@@ -203,6 +203,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "app_shell"
+version = "0.5.1"
+dependencies = [
+ "gpui-component-app",
+ "gpui-component-manifest",
+ "serde",
+]
+
+[[package]]
+name = "app_shell_tray"
+version = "0.5.1"
+dependencies = [
+ "gpui-component-app",
+ "gpui-component-manifest",
+]
+
+[[package]]
 name = "ar_archive_writer"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3173,8 +3190,10 @@ dependencies = [
  "gpui_platform",
  "log",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror 2.0.18",
+ "toml 0.9.12+spec-1.1.0",
 ]
 
 [[package]]

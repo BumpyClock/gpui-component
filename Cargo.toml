@@ -11,6 +11,8 @@ members = [
     "crates/reqwest_client",
     "crates/webview",
     "examples/app_assets",
+    "examples/app_shell",
+    "examples/app_shell_tray",
     "examples/hello_world",
     "examples/input",
     "examples/window_title",
