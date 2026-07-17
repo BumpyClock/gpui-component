@@ -18,6 +18,7 @@ Consumers (agent-term, ansible, Andromeda, and future apps) should:
 | gpui-component version (tag) | gpui fork rev | Date | Notes |
 |---|---|---|---|
 | 0.5.1 (`v0.5.1`) | `4332ea7deae4838c12bad6ea64292ca22a33cf98` | 2026-07-16 | First tracked pairing; app-platform crates (storage, manifest) introduced. |
+| 0.6.0 (`v0.6.0`) | `2a03ae6e789b77e98f9d9bd5489758a082313c75` | 2026-07-17 | MainThreadPoster; AppProxy wake-on-send. |
 
 ## Release discipline
 
