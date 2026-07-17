@@ -197,8 +197,26 @@ dependencies = [
  "anyhow",
  "gpui",
  "gpui-component",
+ "gpui-component-assets",
  "gpui_platform",
  "rust-embed",
+]
+
+[[package]]
+name = "app_shell"
+version = "0.5.1"
+dependencies = [
+ "gpui-component-app",
+ "gpui-component-manifest",
+ "serde",
+]
+
+[[package]]
+name = "app_shell_tray"
+version = "0.5.1"
+dependencies = [
+ "gpui-component-app",
+ "gpui-component-manifest",
 ]
 
 [[package]]
@@ -3160,6 +3178,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpui-component-app"
+version = "0.5.1"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "gpui-component",
+ "gpui-component-manifest",
+ "gpui-component-storage",
+ "gpui_platform",
+ "log",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
 name = "gpui-component-assets"
 version = "0.5.1"
 dependencies = [
@@ -3175,6 +3211,28 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "gpui-component-manifest"
+version = "0.5.1"
+dependencies = [
+ "serde",
+ "tempfile",
+ "thiserror 2.0.18",
+ "toml 0.9.12+spec-1.1.0",
+]
+
+[[package]]
+name = "gpui-component-storage"
+version = "0.5.1"
+dependencies = [
+ "dirs 6.0.0",
+ "log",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.18",
+ "toml 0.9.12+spec-1.1.0",
 ]
 
 [[package]]
@@ -7994,7 +8052,6 @@ dependencies = [
  "gpui-component-assets",
  "gpui_platform",
  "metal 0.33.0",
- "smol",
  "sysinfo 0.37.2",
  "windows 0.62.2",
 ]

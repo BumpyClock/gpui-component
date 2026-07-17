@@ -49,7 +49,9 @@ jobs:
       - name: Typo check
         if: ${{ matrix.run_on == 'macos-latest' }}
         run: |
-          cargo install typos-cli || echo "typos-cli already installed"
+          # --locked for reproducibility; no `|| echo` mask — a failed install
+          # must fail the step, not surface later as `typos: command not found`.
+          which typos >/dev/null 2>&1 || cargo install typos-cli --locked
           typos
       - name: Lint (macOS)
         if: ${{ matrix.run_on == 'macos-latest' }}
@@ -60,6 +62,11 @@ jobs:
       - name: Lint (Windows)
         if: ${{ matrix.run_on == 'windows-latest' }}
         run: ./script/clippy.ps1
+      # Platform crates are pure-Rust (no display server) and their tests are
+      # MANDATORY on every OS — unlike the rest of the repo, where tests are
+      # optional. See docs/learned/app-platform-plan.md §5 Phase 0 item 2/3.
+      - name: Test platform crates
+        run: cargo test -p gpui-component-storage -p gpui-component-manifest
       - name: Test Linux
         if: ${{ matrix.run_on == 'ubuntu-latest' }}
         run: |
@@ -73,3 +80,52 @@ jobs:
         run: |
           cargo test --all
           cargo test -p gpui-component --doc
+
+  # Native launch smoke test for the app-platform conformance examples
+  # (examples/app_shell single-window, examples/app_shell_tray tray-first). Each
+  # example boots the real shell, opens its window(s), then `--smoke` requests a
+  # clean quit and exits 0. See docs/learned/app-platform-plan.md §5 Phase 1 and
+  # §6 gate 7. Keep the matrix in sync with the `test` job above.
+  native-launch-smoke:
+    name: Native launch smoke
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            run_on: macos-latest
+          - target: x86_64-linux-gnu
+            run_on: ubuntu-latest
+          - target: x86_64-windows-msvc
+            run_on: windows-latest
+    runs-on: ${{ matrix.run_on }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install system dependencies
+        if: ${{ matrix.run_on != 'windows-latest' }}
+        run: script/bootstrap
+      # Build on every OS: this exercises the full D4 identity chain (build.rs +
+      # include_identity!) cross-platform, even where we do not launch a
+      # GPU-backed window below.
+      - name: Build conformance examples
+        run: cargo build -p app_shell -p app_shell_tray
+      # Launch smoke runs on macOS only. Platform parity (CLAUDE.md) requires
+      # documenting why the other two are gated off rather than silently skipped:
+      #   - macOS: GitHub arm64 runners provide a working Metal device; the
+      #     `--smoke` launch is verified to reach a ready window and exit 0.
+      #   - Linux: GPUI renders via Vulkan. Stock ubuntu runners have no display
+      #     and no Vulkan device, so a native launch needs both xvfb and a
+      #     software driver (lavapipe) that is not guaranteed present. Gated off
+      #     to avoid flaky reds; enable once the runner image ships them:
+      #         xvfb-run -a cargo run -p app_shell -- --smoke
+      #         xvfb-run -a cargo run -p app_shell_tray -- --smoke
+      #   - Windows: GPUI renders via DirectX; headless runners have no reliable
+      #     present surface. Gated off pending a WARP-backed offscreen path:
+      #         cargo run -p app_shell -- --smoke
+      #         cargo run -p app_shell_tray -- --smoke
+      - name: Native launch smoke (macOS)
+        if: ${{ matrix.run_on == 'macos-latest' }}
+        run: |
+          cargo run -p app_shell -- --smoke
+          cargo run -p app_shell_tray -- --smoke

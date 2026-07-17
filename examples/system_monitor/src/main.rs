@@ -12,7 +12,6 @@ use gpui_component::{
     table::{Column, ColumnSort, Table, TableDelegate, TableState},
     v_flex,
 };
-use smol::Timer;
 use sysinfo::{Disks, Pid, System};
 
 // Define the Quit action
@@ -299,7 +298,7 @@ impl SystemMonitor {
         // Start the update loop
         cx.spawn(async move |this, cx| {
             loop {
-                Timer::after(INTERVAL).await;
+                cx.background_executor().timer(INTERVAL).await;
 
                 let result = this.update(cx, |this, cx| {
                     this.collect_metrics(cx);
