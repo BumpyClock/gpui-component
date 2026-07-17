@@ -108,7 +108,13 @@ mod tests {
 
         match WriterLock::acquire(&lock_path) {
             Err(StorageError::WriterConflict { owner_pid, .. }) => {
+                // The holder PID is a best-effort diagnostic: on Windows the
+                // exclusive lock also blocks reads from other handles, so the
+                // conflicting acquirer may not be able to read it at all.
+                #[cfg(unix)]
                 assert_eq!(owner_pid, Some(std::process::id()));
+                #[cfg(windows)]
+                assert!(owner_pid.is_none() || owner_pid == Some(std::process::id()));
             }
             other => panic!("expected WriterConflict, got {other:?}"),
         }
