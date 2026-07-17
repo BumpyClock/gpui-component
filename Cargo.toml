@@ -61,6 +61,9 @@ ctor = "0.4.0"
 derive_more = "0.99.17"
 dirs = "6"
 env_logger = "0.11"
+# Login-shell PATH repair for GUI-launched apps (EnvironmentPolicy::LoginShell).
+# Git-only crate (no crates.io release); pinned to the same rev agent-term uses.
+fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs", rev = "c4c45d503ea115a839aae718d02f79e7c7f0f673" }
 futures = "0.3"
 image = "0.25.1"
 inventory = "0.3.19"

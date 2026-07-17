@@ -31,17 +31,42 @@ pub enum EnvironmentPolicy {
     Inherit,
     /// Repair `PATH` from the user's login shell.
     ///
-    /// Not implemented in core: `fix-path-env` is not a dependency. Selecting
-    /// this logs a warning and behaves as [`EnvironmentPolicy::Inherit`]; apps
-    /// that need it should run their own repair in `before_platform`.
+    /// GUI-launched processes on macOS (Finder/Dock/`launchd`) and Linux
+    /// (desktop launchers) inherit a minimal `PATH` that omits entries a login
+    /// shell would add (`/opt/homebrew/bin`, version-manager shims, …), so tools
+    /// the app shells out to cannot be found. This policy runs the login shell
+    /// once during `Preflight` and copies its environment into the current
+    /// process — the established desktop-app fix (used by Tauri and others).
+    ///
+    /// # Soundness precondition (the caller's obligation)
+    ///
+    /// The repair mutates the process environment through `std::env::set_var`,
+    /// which is **Undefined Behavior on Unix if any other thread may read or
+    /// write the environment concurrently**. The shell cannot prove the caller
+    /// has not already spawned threads, so the obligation is yours: **select
+    /// `LoginShell` only from a single-threaded `main()`, before any thread is
+    /// spawned** (the typical first statements of `main`).
+    ///
+    /// This is the same objection that keeps a general `Custom(vars)` variant out
+    /// of this enum (see the note below it). It is accepted here only because the
+    /// repair is a single, vetted, widely-used operation rather than an
+    /// open-ended env hook — the alternative is every app hand-rolling the same
+    /// unsafe mutation.
+    ///
+    /// Failure to read the login shell is **non-fatal**: it is logged and the
+    /// process keeps the inherited environment (behaves as
+    /// [`EnvironmentPolicy::Inherit`]); it never aborts startup. On Windows there
+    /// is no login-shell `PATH` to repair, so this is a documented no-op.
     LoginShell,
 }
 
 // There is deliberately no `Custom(vars)` variant: `std::env::set_var` is
 // unsafe (UB with concurrent environment access on Unix), and this builder
-// cannot know whether the caller already spawned threads. Apps that need to
-// mutate the environment must do so in their own `main()` before constructing
-// the shell, where the safety obligation is visibly theirs.
+// cannot know whether the caller already spawned threads. The one env mutation
+// the shell performs — `LoginShell` above — is a single vetted repair carrying an
+// explicit caller precondition, not an open-ended "set these vars" hook. Apps
+// that need arbitrary environment changes must do so in their own `main()` before
+// constructing the shell, where the safety obligation is visibly theirs.
 
 /// Process-global logging policy (plan §3). The library must not seize the
 /// process logger by default.
@@ -500,12 +525,33 @@ fn validate_identity(identity: &IdentityRef) -> Result<(), AppShellError> {
 fn apply_environment(policy: EnvironmentPolicy) {
     match policy {
         EnvironmentPolicy::Inherit => {}
-        EnvironmentPolicy::LoginShell => {
-            log::warn!(
-                "EnvironmentPolicy::LoginShell is not implemented in core; inheriting environment"
-            );
-        }
+        EnvironmentPolicy::LoginShell => apply_login_shell(),
     }
+}
+
+/// Repair `PATH` from the login shell. Soundness rests on the caller precondition
+/// documented on [`EnvironmentPolicy::LoginShell`] (no other threads yet).
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+fn apply_login_shell() {
+    // `fix_path_env::fix()` copies the login shell's environment into this
+    // process via `std::env::set_var`; the caller precondition (single-threaded
+    // `main`) is what makes that sound. A failed repair is non-fatal — keep the
+    // inherited environment rather than aborting startup.
+    if let Err(err) = fix_path_env::fix() {
+        log::warn!(
+            "EnvironmentPolicy::LoginShell: could not repair PATH from the login \
+             shell; keeping the inherited environment: {err}"
+        );
+    }
+}
+
+/// No login-shell `PATH` to repair off Unix; documented no-op (see the variant).
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn apply_login_shell() {
+    log::debug!(
+        "EnvironmentPolicy::LoginShell is a no-op on this platform; keeping the \
+         inherited environment"
+    );
 }
 
 fn apply_logging(policy: LoggingPolicy, paths: &AppPaths) {
@@ -544,5 +590,51 @@ impl AssetSource for ChainedAssets {
         out.sort();
         out.dedup();
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn identity() -> IdentityRef {
+        IdentityRef {
+            app_id: "com.example.envtest",
+            display_name: "Env Test",
+            data_namespace: "envtest",
+            binary_name: None,
+            org: None,
+            publisher: None,
+            url_schemes: &[],
+            categories: &[],
+            macos: None,
+            linux: None,
+            windows: None,
+            legacy_ids: &[],
+            min_os: None,
+            version: "0.0.0",
+            cfbundle_short_version: "0.0.0",
+            msix_version: "0.0.0.0",
+        }
+    }
+
+    #[test]
+    fn default_environment_policy_is_inherit() {
+        let builder = AppShellBuilder::new(identity());
+        assert!(matches!(builder.environment, EnvironmentPolicy::Inherit));
+    }
+
+    #[test]
+    fn environment_setter_records_login_shell() {
+        let builder = AppShellBuilder::new(identity()).environment(EnvironmentPolicy::LoginShell);
+        assert!(matches!(builder.environment, EnvironmentPolicy::LoginShell));
+    }
+
+    #[test]
+    fn inherit_environment_is_a_noop() {
+        // Inherit must never shell out or mutate the environment. Applying it is a
+        // pure no-op; the LoginShell path is intentionally not exercised here (it
+        // would spawn the login shell and mutate process env in CI).
+        apply_environment(EnvironmentPolicy::Inherit);
     }
 }
