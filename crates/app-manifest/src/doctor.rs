@@ -107,11 +107,14 @@ pub fn verify(root: &Path) -> Result<Report, DoctorError> {
     // not pass a required entitlement.
     let mut entitlement_source = String::new();
     for path in files {
+        // Check-field names are stable identifiers, not I/O paths: always use
+        // forward slashes so reports (and tests) are byte-identical on Windows.
         let relative = path
             .strip_prefix(root)
             .unwrap_or(&path)
             .display()
-            .to_string();
+            .to_string()
+            .replace('\\', "/");
         let name = path
             .file_name()
             .and_then(|name| name.to_str())
