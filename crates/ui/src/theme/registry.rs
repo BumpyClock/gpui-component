@@ -92,6 +92,11 @@ pub struct ThemeRegistry {
     themes: HashMap<SharedString, Rc<ThemeConfig>>,
     theme_sets: HashMap<SharedString, ThemeSetEntry>,
     has_custom_themes: bool,
+    /// Theme sets loaded from disk on the last `reload`, cached so in-memory
+    /// registrations can be merged back in without re-reading the filesystem.
+    disk_theme_sets: Vec<ThemeSet>,
+    /// Theme sets registered in-memory via [`ThemeRegistry::register_theme_set`].
+    registered_theme_sets: HashMap<SharedString, ThemeSet>,
 }
 
 impl Global for ThemeRegistry {}
@@ -270,9 +275,29 @@ impl ThemeRegistry {
         }
     }
 
+    /// Registers a theme set in-memory, without touching the `themes_dir` on disk.
+    ///
+    /// This lets callers (e.g. an app bundling its own themes, or a future wasm
+    /// build with no filesystem) supply themes the same way a theme file on disk
+    /// would, without needing to write that file first.
+    ///
+    /// Registering a set overwrites any previous set with the same `name`, whether
+    /// it was registered in-memory earlier or is currently loaded from disk. Note
+    /// that precedence is by *set* name, not by individual theme name: default
+    /// themes are still protected (a registered theme can't replace a built-in
+    /// theme of the same name), and if two different sets both contain a theme
+    /// with the same name, whichever set is merged first keeps that theme.
+    ///
+    /// If `watch_dir` later reloads a disk file with the same set name, the
+    /// on-disk version wins on the next reload - in-memory registrations behave
+    /// like a previously loaded file that disk can supersede.
+    pub fn register_theme_set(&mut self, set: ThemeSet) {
+        self.registered_theme_sets.insert(set.name.clone(), set);
+        self.rebuild_theme_sets(self.disk_theme_sets.clone());
+    }
+
     /// Reload themes from the `themes_dir`.
     fn reload(&mut self) -> Result<()> {
-        let mut themes = vec![];
         let mut loaded_sets: Vec<ThemeSet> = vec![];
 
         if self.themes_dir.exists() {
@@ -283,10 +308,7 @@ impl ThemeRegistry {
                     let file_content = fs::read_to_string(path.clone())?;
 
                     match serde_json::from_str::<ThemeSet>(&file_content) {
-                        Ok(theme_set) => {
-                            themes.extend(theme_set.themes.clone());
-                            loaded_sets.push(theme_set);
-                        }
+                        Ok(theme_set) => loaded_sets.push(theme_set),
                         Err(e) => {
                             tracing::error!(
                                 "ignored invalid theme file: {}, {}",
@@ -299,25 +321,45 @@ impl ThemeRegistry {
             }
         }
 
+        self.disk_theme_sets = loaded_sets.clone();
+        self.rebuild_theme_sets(loaded_sets);
+
+        Ok(())
+    }
+
+    /// Rebuilds `themes` and `theme_sets` from the default themes plus `disk_sets`,
+    /// filling in any `registered_theme_sets` whose name isn't already covered by
+    /// `disk_sets` (disk sets take precedence over an in-memory registration with
+    /// the same set name).
+    fn rebuild_theme_sets(&mut self, disk_sets: Vec<ThemeSet>) {
+        let mut all_sets = disk_sets;
+        for (name, set) in &self.registered_theme_sets {
+            if !all_sets.iter().any(|s| &s.name == name) {
+                all_sets.push(set.clone());
+            }
+        }
+
         self.themes.clear();
         for theme in self.default_themes.values() {
             self.themes
                 .insert(theme.name.clone(), Rc::new((**theme).clone()));
         }
 
-        for theme in themes.iter() {
-            if self.themes.contains_key(&theme.name) {
-                continue;
-            }
+        for set in &all_sets {
+            for theme in &set.themes {
+                if self.themes.contains_key(&theme.name) {
+                    continue;
+                }
 
-            if theme.is_default {
-                self.default_themes
-                    .insert(theme.mode, Rc::new(theme.clone()));
-            }
+                if theme.is_default {
+                    self.default_themes
+                        .insert(theme.mode, Rc::new(theme.clone()));
+                }
 
-            self.has_custom_themes = true;
-            self.themes
-                .insert(theme.name.clone(), Rc::new(theme.clone()));
+                self.has_custom_themes = true;
+                self.themes
+                    .insert(theme.name.clone(), Rc::new(theme.clone()));
+            }
         }
 
         // Rebuild theme_sets
@@ -326,7 +368,7 @@ impl ThemeRegistry {
         self.theme_sets
             .insert("Default".into(), self.create_default_set());
 
-        for set in &loaded_sets {
+        for set in &all_sets {
             let entry = self
                 .theme_sets
                 .entry(set.name.clone())
@@ -346,7 +388,142 @@ impl ThemeRegistry {
                 }
             }
         }
+    }
+}
 
-        Ok(())
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_config(name: &str, mode: ThemeMode) -> ThemeConfig {
+        ThemeConfig {
+            name: name.into(),
+            mode,
+            ..Default::default()
+        }
+    }
+
+    fn make_registry() -> ThemeRegistry {
+        let mut registry = ThemeRegistry::default();
+        registry.init_default_themes();
+        registry
+    }
+
+    #[test]
+    fn register_theme_set_is_visible_in_sorted_theme_sets() {
+        let mut registry = make_registry();
+        registry.register_theme_set(ThemeSet {
+            name: "Acme".into(),
+            author: Some("Acme Corp".into()),
+            url: None,
+            themes: vec![
+                make_config("Acme Light", ThemeMode::Light),
+                make_config("Acme Dark", ThemeMode::Dark),
+            ],
+        });
+
+        let set = registry
+            .sorted_theme_sets()
+            .into_iter()
+            .find(|set| set.name == "Acme")
+            .expect("registered set should be visible in sorted_theme_sets");
+        assert_eq!(set.light.as_ref().unwrap().name, "Acme Light");
+        assert_eq!(set.dark.as_ref().unwrap().name, "Acme Dark");
+        assert_eq!(set.author.as_deref(), Some("Acme Corp"));
+    }
+
+    #[test]
+    fn register_theme_set_overwrites_by_name() {
+        let mut registry = make_registry();
+        registry.register_theme_set(ThemeSet {
+            name: "Acme".into(),
+            author: None,
+            url: None,
+            themes: vec![make_config("Acme Light", ThemeMode::Light)],
+        });
+        registry.register_theme_set(ThemeSet {
+            name: "Acme".into(),
+            author: None,
+            url: None,
+            themes: vec![make_config("Acme Light v2", ThemeMode::Light)],
+        });
+
+        let set = registry
+            .theme_sets()
+            .get(&SharedString::from("Acme"))
+            .expect("set should still be registered under the same name");
+        assert_eq!(set.light.as_ref().unwrap().name, "Acme Light v2");
+        assert!(set.dark.is_none());
+        assert!(
+            !registry
+                .themes()
+                .contains_key(&SharedString::from("Acme Light")),
+            "theme from the overwritten registration should no longer be reachable"
+        );
+    }
+
+    #[test]
+    fn register_theme_set_does_not_override_default_themes() {
+        let mut registry = make_registry();
+        let default_light_name = registry.default_light_theme().name.clone();
+        let default_dark_name = registry.default_dark_theme().name.clone();
+
+        let mut impersonator = make_config(default_light_name.as_ref(), ThemeMode::Light);
+        impersonator.is_default = true;
+        impersonator.radius = Some(99);
+        registry.register_theme_set(ThemeSet {
+            name: "Impersonator".into(),
+            author: None,
+            url: None,
+            themes: vec![impersonator],
+        });
+
+        assert_eq!(registry.default_light_theme().name, default_light_name);
+        assert_eq!(registry.default_dark_theme().name, default_dark_name);
+        assert_eq!(
+            registry.themes().get(&default_light_name).unwrap().radius,
+            None,
+            "the built-in default theme must not be overwritten by a same-named registration"
+        );
+    }
+
+    #[test]
+    fn disk_reload_overrides_registered_set_with_same_name() {
+        let mut registry = make_registry();
+        registry.register_theme_set(ThemeSet {
+            name: "Acme".into(),
+            author: None,
+            url: None,
+            themes: vec![make_config("Acme Light", ThemeMode::Light)],
+        });
+
+        let dir = std::env::temp_dir().join(format!(
+            "gpui-component-theme-registry-test-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        fs::create_dir_all(&dir).expect("create temp themes dir");
+        let disk_set = ThemeSet {
+            name: "Acme".into(),
+            author: None,
+            url: None,
+            themes: vec![make_config("Acme Light On Disk", ThemeMode::Light)],
+        };
+        fs::write(
+            dir.join("acme.json"),
+            serde_json::to_string(&disk_set).expect("serialize theme set"),
+        )
+        .expect("write theme file");
+
+        registry.themes_dir = dir.clone();
+        let result = registry.reload();
+        fs::remove_dir_all(&dir).ok();
+        result.expect("reload should succeed");
+
+        let set = registry
+            .theme_sets()
+            .get(&SharedString::from("Acme"))
+            .expect("set should still be present after reload");
+        assert_eq!(set.light.as_ref().unwrap().name, "Acme Light On Disk");
     }
 }
