@@ -62,24 +62,9 @@ jobs:
       - name: Lint (Windows)
         if: ${{ matrix.run_on == 'windows-latest' }}
         run: ./script/clippy.ps1
-      # Platform crates are pure-Rust (no display server) and their tests are
-      # MANDATORY on every OS — unlike the rest of the repo, where tests are
-      # optional. See docs/learned/app-platform-plan.md §5 Phase 0 item 2/3.
-      - name: Test platform crates
-        run: cargo test -p gpui-component-storage -p gpui-component-manifest
-      - name: Test Linux
-        if: ${{ matrix.run_on == 'ubuntu-latest' }}
-        run: |
-          cargo test --all
-      - name: Test Windows
-        if: ${{ matrix.run_on == 'windows-latest' }}
-        run: |
-          cargo test --all
-      - name: Test MacOS
-        if: ${{ matrix.run_on == 'macos-latest' }}
-        run: |
-          cargo test --all
-          cargo test -p gpui-component --doc
+      # Tests are intentionally NOT run in CI — they are run locally before
+      # merge (repo policy; see CLAUDE.md "Testing"). CI gates on lint (which
+      # compiles all targets), typos, machete, and the native launch smoke below.
 
   # Native launch smoke test for the app-platform conformance examples
   # (examples/app_shell single-window, examples/app_shell_tray tray-first). Each
