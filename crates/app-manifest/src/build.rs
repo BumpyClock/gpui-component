@@ -63,10 +63,16 @@ fn generate_source(
     cfbundle_short_version: &str,
     msix_version: &str,
 ) -> String {
+    // Types are named UNQUALIFIED here. `include_identity!` includes this file
+    // inside a module that brings the schema types into scope via `$crate`, so
+    // the identifiers resolve to `gpui-component-manifest` even when the macro is
+    // reached through a re-export — letting apps depend on it only as a
+    // build-dependency. Do not reintroduce `::gpui_component_manifest::` paths:
+    // an absolute path would force every consumer back onto a direct runtime dep.
     let mut source = String::new();
     writeln!(
         source,
-        "pub static APP_IDENTITY: ::gpui_component_manifest::schema::IdentityRef = ::gpui_component_manifest::schema::IdentityRef {{"
+        "pub static APP_IDENTITY: IdentityRef = IdentityRef {{"
     )
     .expect("writing generated source to a String cannot fail");
     write_field(&mut source, "app_id", &format!("{:?}", identity.app_id));
@@ -140,7 +146,7 @@ fn macos_source(value: Option<&MacosIdentity>) -> String {
         |value| {
             let usage_strings: Vec<_> = value.usage_strings.iter().collect();
             format!(
-                "Some(::gpui_component_manifest::schema::MacosIdentityRef {{ category: {:?}, entitlements: &{:?}, usage_strings: &{:?} }})",
+                "Some(MacosIdentityRef {{ category: {:?}, entitlements: &{:?}, usage_strings: &{:?} }})",
                 value.category, value.entitlements, usage_strings
             )
         },
@@ -152,7 +158,7 @@ fn linux_source(value: Option<&LinuxIdentity>) -> String {
         || "None".to_owned(),
         |value| {
             format!(
-                "Some(::gpui_component_manifest::schema::LinuxIdentityRef {{ categories: &{:?}, desktop_keywords: &{:?} }})",
+                "Some(LinuxIdentityRef {{ categories: &{:?}, desktop_keywords: &{:?} }})",
                 value.categories, value.desktop_keywords
             )
         },
@@ -164,7 +170,7 @@ fn windows_source(value: Option<&WindowsIdentity>) -> String {
         || "None".to_owned(),
         |value| {
             format!(
-                "Some(::gpui_component_manifest::schema::WindowsIdentityRef {{ publisher: {:?} }})",
+                "Some(WindowsIdentityRef {{ publisher: {:?} }})",
                 value.publisher
             )
         },
@@ -176,7 +182,7 @@ fn min_os_source(value: Option<&MinOsVersions>) -> String {
         || "None".to_owned(),
         |value| {
             format!(
-                "Some(::gpui_component_manifest::schema::MinOsVersionsRef {{ macos: {:?}, windows: {:?}, linux: {:?} }})",
+                "Some(MinOsVersionsRef {{ macos: {:?}, windows: {:?}, linux: {:?} }})",
                 value.macos, value.windows, value.linux
             )
         },
@@ -207,5 +213,34 @@ mod tests {
         let source = generate_source(&identity, "1.2.3", "1.2.3", "1.2.3.0");
         assert!(source.contains(r#"display_name: "Quoted \"Name\"\n""#));
         assert!(source.contains(r#"binary_name: Some("bin\\name")"#));
+    }
+
+    #[test]
+    fn generated_source_names_schema_types_unqualified() {
+        // `include_identity!` resolves these via `$crate`, so the generated file
+        // must NOT hardcode `::gpui_component_manifest::` — that would force a
+        // direct runtime dependency on every consumer (see the macro's rustdoc).
+        let identity = AppIdentity {
+            app_id: "com.example.macro".to_owned(),
+            display_name: "Macro".to_owned(),
+            data_namespace: "macro".to_owned(),
+            binary_name: None,
+            org: None,
+            publisher: None,
+            url_schemes: Vec::new(),
+            categories: Vec::new(),
+            macos: Some(MacosIdentity::default()),
+            linux: None,
+            windows: None,
+            legacy_ids: Vec::new(),
+            min_os: None,
+        };
+        let source = generate_source(&identity, "1.0.0", "1.0.0", "1.0.0.0");
+        assert!(source.contains("APP_IDENTITY: IdentityRef = IdentityRef {"));
+        assert!(source.contains("Some(MacosIdentityRef {"));
+        assert!(
+            !source.contains("::gpui_component_manifest"),
+            "generated source must not hardcode an absolute manifest path:\n{source}"
+        );
     }
 }
