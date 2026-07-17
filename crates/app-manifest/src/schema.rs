@@ -144,6 +144,14 @@ impl AppIdentity {
                 value: self.display_name.clone(),
             });
         }
+        // An omitted namespace is derived from `app_id` (never empty). An
+        // explicit empty value would otherwise pass here and only fail later in
+        // `AppShell`, so reject it at the manifest boundary.
+        if self.data_namespace.trim().is_empty() {
+            return Err(ManifestError::EmptyDataNamespace {
+                value: self.data_namespace.clone(),
+            });
+        }
         for scheme in &self.url_schemes {
             if !is_valid_url_scheme(scheme) {
                 return Err(ManifestError::InvalidUrlScheme {
@@ -306,6 +314,16 @@ mod tests {
             value.url_schemes.push(scheme.to_owned());
             assert!(value.validate().is_err(), "scheme {scheme:?} should fail");
         }
+    }
+
+    #[test]
+    fn rejects_explicit_empty_data_namespace() {
+        let mut value = identity("com.example.app", "Example");
+        assert!(value.validate().is_ok());
+        value.data_namespace = String::new();
+        assert!(value.validate().is_err());
+        value.data_namespace = "  ".to_owned();
+        assert!(value.validate().is_err());
     }
 
     #[test]

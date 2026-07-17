@@ -262,7 +262,7 @@ icon = ["icon.icns", "icon.png"]
             "Info.plist:CFBundleIdentifier",
             "Info.plist:CFBundleName",
             "Info.plist:NSMicrophoneUsageDescription",
-            "entitlements.plist:entitlements.plist",
+            "entitlements.plist:com.apple.security.device.audio-input",
             "packaging/ansible.desktop:Name",
             "packaging/ansible.desktop:Exec",
             "packaging/ansible.desktop:Icon",
@@ -278,6 +278,25 @@ icon = ["icon.icns", "icon.png"]
                 report.checks
             );
         }
+    }
+
+    #[test]
+    fn declared_entitlement_absent_from_file_is_missing() {
+        // A present-but-wrong-keyed entitlements file must not satisfy a declared
+        // entitlement; the required key is reported Missing.
+        let dir = tempdir().expect("temp fixture");
+        ansible_fixture(dir.path());
+        write(
+            dir.path(),
+            "entitlements.plist",
+            "<plist><dict><key>com.apple.security.network.client</key><true/></dict></plist>",
+        );
+        let report = doctor::verify(dir.path()).expect("verify fixture");
+        assert!(report.has_failures());
+        assert!(report.checks.iter().any(|check| {
+            check.field == "entitlements.plist:com.apple.security.device.audio-input"
+                && check.status == doctor::Status::Missing
+        }));
     }
 
     #[test]
