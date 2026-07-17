@@ -54,10 +54,16 @@ impl Report {
 }
 
 /// Errors that prevent verification from completing.
+///
+/// The two heavy payloads (`ManifestError`, `toml::de::Error`) are boxed so the
+/// error stays small: it rides in every `Result<_, DoctorError>` on the success
+/// path, and an unboxed variant pushes the type past clippy's
+/// `result_large_err` threshold (caught only by CI's newer toolchain). The const
+/// assertion below guards against a regression.
 #[derive(Debug, thiserror::Error)]
 pub enum DoctorError {
     #[error(transparent)]
-    Manifest(#[from] gpui_component_manifest::ManifestError),
+    Manifest(Box<gpui_component_manifest::ManifestError>),
     #[error("failed to read {path}: {source}")]
     Read {
         path: PathBuf,
@@ -68,9 +74,11 @@ pub enum DoctorError {
     Toml {
         path: PathBuf,
         #[source]
-        source: toml::de::Error,
+        source: Box<toml::de::Error>,
     },
 }
+
+const _: () = assert!(std::mem::size_of::<DoctorError>() <= 64);
 
 /// Verifies identity metadata against recognized artifacts below `root`.
 ///
@@ -80,11 +88,12 @@ pub enum DoctorError {
 /// artifact cannot be read, or when the root Cargo manifest is malformed.
 pub fn verify(root: &Path) -> Result<Report, DoctorError> {
     let cargo_path = root.join("Cargo.toml");
-    let identity = gpui_component_manifest::parse::parse_identity(&cargo_path)?;
+    let identity = gpui_component_manifest::parse::parse_identity(&cargo_path)
+        .map_err(|e| DoctorError::Manifest(Box::new(e)))?;
     let cargo_source = read(&cargo_path)?;
     let cargo: toml::Value = toml::from_str(&cargo_source).map_err(|source| DoctorError::Toml {
         path: cargo_path,
-        source,
+        source: Box::new(source),
     })?;
     let mut report = Report::default();
     verify_bundle(&cargo, &identity, &mut report);
