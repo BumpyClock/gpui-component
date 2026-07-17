@@ -1,0 +1,27 @@
+[package]
+name = "app_shell_tray"
+description = "Conformance example for the AppShell platform."
+version.workspace = true
+publish = false
+edition.workspace = true
+
+[package.metadata.gpui-app]
+app_id = "com.gpui-component.app-shell-tray-example"
+display_name = "App Shell Tray Example"
+categories = ["Development"]
+
+[dependencies]
+gpui-component-app.workspace = true
+# Referenced by the `include_identity!()`-generated `APP_IDENTITY` (its type is
+# `::gpui_component_manifest::schema::IdentityRef`), so it is a runtime dep even
+# though no source line names it — hence the cargo-machete ignore below.
+gpui-component-manifest.workspace = true
+
+[build-dependencies]
+gpui-component-manifest.workspace = true
+
+[package.metadata.cargo-machete]
+ignored = ["gpui-component-manifest"]
+
+[lints]
+workspace = true
