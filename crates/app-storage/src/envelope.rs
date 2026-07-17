@@ -54,7 +54,7 @@ pub enum LoadOutcome<T> {
         /// Version found on disk (`> current`).
         found: u32,
     },
-    /// File is present but malformed (unparseable or missing version). It has
+    /// File is present but malformed (unparsable or missing version). It has
     /// been archived aside per recovery policy.
     Corrupt {
         /// Where the malformed file was moved, if archiving succeeded.
@@ -99,7 +99,7 @@ pub fn save_envelope_durable<T: Serialize>(
 /// Load and classify the document at `path` against `current_version`.
 ///
 /// Genuine filesystem failures (other than "not found") are returned as `Err`;
-/// everything else maps onto a [`LoadOutcome`]. A malformed file — unparseable
+/// everything else maps onto a [`LoadOutcome`]. A malformed file — unparsable
 /// TOML *or* invalid UTF-8 bytes — is archived to `<path>.bak.v<version>` (or a
 /// timestamped `.bak.corrupt.<nanos>` when the version is unknown) before
 /// returning [`LoadOutcome::Corrupt`], so it stays backup-recoverable.

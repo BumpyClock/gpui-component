@@ -14,6 +14,11 @@ pub enum ManifestError {
     EmptyDisplayName { value: String },
 
     #[error(
+        "invalid `data_namespace` value {value:?}: expected a non-empty namespace after trimming whitespace (omit the field to derive it from `app_id`)"
+    )]
+    EmptyDataNamespace { value: String },
+
+    #[error(
         "invalid `url_schemes` value {value:?}: expected a lowercase ASCII scheme starting with a letter and containing only letters, digits, '+', '-', or '.'"
     )]
     InvalidUrlScheme { value: String },

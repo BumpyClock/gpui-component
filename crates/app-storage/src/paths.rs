@@ -254,8 +254,14 @@ impl AppPaths {
 
     /// Join `name` onto one of the resolved base directories without creating
     /// anything.
-    pub fn sub(&self, base: BaseDir, name: &str) -> PathBuf {
-        self.base(base).join(name)
+    ///
+    /// # Errors
+    ///
+    /// Returns [`StorageError::PathResolution`] if `name` is empty, absolute, or
+    /// contains `..` — anything that could discard or escape the base directory.
+    pub fn sub(&self, base: BaseDir, name: &str) -> Result<PathBuf, StorageError> {
+        validate_relative("sub-path", &self.namespace, name)?;
+        Ok(self.base(base).join(name))
     }
 
     /// Create (if needed) and return one of the base directories. This is the
@@ -293,9 +299,24 @@ mod tests {
 
     #[test]
     fn platform_default_creates_nothing() {
-        let paths = AppPaths::new("StorageTestUncreated", PathLayout::PlatformDefault).unwrap();
+        // A per-run unique namespace: no such directory can pre-exist, so a
+        // regression that creates it on resolution is actually detected (the old
+        // assertion passed whenever the dir happened to exist and be readable).
+        let namespace = format!(
+            "StorageTestUncreated-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let paths = AppPaths::new(&namespace, PathLayout::PlatformDefault).unwrap();
         // Resolution alone must not touch the filesystem.
-        assert!(!paths.config_dir().exists() || paths.config_dir().read_dir().is_ok());
+        assert!(
+            !paths.config_dir().exists(),
+            "resolution created {:?}",
+            paths.config_dir()
+        );
     }
 
     #[test]
@@ -324,9 +345,20 @@ mod tests {
 
         // `sub` is pure path arithmetic, no filesystem access.
         assert_eq!(
-            paths.sub(BaseDir::Data, "profiles"),
+            paths.sub(BaseDir::Data, "profiles").unwrap(),
             paths.data_dir().join("profiles")
         );
+
+        // A name that would escape or discard the base directory is rejected.
+        for bad in ["", "..", "../evil", "/etc/passwd", "."] {
+            assert!(
+                matches!(
+                    paths.sub(BaseDir::Data, bad),
+                    Err(StorageError::PathResolution { .. })
+                ),
+                "sub name {bad:?} should be rejected"
+            );
+        }
 
         // `ensure` creates the directory on demand.
         let created = paths.ensure(BaseDir::Cache).unwrap();

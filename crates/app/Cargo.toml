@@ -10,7 +10,6 @@ anyhow.workspace = true
 gpui.workspace = true
 gpui_platform.workspace = true
 gpui-component.workspace = true
-gpui-component-assets.workspace = true
 gpui-component-manifest.workspace = true
 gpui-component-storage.workspace = true
 log.workspace = true

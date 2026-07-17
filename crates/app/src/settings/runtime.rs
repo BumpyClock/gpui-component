@@ -144,7 +144,6 @@ impl<T: AppSettings> ErasedSettingsEntry for SettingsEntry<T> {
             self.lifecycle_error = Some(error.to_string());
             return Err(error);
         }
-        self.exit_flushed = true;
 
         let result = match rx.recv_timeout(EXIT_FLUSH_TIMEOUT) {
             Ok(result) => result.map_err(SettingsError::from),
@@ -154,7 +153,14 @@ impl<T: AppSettings> ErasedSettingsEntry for SettingsEntry<T> {
             }),
         };
         match &result {
-            Ok(()) => self.lifecycle_error = None,
+            // Only a genuinely completed flush marks the exit flush done. A
+            // timeout or worker error must NOT set `exit_flushed`, otherwise the
+            // next call would short-circuit to `Ok(())` and silently suppress the
+            // unreported persistence failure.
+            Ok(()) => {
+                self.exit_flushed = true;
+                self.lifecycle_error = None;
+            }
             Err(error) => self.lifecycle_error = Some(error.to_string()),
         }
         result

@@ -54,10 +54,16 @@ impl Report {
 }
 
 /// Errors that prevent verification from completing.
+///
+/// The two heavy payloads (`ManifestError`, `toml::de::Error`) are boxed so the
+/// error stays small: it rides in every `Result<_, DoctorError>` on the success
+/// path, and an unboxed variant pushes the type past clippy's
+/// `result_large_err` threshold (caught only by CI's newer toolchain). The const
+/// assertion below guards against a regression.
 #[derive(Debug, thiserror::Error)]
 pub enum DoctorError {
     #[error(transparent)]
-    Manifest(#[from] gpui_component_manifest::ManifestError),
+    Manifest(Box<gpui_component_manifest::ManifestError>),
     #[error("failed to read {path}: {source}")]
     Read {
         path: PathBuf,
@@ -68,9 +74,11 @@ pub enum DoctorError {
     Toml {
         path: PathBuf,
         #[source]
-        source: toml::de::Error,
+        source: Box<toml::de::Error>,
     },
 }
+
+const _: () = assert!(std::mem::size_of::<DoctorError>() <= 64);
 
 /// Verifies identity metadata against recognized artifacts below `root`.
 ///
@@ -80,11 +88,12 @@ pub enum DoctorError {
 /// artifact cannot be read, or when the root Cargo manifest is malformed.
 pub fn verify(root: &Path) -> Result<Report, DoctorError> {
     let cargo_path = root.join("Cargo.toml");
-    let identity = gpui_component_manifest::parse::parse_identity(&cargo_path)?;
+    let identity = gpui_component_manifest::parse::parse_identity(&cargo_path)
+        .map_err(|e| DoctorError::Manifest(Box::new(e)))?;
     let cargo_source = read(&cargo_path)?;
     let cargo: toml::Value = toml::from_str(&cargo_source).map_err(|source| DoctorError::Toml {
         path: cargo_path,
-        source,
+        source: Box::new(source),
     })?;
     let mut report = Report::default();
     verify_bundle(&cargo, &identity, &mut report);
@@ -92,13 +101,20 @@ pub fn verify(root: &Path) -> Result<Report, DoctorError> {
     let mut files = Vec::new();
     collect_files(root, root, &mut files)?;
     files.sort();
-    let mut found_entitlements = false;
+    // Accumulate the contents of every candidate entitlements file so each
+    // declared entitlement key can be verified against the union below — a
+    // matching filename alone (possibly empty or carrying unrelated keys) must
+    // not pass a required entitlement.
+    let mut entitlement_source = String::new();
     for path in files {
+        // Check-field names are stable identifiers, not I/O paths: always use
+        // forward slashes so reports (and tests) are byte-identical on Windows.
         let relative = path
             .strip_prefix(root)
             .unwrap_or(&path)
             .display()
-            .to_string();
+            .to_string()
+            .replace('\\', "/");
         let name = path
             .file_name()
             .and_then(|name| name.to_str())
@@ -107,8 +123,8 @@ pub fn verify(root: &Path) -> Result<Report, DoctorError> {
         if name == "Info.plist" {
             verify_info(&relative, &read(&path)?, &identity, &mut report);
         } else if lower.ends_with("entitlements.plist") {
-            found_entitlements = true;
-            presence(&mut report, format!("{relative}:entitlements.plist"), true);
+            entitlement_source.push_str(&read(&path)?);
+            entitlement_source.push('\n');
         } else if path
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("desktop"))
@@ -137,13 +153,17 @@ pub fn verify(root: &Path) -> Result<Report, DoctorError> {
             }
         }
     }
-    if identity
-        .macos
-        .as_ref()
-        .is_some_and(|macos| !macos.entitlements.is_empty())
-        && !found_entitlements
-    {
-        presence(&mut report, "entitlements.plist".to_owned(), false);
+    // Verify every declared entitlement key is actually present, not merely that
+    // some entitlements file exists. A missing file leaves `entitlement_source`
+    // empty, so each required key is reported `Missing`.
+    if let Some(macos) = identity.macos.as_ref() {
+        for key in &macos.entitlements {
+            presence(
+                &mut report,
+                format!("entitlements.plist:{key}"),
+                plist_has_key(&entitlement_source, key),
+            );
+        }
     }
     Ok(report)
 }
@@ -202,8 +222,13 @@ fn verify_bundle(cargo: &toml::Value, identity: &AppIdentity, report: &mut Repor
         bundle.get("name").and_then(toml::Value::as_str),
     );
     let icon = bundle.get("icon").filter(|value| match value {
-        toml::Value::String(v) => !v.is_empty(),
-        toml::Value::Array(v) => !v.is_empty(),
+        toml::Value::String(v) => !v.trim().is_empty(),
+        toml::Value::Array(values) => {
+            !values.is_empty()
+                && values
+                    .iter()
+                    .all(|value| value.as_str().is_some_and(|value| !value.trim().is_empty()))
+        }
         _ => false,
     });
     report.checks.push(Check {
@@ -368,11 +393,29 @@ fn plist_string<'a>(source: &'a str, key: &str) -> Option<&'a str> {
 }
 
 fn desktop_value<'a>(source: &'a str, key: &str) -> Option<&'a str> {
-    source
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.starts_with('#'))
-        .find_map(|line| line.strip_prefix(key)?.strip_prefix('=').map(str::trim))
+    // Only the `[Desktop Entry]` group defines the main launcher fields. Keys in
+    // `[Desktop Action ...]` groups must not satisfy a missing launcher field.
+    let mut in_desktop_entry = false;
+    for line in source.lines().map(str::trim) {
+        if line.starts_with('[') && line.ends_with(']') {
+            in_desktop_entry = line == "[Desktop Entry]";
+            continue;
+        }
+        if !in_desktop_entry || line.starts_with('#') {
+            continue;
+        }
+        if let Some(value) = line
+            .strip_prefix(key)
+            .and_then(|rest| rest.strip_prefix('='))
+        {
+            return Some(value.trim());
+        }
+    }
+    None
+}
+
+fn plist_has_key(source: &str, key: &str) -> bool {
+    source.contains(&format!("<key>{key}</key>"))
 }
 
 fn exec_program(value: &str) -> &str {
@@ -470,4 +513,37 @@ fn quoted(source: &str) -> Option<&str> {
         return None;
     }
     source.get(1..)?.split_once(quote).map(|(value, _)| value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn desktop_value_only_reads_desktop_entry_group() {
+        let source = "\
+[Desktop Entry]
+Name=Real App
+
+[Desktop Action new]
+Name=New Window
+Exec=/opt/app --new";
+        assert_eq!(desktop_value(source, "Name"), Some("Real App"));
+        // `Exec` exists only in the action group, so the launcher field is absent.
+        assert_eq!(desktop_value(source, "Exec"), None);
+    }
+
+    #[test]
+    fn desktop_value_skips_keys_before_first_group() {
+        let source = "Name=Stray\n[Desktop Entry]\nName=Real";
+        assert_eq!(desktop_value(source, "Name"), Some("Real"));
+    }
+
+    #[test]
+    fn plist_has_key_matches_declared_entitlements() {
+        let source = "<dict><key>com.apple.security.network.client</key><true/></dict>";
+        assert!(plist_has_key(source, "com.apple.security.network.client"));
+        assert!(!plist_has_key(source, "com.apple.security.network.server"));
+        assert!(!plist_has_key("", "com.apple.security.network.client"));
+    }
 }

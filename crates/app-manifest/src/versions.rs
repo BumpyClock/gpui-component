@@ -219,6 +219,35 @@ mod tests {
     }
 
     #[test]
+    fn accepts_max_msix_component_and_rejects_overflow() {
+        // 65535 is the largest value each MSIX component may hold.
+        assert_eq!(
+            derive_msix_version("1.2.65535", MsixTarget::Sideload, None).unwrap(),
+            "1.2.65535.0"
+        );
+        // 65536 overflows the patch component.
+        assert!(matches!(
+            derive_msix_version("1.2.65536", MsixTarget::Sideload, None),
+            Err(ManifestError::InvalidMsixComponent {
+                field: "patch",
+                value: 65536
+            })
+        ));
+        // The sideload build component is validated on the same boundary.
+        assert_eq!(
+            derive_msix_version("1.2.3", MsixTarget::Sideload, Some(65535)).unwrap(),
+            "1.2.3.65535"
+        );
+        assert!(matches!(
+            derive_msix_version("1.2.3", MsixTarget::Sideload, Some(65536)),
+            Err(ManifestError::InvalidMsixComponent {
+                field: "build",
+                value: 65536
+            })
+        ));
+    }
+
+    #[test]
     fn rejects_malformed_semver_without_panicking() {
         for value in ["1.2", "not-a-version", "01.2.3", "1.2.3-beta..1"] {
             assert!(derive_cfbundle_short_version(value).is_err());

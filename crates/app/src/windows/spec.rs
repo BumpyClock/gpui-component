@@ -240,3 +240,109 @@ pub(super) fn scale_size(base: Size<Pixels>, fraction: f32) -> Size<Pixels> {
     };
     size(base.width * f, base.height * f)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::px;
+
+    #[test]
+    fn test_window_spec_builder() {
+        // Defaults.
+        let spec = WindowSpec::new(WindowKey::new("main"));
+        assert_eq!(spec.key(), WindowKey::new("main"));
+        assert_eq!(spec.declared_root_policy(), RootPolicy::ComponentRoot);
+        assert!(spec.title.is_none());
+        assert!(matches!(
+            spec.size,
+            WindowSize::DisplayFraction(f) if (f - 0.85).abs() < f32::EPSILON
+        ));
+        assert!(matches!(
+            spec.background,
+            WindowBackgroundAppearance::Opaque
+        ));
+        assert!(spec.pre_show.is_none());
+        assert!(spec.post_open.is_none());
+
+        // Mutators + hooks.
+        let spec = WindowSpec::new(WindowKey::new("main"))
+            .title("MyApp")
+            .fixed_size(px(640.), px(480.))
+            .raw()
+            .blurred(px(8.))
+            .customize_options(|_| {})
+            .on_open(|_, _| {});
+        assert_eq!(spec.title.as_deref(), Some("MyApp"));
+        assert_eq!(spec.declared_root_policy(), RootPolicy::Raw);
+        assert!(matches!(
+            spec.size,
+            WindowSize::Fixed(s) if s.width == px(640.) && s.height == px(480.)
+        ));
+        assert!(matches!(
+            spec.background,
+            WindowBackgroundAppearance::Blurred { .. }
+        ));
+        assert!(spec.pre_show.is_some());
+        assert!(spec.post_open.is_some());
+
+        // Remaining size/background variants.
+        let spec = WindowSpec::new(WindowKey::new("w"))
+            .display_fraction(0.5)
+            .transparent();
+        assert!(matches!(
+            spec.size,
+            WindowSize::DisplayFraction(f) if (f - 0.5).abs() < f32::EPSILON
+        ));
+        assert!(matches!(
+            spec.background,
+            WindowBackgroundAppearance::Transparent
+        ));
+    }
+
+    #[test]
+    fn test_overlay_spec_builder() {
+        // Defaults.
+        let spec = OverlaySpec::new(WindowKey::new("hud"), px(320.), px(200.));
+        assert_eq!(spec.key(), WindowKey::new("hud"));
+        assert_eq!(spec.size.width, px(320.));
+        assert_eq!(spec.size.height, px(200.));
+        assert!(matches!(
+            spec.background,
+            WindowBackgroundAppearance::Transparent
+        ));
+        assert!(!spec.focus);
+        assert!(spec.customize.is_none());
+
+        // Mutators + hook.
+        let spec = OverlaySpec::new(WindowKey::new("hud"), px(10.), px(10.))
+            .background(WindowBackgroundAppearance::Opaque)
+            .focus(true)
+            .customize_options(|_| {});
+        assert!(matches!(
+            spec.background,
+            WindowBackgroundAppearance::Opaque
+        ));
+        assert!(spec.focus);
+        assert!(spec.customize.is_some());
+
+        let spec = OverlaySpec::new(WindowKey::new("hud"), px(10.), px(10.)).blurred(px(4.));
+        assert!(matches!(
+            spec.background,
+            WindowBackgroundAppearance::Blurred { .. }
+        ));
+    }
+
+    #[test]
+    fn scale_size_guards_degenerate_fractions() {
+        let base = size(px(100.), px(200.));
+        let scaled = scale_size(base, 0.5);
+        assert_eq!(scaled.width, px(50.));
+        assert_eq!(scaled.height, px(100.));
+        // Non-finite / non-positive fractions fall back to 0.85.
+        for bad in [f32::NAN, f32::INFINITY, 0.0, -1.0] {
+            let scaled = scale_size(base, bad);
+            assert_eq!(scaled.width, px(85.));
+            assert_eq!(scaled.height, px(170.));
+        }
+    }
+}

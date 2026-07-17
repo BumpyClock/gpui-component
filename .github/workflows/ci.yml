@@ -49,7 +49,9 @@ jobs:
       - name: Typo check
         if: ${{ matrix.run_on == 'macos-latest' }}
         run: |
-          cargo install typos-cli || echo "typos-cli already installed"
+          # --locked for reproducibility; no `|| echo` mask — a failed install
+          # must fail the step, not surface later as `typos: command not found`.
+          which typos >/dev/null 2>&1 || cargo install typos-cli --locked
           typos
       - name: Lint (macOS)
         if: ${{ matrix.run_on == 'macos-latest' }}

@@ -5,16 +5,15 @@
 //! its `App` is constructed on the main thread, which the default test harness
 //! (worker threads) cannot provide.
 //!
-//! FORK REALITY: on macOS the headless platform runs `on_finish_launching()`
-//! then `CFRunLoopRun()`, and `quit()` terminates via `NSApp terminate` (which
-//! `exit()`s). `Application::run` therefore never returns on macOS, so all
-//! verification happens *inside* the launch closure, before the shell quits.
-//! A watchdog thread bounds the run so a boot that never reaches `on_launch`
-//! fails as a non-zero exit instead of hanging CI. Shutdown ordering is covered
-//! by the pure unit tests.
+//! FORK REALITY: the headless platform's post-`quit` behavior is not uniform
+//! across platforms — macOS terminates the process via `NSApp terminate`, while
+//! on Linux/Windows the run loop neither terminates nor returns to `main`. So all
+//! verification happens *inside* the launch closure, and the test terminates with
+//! an explicit `std::process::exit(0)` at the success point rather than depending
+//! on those loop-return semantics. A watchdog thread bounds the run so a boot that
+//! never reaches `on_launch` fails as a non-zero exit instead of hanging CI.
+//! Shutdown ordering is covered by the pure unit tests.
 
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use gpui_component_app::gpui::App;
@@ -51,17 +50,12 @@ fn main() {
         std::process::exit(1);
     });
 
-    let launched = Arc::new(AtomicBool::new(false));
-    let launched_cb = Arc::clone(&launched);
-
     let result = AppShell::builder(test_identity())
         .runner(PlatformRunner::headless())
         // Tray-first shape: no window, passive activation, explicit exit.
         .initial_activation(InitialActivation::Passive)
         .exit_policy(ExitPolicy::Explicit)
-        .on_launch(move |cx: &mut App| {
-            launched_cb.store(true, Ordering::SeqCst);
-
+        .on_launch(|cx: &mut App| {
             // The shell global is installed and AppInfo is reachable via the
             // extension trait with a raw &mut App.
             let info = cx.app_info();
@@ -77,15 +71,20 @@ fn main() {
 
             println!("headless shell lifecycle: ok");
 
-            // Zero-window shell: quit through the single path to end the loop.
-            // On macOS this terminates the process, so nothing after `run`
-            // executes.
-            cx.request_quit();
-            Ok(())
+            // Every lifecycle assertion has passed — success is fully known here.
+            // Terminate deterministically on every platform instead of driving a
+            // quit and relying on loop-return semantics: `request_quit()` ends the
+            // process only on macOS (via `NSApp terminate`); on Linux/Windows the
+            // headless run loop neither terminates the process nor returns to
+            // `main` after `cx.quit()`, so a quit-driven exit hangs until the
+            // watchdog fires. Quit/teardown ordering is covered by the pure unit
+            // tests; this test only asserts the boot lifecycle reaches `on_launch`
+            // with a working shell global.
+            std::process::exit(0);
         })
         .run();
 
-    // Reached only on platforms whose headless `run` returns (not macOS).
-    assert!(result.is_ok(), "run returned error: {result:?}");
-    assert!(launched.load(Ordering::SeqCst), "on_launch never ran");
+    // `on_launch` exits the process on success, so `run` only returns here if the
+    // shell failed to boot far enough to deliver `Started`.
+    panic!("headless shell did not reach on_launch: run returned {result:?}");
 }

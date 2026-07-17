@@ -325,8 +325,8 @@ Identity include, `AppShell` phases/plugin core (sealed trait until all three
 migrations exercised it), lifecycle events + queueing, `AppInfo`/`AppProxy`/globals
 split (+ auto-trait compile assertions), window manager, settings plugin,
 `ShellPreferences`, command registry + standard menus, theme plugin, capabilities,
-headless runner. Two in-repo conformance examples: `examples/app-shell` (single-window
-happy path) and **`examples/app-shell-tray`** (tray-first, zero windows, passive
+headless runner. Two in-repo conformance examples: `examples/app_shell` (single-window
+happy path) and **`examples/app_shell_tray`** (tray-first, zero windows, passive
 activation, tray-failure fallback — ansible's shape proves the platform; Andromeda's
 only proves the happy path). Phase-1 `doctor` command: parse normalized manifest and
 *verify* the apps' existing Info.plist/.desktop/wix/MSIX/Inno/Flatpak/bundle metadata

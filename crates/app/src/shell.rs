@@ -310,7 +310,8 @@ impl AppShellBuilder {
 
         // ---- Preflight (no GPUI) ----
         validate_identity(&identity)?;
-        let paths = AppPaths::new(identity.data_namespace, path_layout)?;
+        let paths =
+            AppPaths::new(identity.data_namespace, path_layout).map_err(AppShellError::Paths)?;
         apply_environment(environment);
         apply_logging(logging, &paths);
         for hook in before_platform {
