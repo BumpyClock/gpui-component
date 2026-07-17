@@ -3184,7 +3184,6 @@ dependencies = [
  "anyhow",
  "gpui",
  "gpui-component",
- "gpui-component-assets",
  "gpui-component-manifest",
  "gpui-component-storage",
  "gpui_platform",
@@ -8053,7 +8052,6 @@ dependencies = [
  "gpui-component-assets",
  "gpui_platform",
  "metal 0.33.0",
- "smol",
  "sysinfo 0.37.2",
  "windows 0.62.2",
 ]
