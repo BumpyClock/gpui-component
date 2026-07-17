@@ -51,11 +51,10 @@ impl From<anyhow::Error> for AppShellError {
     }
 }
 
-impl From<gpui_component_storage::StorageError> for AppShellError {
-    fn from(source: gpui_component_storage::StorageError) -> Self {
-        AppShellError::Paths(source)
-    }
-}
+// Deliberately no blanket `From<StorageError>`: only path *resolution* failures
+// are `AppShellError::Paths`. A blanket conversion would misclassify write, lock,
+// and corruption `StorageError`s reached via `?` as path errors, so callers map
+// `AppPaths::new` explicitly at the one resolution site (`shell.rs`).
 
 /// Returned by [`crate::AppProxy::dispatch`] once the shell has begun shutting
 /// down and can no longer accept main-thread work.

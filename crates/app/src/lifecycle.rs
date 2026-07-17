@@ -108,15 +108,17 @@ impl EventQueue {
 
     /// Record an event.
     ///
-    /// Returns `true` if the shell is already ready and the caller should
-    /// deliver `event` now; returns `false` if it was buffered for later drain.
+    /// Returns `Some(event)` if the shell is already ready and the caller should
+    /// deliver it now; returns `None` if it was buffered for later drain. The
+    /// event is handed back (rather than signalled with a bool) so a ready caller
+    /// still owns it to perform the immediate delivery.
     #[must_use]
-    pub fn push(&mut self, event: AppEvent) -> bool {
+    pub fn push(&mut self, event: AppEvent) -> Option<AppEvent> {
         if self.ready {
-            true
+            Some(event)
         } else {
             self.pending.push_back(event);
-            false
+            None
         }
     }
 
@@ -207,8 +209,8 @@ mod tests {
     #[test]
     fn buffers_until_ready_then_drains_fifo() {
         let mut q = EventQueue::new();
-        assert!(!q.push(open("a")));
-        assert!(!q.push(open("b")));
+        assert!(q.push(open("a")).is_none());
+        assert!(q.push(open("b")).is_none());
         assert_eq!(q.len(), 2);
         assert!(!q.is_ready());
 
@@ -230,8 +232,8 @@ mod tests {
         let mut q = EventQueue::new();
         q.mark_ready();
         assert!(
-            q.push(open("late")),
-            "post-ready push must ask for delivery"
+            matches!(q.push(open("late")), Some(AppEvent::OpenRequested(_))),
+            "post-ready push must hand the event back for delivery"
         );
         assert!(q.is_empty(), "post-ready push must not buffer");
     }
@@ -259,7 +261,7 @@ mod tests {
         // A reopen that arrives during startup (before the shell global exists)
         // must be buffered and delivered after `Started`, not dropped.
         let mut q = EventQueue::new();
-        assert!(!q.push(AppEvent::Reopened));
+        assert!(q.push(AppEvent::Reopened).is_none());
         q.mark_ready();
         let drained = q.drain();
         assert!(matches!(drained.as_slice(), [AppEvent::Reopened]));
