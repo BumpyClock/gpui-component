@@ -18,6 +18,12 @@ serde.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 
+# EnvironmentPolicy::LoginShell's PATH repair. macOS/Linux only: Windows GUI
+# processes inherit PATH from the launching context, so the policy is a
+# documented no-op there and the crate is not pulled in.
+[target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
+fix-path-env.workspace = true
+
 [dev-dependencies]
 serde_json.workspace = true
 tempfile.workspace = true
