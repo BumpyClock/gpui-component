@@ -42,6 +42,7 @@ pub struct SelectStory {
     simple_select1: Entity<SelectState<Vec<&'static str>>>,
     simple_select2: Entity<SelectState<SearchableVec<&'static str>>>,
     simple_select3: Entity<SelectState<Vec<SharedString>>>,
+    bottom_edge_select: Entity<SelectState<Vec<&'static str>>>,
     disabled_select: Entity<SelectState<Vec<SharedString>>>,
     appearance_select: Entity<SelectState<Vec<SharedString>>>,
     input_state: Entity<InputState>,
@@ -146,6 +147,14 @@ impl SelectStory {
                 }),
                 simple_select3: cx
                     .new(|cx| SelectState::new(Vec::<SharedString>::new(), None, window, cx)),
+                bottom_edge_select: cx.new(|cx| {
+                    SelectState::new(
+                        vec!["First", "Second", "Third", "Fourth"],
+                        Some(IndexPath::default()),
+                        window,
+                        cx,
+                    )
+                }),
                 disabled_select: cx
                     .new(|cx| SelectState::new(Vec::<SharedString>::new(), None, window, cx)),
                 appearance_select,
@@ -241,6 +250,14 @@ impl Render for SelectStory {
                                 .text_color(cx.theme().muted_foreground)
                                 .child("No Data"),
                         ),
+                ),
+            )
+            .child(
+                section("Bottom edge").max_w_128().child(
+                    v_flex()
+                        .h(px(360.))
+                        .justify_end()
+                        .child(Select::new(&self.bottom_edge_select)),
                 ),
             )
             .child(

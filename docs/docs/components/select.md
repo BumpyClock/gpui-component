@@ -179,6 +179,10 @@ Select::new(&state)
     .title_prefix("Country: ")      // Add prefix to selected title
 ```
 
+### Popup Placement
+
+The popup opens below its trigger when the configured maximum menu height fits within the viewport. Near the bottom edge, it opens above with the same gap and keeps horizontal viewport margins. Keyboard navigation and pointer hover share the active option; the committed option keeps a check marker.
+
 ### Empty State
 
 ```rust

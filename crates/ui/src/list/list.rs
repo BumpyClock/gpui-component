@@ -83,6 +83,7 @@ pub struct ListState<D: ListDelegate> {
     reset_on_cancel: bool,
     searchable: bool,
     selectable: bool,
+    select_on_hover: bool,
     _search_task: Task<()>,
     _load_more_task: Task<()>,
     _query_input_subscription: Subscription,
@@ -108,6 +109,7 @@ where
             last_query: None,
             selected_index: None,
             selectable: true,
+            select_on_hover: false,
             searchable: false,
             item_to_measure_index: IndexPath::default(),
             deferred_scroll_to_index: None,
@@ -342,6 +344,11 @@ where
         self
     }
 
+    pub(crate) fn select_on_hover(mut self, select_on_hover: bool) -> Self {
+        self.select_on_hover = select_on_hover;
+        self
+    }
+
     fn on_action_cancel(&mut self, _: &Cancel, window: &mut Window, cx: &mut Context<Self>) {
         cx.propagate();
         if self.reset_on_cancel {
@@ -383,6 +390,21 @@ where
         self.delegate.set_selected_index(Some(ix), window, cx);
         self.scroll_to_selected_item(window, cx);
         cx.emit(ListEvent::Select(ix));
+        cx.notify();
+    }
+
+    pub(crate) fn select_item_on_hover(
+        &mut self,
+        ix: IndexPath,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.selectable || self.selected_index == Some(ix) {
+            return;
+        }
+
+        self.selected_index = Some(ix);
+        self.delegate.set_selected_index(Some(ix), window, cx);
         cx.notify();
     }
 
@@ -458,6 +480,7 @@ where
             .mouse_right_clicked_index
             .map(|s| s.eq_row(ix))
             .unwrap_or(false);
+        let select_on_hover = self.select_on_hover;
         let id = SharedString::from(format!("list-item-{}", ix));
 
         div()
@@ -488,6 +511,13 @@ where
                         cx.notify();
                     }),
                 )
+                .when(select_on_hover, |this| {
+                    this.on_hover(cx.listener(move |this, hovered, window, cx| {
+                        if *hovered {
+                            this.select_item_on_hover(ix, window, cx);
+                        }
+                    }))
+                })
             })
     }
 

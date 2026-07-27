@@ -1,9 +1,9 @@
 use gpui::{
-    AbsoluteLength, AnimationExt as _, AnyElement, App, AppContext, Bounds, ClickEvent, Context,
-    DefiniteLength, DismissEvent, Edges, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
-    InteractiveElement, IntoElement, KeyBinding, Length, ParentElement, Pixels, Render, RenderOnce,
-    SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Subscription, Task,
-    WeakEntity, Window, anchored, deferred, div, prelude::FluentBuilder, px, rems,
+    AbsoluteLength, Anchor, AnimationExt as _, AnyElement, App, AppContext, Bounds, ClickEvent,
+    Context, DefiniteLength, DismissEvent, Edges, ElementId, Entity, EventEmitter, FocusHandle,
+    Focusable, InteractiveElement, IntoElement, KeyBinding, Length, ParentElement, Pixels, Render,
+    RenderOnce, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Subscription,
+    Task, WeakEntity, Window, anchored, deferred, div, point, prelude::FluentBuilder, px, rems,
 };
 use rust_i18n::t;
 
@@ -20,6 +20,36 @@ use crate::{
 };
 
 const CONTEXT: &str = "Select";
+const POPUP_GAP: Pixels = px(6.);
+const POPUP_MARGIN: Pixels = px(8.);
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct SelectMenuPlacement {
+    anchor: Anchor,
+    position: gpui::Point<Pixels>,
+}
+
+fn select_menu_placement(
+    trigger: Bounds<Pixels>,
+    menu_height: Pixels,
+    viewport_height: Pixels,
+    margin: Pixels,
+    gap: Pixels,
+) -> SelectMenuPlacement {
+    let fits_below = trigger.bottom() + gap + menu_height <= viewport_height - margin;
+    if fits_below {
+        SelectMenuPlacement {
+            anchor: Anchor::TopLeft,
+            position: point(trigger.left(), trigger.bottom() + gap),
+        }
+    } else {
+        SelectMenuPlacement {
+            anchor: Anchor::BottomLeft,
+            position: point(trigger.left(), trigger.top() - gap),
+        }
+    }
+}
+
 pub(crate) fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("up", SelectUp, Some(CONTEXT)),
@@ -200,14 +230,15 @@ where
         let selected = self
             .selected_index
             .map_or(false, |selected_index| selected_index == ix);
-        let size = self
-            .state
-            .upgrade()
-            .map_or(Size::Medium, |state| state.read(cx).options.size);
+        let (size, committed) = self.state.upgrade().map_or((Size::Medium, false), |state| {
+            let state = state.read(cx);
+            (state.options.size, state.final_selected_index == Some(ix))
+        });
 
         if let Some(item) = self.delegate.item(ix) {
             let list_item = SelectListItem::new(ix.row)
                 .selected(selected)
+                .committed(committed)
                 .with_size(size)
                 .child(div().whitespace_nowrap().child(item.render(window, cx)));
             Some(list_item)
@@ -559,7 +590,11 @@ where
             selected_index,
         };
 
-        let list = cx.new(|cx| ListState::new(delegate, window, cx).reset_on_cancel(false));
+        let list = cx.new(|cx| {
+            ListState::new(delegate, window, cx)
+                .reset_on_cancel(false)
+                .select_on_hover(true)
+        });
         let list_focus_handle = list.read(cx).focus_handle.clone();
         let list_search_focus_handle = list.read(cx).query_input.focus_handle(cx);
 
@@ -797,6 +832,18 @@ where
         };
         let menu_height = DefiniteLength::Absolute(AbsoluteLength::Rems(rems(20.)))
             .to_pixels(base_height, rem_size);
+        let placement = select_menu_placement(
+            bounds,
+            menu_height,
+            window.viewport_size().height,
+            POPUP_MARGIN,
+            POPUP_GAP,
+        );
+
+        let menu_anchor = anchored()
+            .anchor(placement.anchor)
+            .position(placement.position)
+            .snap_to_window_with_margin(POPUP_MARGIN);
 
         self.list
             .update(cx, |list, cx| list.set_searchable(searchable, cx));
@@ -883,7 +930,7 @@ where
 
                 this.child(
                     deferred(
-                        anchored().snap_to_window_with_margin(px(8.)).child(
+                        menu_anchor.child(
                             div()
                                 .occlude()
                                 .w(menu_width)
@@ -908,8 +955,7 @@ where
                                             window,
                                             cx,
                                             surface_ctx,
-                                        )
-                                        .mt_1p5(),
+                                        ),
                                 )
                                 .on_mouse_down_out(cx.listener(|this, _, window, cx| {
                                     this.escape(&Cancel, window, cx);
@@ -1070,6 +1116,7 @@ struct SelectListItem {
     size: Size,
     style: StyleRefinement,
     selected: bool,
+    committed: bool,
     disabled: bool,
     children: Vec<AnyElement>,
 }
@@ -1081,6 +1128,7 @@ impl SelectListItem {
             size: Size::default(),
             style: StyleRefinement::default(),
             selected: false,
+            committed: false,
             disabled: false,
             children: Vec::new(),
         }
@@ -1096,6 +1144,13 @@ impl ParentElement for SelectListItem {
 impl Disableable for SelectListItem {
     fn disabled(mut self, disabled: bool) -> Self {
         self.disabled = disabled;
+        self
+    }
+}
+
+impl SelectListItem {
+    fn committed(mut self, committed: bool) -> Self {
+        self.committed = committed;
         self
     }
 }
@@ -1156,7 +1211,10 @@ impl RenderOnce for SelectListItem {
                     .items_center()
                     .justify_between()
                     .gap_x_1()
-                    .child(div().w_full().children(self.children)),
+                    .child(div().flex_1().children(self.children))
+                    .when(self.committed, |this| {
+                        this.child(Icon::new(IconName::Check).xsmall())
+                    }),
             )
     }
 }
@@ -1188,6 +1246,61 @@ mod tests {
         });
         let visual_cx = VisualTestContext::from_window(window.into(), cx);
         (window, visual_cx)
+    }
+
+    #[test]
+    fn test_select_menu_placement() {
+        let trigger = |top| Bounds {
+            origin: point(px(40.), px(top)),
+            size: gpui::size(px(120.), px(32.)),
+        };
+
+        let top = select_menu_placement(trigger(8.), px(120.), px(600.), px(8.), px(6.));
+        assert_eq!(top.anchor, Anchor::TopLeft);
+        assert_eq!(top.position, point(px(40.), px(46.)));
+
+        let middle = select_menu_placement(trigger(240.), px(120.), px(600.), px(8.), px(6.));
+        assert_eq!(middle.anchor, Anchor::TopLeft);
+        assert_eq!(middle.position, point(px(40.), px(278.)));
+
+        let bottom = select_menu_placement(trigger(520.), px(120.), px(600.), px(8.), px(6.));
+        assert_eq!(bottom.anchor, Anchor::BottomLeft);
+        assert_eq!(bottom.position, point(px(40.), px(514.)));
+
+        let margin = select_menu_placement(trigger(430.), px(130.), px(600.), px(8.), px(6.));
+        assert_eq!(margin.anchor, Anchor::BottomLeft);
+    }
+
+    #[gpui::test]
+    fn test_select_hover_moves_active_row_without_committing(cx: &mut TestAppContext) {
+        let (window, mut cx) = new_select_state(cx);
+        let state = window.root(&mut cx).unwrap();
+        let list = state.read_with(&cx, |state, _| state.list.clone());
+
+        list.update_in(&mut cx, |list, window, cx| {
+            list.select_item_on_hover(IndexPath::default().row(0), window, cx);
+            let active = list
+                .delegate_mut()
+                .render_item(IndexPath::default().row(0), window, cx)
+                .unwrap();
+            assert!(active.selected);
+            assert!(!active.committed);
+            let committed = list
+                .delegate_mut()
+                .render_item(IndexPath::default().row(1), window, cx)
+                .unwrap();
+            assert!(!committed.selected);
+            assert!(committed.committed);
+        });
+
+        state.read_with(&cx, |state, cx| {
+            assert_eq!(state.selected_index(cx), Some(IndexPath::default().row(0)));
+            assert_eq!(
+                state.final_selected_index,
+                Some(IndexPath::default().row(1))
+            );
+            assert_eq!(state.selected_value(), Some(&"Beta"));
+        });
     }
 
     #[gpui::test]
