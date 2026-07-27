@@ -160,7 +160,7 @@ pub trait StyledExt: Styled + Sized {
     /// Render a border with a width of 1px, color ring color
     #[inline]
     fn focused_border(self, cx: &App) -> Self {
-        self.border_1().border_color(cx.theme().ring)
+        self.border_2().border_color(cx.theme().ring)
     }
 
     font_weight!(font_thin, THIN);
@@ -612,7 +612,7 @@ impl<T: ParentElement + Styled + Sized> FocusableExt<T> for T {
             return self;
         }
 
-        const RING_BORDER_WIDTH: Pixels = px(1.5);
+        const RING_BORDER_WIDTH: Pixels = px(2.);
         let rem_size = window.rem_size();
         let style = self.style();
 
@@ -681,7 +681,7 @@ impl<T: ParentElement + Styled + Sized> FocusableExt<T> for T {
                 .right(-(inset + border_widths.right))
                 .bottom(-(inset + border_widths.bottom))
                 .border(RING_BORDER_WIDTH)
-                .border_color(cx.theme().ring.alpha(0.2))
+                .border_color(cx.theme().ring)
                 .refine_style(&inner_style),
         )
     }
