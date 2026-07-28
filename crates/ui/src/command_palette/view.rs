@@ -12,8 +12,8 @@ use crate::kbd::Kbd;
 use crate::spinner::Spinner;
 use crate::{
     ActiveTheme, FlyoutTokens, Icon, IconName, Sizable, Size, SurfaceContext, SurfacePreset,
-    VirtualListScrollHandle, WindowExt as _, flyout_secondary_foreground, h_flex, is_layer_closing,
-    v_flex, v_virtual_list,
+    VirtualListScrollHandle, WindowExt as _, flyout_accent_foreground, flyout_secondary_foreground,
+    h_flex, is_layer_closing, v_flex, v_virtual_list,
 };
 use gpui::{
     AnimationExt, App, AppContext as _, Context, ElementId, Entity, FocusHandle, Focusable,
@@ -386,7 +386,7 @@ impl CommandPaletteView {
             if start < end {
                 elements.push(
                     div()
-                        .text_color(cx.theme().list_active_border)
+                        .text_color(flyout_accent_foreground(cx))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .child(text[start..end].to_string())
                         .into_any_element(),

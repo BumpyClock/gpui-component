@@ -230,3 +230,19 @@ mod tests {
         }
     }
 }
+
+/// Accent text color inside a flyout: search match highlights and any other
+/// emphasis that should read as "this is why the row matched".
+///
+/// Uses [`Theme::primary`], the theme's emphasis color, rather than a border
+/// token — borders carry no legibility guarantee against the flyout material.
+/// Corrected the same way as the other flyout roles so the accent stays
+/// readable on materials the theme never tuned it against.
+pub fn flyout_accent_foreground(cx: &App) -> Hsla {
+    contrast_adjusted(
+        cx.theme().primary,
+        flyout_material_color(cx),
+        cx.theme().background,
+        MIN_TEXT_CONTRAST,
+    )
+}
