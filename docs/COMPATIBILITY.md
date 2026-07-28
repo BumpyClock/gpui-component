@@ -24,6 +24,7 @@ Consumers (agent-term, ansible, Andromeda, and future apps) should:
 |---|---|---|---|
 | 0.5.1 (`v0.5.1`) | `4332ea7deae4838c12bad6ea64292ca22a33cf98` | 2026-07-16 | First tracked pairing; app-platform crates (storage, manifest) introduced. |
 | 0.6.0 (`v0.6.0`) | `2a03ae6e789b77e98f9d9bd5489758a082313c75` | 2026-07-17 | MainThreadPoster; AppProxy wake-on-send. |
+| 0.7.0 (`v0.7.0`) | `5569a8cdb31a12f7ec4b9a825379400edde211c8` | 2026-07-27 | Phase-stable backdrop blur pyramid; tuned flyout material. |
 
 ## AppShell platform support
 

@@ -229,20 +229,20 @@ impl SurfacePreset {
 
     /// Creates a flyout surface preset for menus and dropdowns.
     ///
-    /// - 60px blur radius
+    /// - 32px blur radius
     /// - Subtle noise
-    /// - Popover background at 0.75/0.85 opacity
+    /// - Popover background at 0.68/0.76 opacity
     /// - Small elevation with subtle stroke
     /// - 12px border radius
     pub fn flyout() -> Self {
         Self {
             kind: SurfaceKind::Flyout,
-            blur_radius: Some(px(60.0)),
+            blur_radius: Some(px(32.0)),
             noise_intensity: NoiseIntensity::Subtle,
             background: SurfaceBackground {
                 color_source: SurfaceColorSource::Popover,
-                light_opacity: 0.75,
-                dark_opacity: 0.85,
+                light_opacity: 0.68,
+                dark_opacity: 0.76,
             },
             elevation: ElevationToken::Sm,
             stroke: Some(StrokeSpec::subtle()),

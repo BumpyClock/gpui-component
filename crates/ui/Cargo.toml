@@ -7,7 +7,7 @@ documentation = "https://docs.rs/gpui-component"
 homepage = "https://BumpyClock.github.io/gpui-component"
 repository = "https://github.com/BumpyClock/gpui-component"
 readme = "../../README.md"
-version = "0.6.0"
+version = "0.7.0"
 publish = true
 edition.workspace = true
 
