@@ -1,7 +1,7 @@
 use gpui::{
     Action, App, AppContext, Context, DismissEvent, Entity, EventEmitter, FocusHandle, Focusable,
     InteractiveElement, IntoElement, KeyBinding, MouseButton, ParentElement as _, Render,
-    Styled as _, Window, actions, div, px,
+    Styled as _, Window, actions, div, px, relative,
 };
 use gpui_component::{
     ActiveTheme, Anchor, StyledExt, WindowExt,
@@ -241,38 +241,41 @@ impl Render for PopoverStory {
                         .text_sm()
                         .child(
                             v_flex()
-                                .gap_1()
-                                .child(div().font_semibold().child("Build completed"))
+                                .gap_4()
                                 .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("Finished 2 minutes ago"),
-                                ),
-                        )
-                        .child(Divider::horizontal())
-                        .child(
-                            v_flex()
-                                .gap_2()
-                                .child(
-                                    h_flex()
-                                        .justify_between()
+                                    v_flex()
+                                        .child(div().font_semibold().child("Build completed"))
                                         .child(
                                             div()
+                                                .text_xs()
+                                                .line_height(relative(1.2))
                                                 .text_color(cx.theme().muted_foreground)
-                                                .child("Branch"),
-                                        )
-                                        .child("main"),
+                                                .child("Finished 2 minutes ago"),
+                                        ),
                                 )
                                 .child(
-                                    h_flex()
-                                        .justify_between()
+                                    v_flex()
+                                        .gap_1()
                                         .child(
-                                            div()
-                                                .text_color(cx.theme().muted_foreground)
-                                                .child("Duration"),
+                                            h_flex()
+                                                .justify_between()
+                                                .child(
+                                                    div()
+                                                        .text_color(cx.theme().muted_foreground)
+                                                        .child("Branch"),
+                                                )
+                                                .child("main"),
                                         )
-                                        .child("1m 47s"),
+                                        .child(
+                                            h_flex()
+                                                .justify_between()
+                                                .child(
+                                                    div()
+                                                        .text_color(cx.theme().muted_foreground)
+                                                        .child("Duration"),
+                                                )
+                                                .child("1m 47s"),
+                                        ),
                                 ),
                         ),
                 ),
