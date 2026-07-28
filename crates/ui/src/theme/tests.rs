@@ -211,20 +211,20 @@ fn bundled_themes_meet_text_contrast_floor() {
 }
 
 /// The flyout material composited over `background`, as
-/// [`crate::flyout_material_color`] resolves it at runtime.
-fn flyout_material(config: &ThemeConfig) -> Hsla {
+/// [`crate::flyout_material_color`] resolves it at runtime. Derives the base color
+/// through [`crate::surface::flyout_base_color`] — the same function the renderer
+/// uses — so these tests measure the surface that is actually painted.
+fn flyout_material(config: &ThemeConfig, colors: &ThemeColor) -> Hsla {
     let mut material = ThemeMaterial::default();
     material.apply_config(config.material.as_ref(), &ThemeMaterial::default());
 
-    let (acrylic, opacity) = if config.mode.is_dark() {
-        (material.acrylic_default_dark, material.flyout_dark_opacity)
+    let is_dark = config.mode.is_dark();
+    let opacity = if is_dark {
+        material.flyout_dark_opacity
     } else {
-        (
-            material.acrylic_default_light,
-            material.flyout_light_opacity,
-        )
+        material.flyout_light_opacity
     };
-    acrylic.opacity(opacity)
+    crate::surface::flyout_base_color(colors.popover, is_dark).opacity(opacity)
 }
 
 /// Flyout materials (popover, menu, select popup, command palette, editor popovers)
@@ -234,21 +234,29 @@ fn flyout_material(config: &ThemeConfig) -> Hsla {
 /// against `background`, which is what [`bundled_themes_meet_text_contrast_floor`]
 /// covers.
 ///
-/// `popover.foreground` is used as-is; the secondary role is
-/// [`crate::flyout_secondary_foreground`], which contrast-corrects
-/// `muted.foreground` for this surface. Raw `muted.foreground` is sub-AA on the
-/// flyout material in every bundled dark theme (3.27:1 to 4.48:1, Default Dark
-/// 3.74:1) — see [`bundled_theme_flyout_secondary_needs_correction_in_dark_mode`].
+/// Both text roles are the corrected ones the runtime paints:
+/// [`crate::flyout_primary_foreground`] (usually `popover.foreground` untouched;
+/// corrected only in deliberately dim themes such as Alduin) and
+/// [`crate::flyout_secondary_foreground`], which corrects `muted.foreground` —
+/// raw, that token is sub-AA on the flyout material in every bundled dark theme.
 #[test]
 fn bundled_themes_meet_flyout_text_contrast_floor() {
     let mut failures = Vec::new();
 
     for (path, config) in bundled_theme_configs() {
         let colors = resolve_colors(&config);
-        let flyout = flyout_material(&config);
+        let flyout = flyout_material(&config, &colors);
 
         for (name, foreground) in [
-            ("flyout label", colors.popover_foreground),
+            (
+                "flyout label",
+                contrast_adjusted(
+                    colors.popover_foreground,
+                    flyout,
+                    colors.background,
+                    MIN_TEXT_CONTRAST,
+                ),
+            ),
             (
                 "flyout secondary",
                 contrast_adjusted(
@@ -281,15 +289,15 @@ fn bundled_themes_meet_flyout_text_contrast_floor() {
 /// `muted.foreground`: on dark materials the aliased token is routinely sub-AA, and
 /// the correction both fixes those and leaves already-readable themes untouched.
 ///
-/// Note it is not every dark theme — Catppuccin Frappe, for one, already clears the
-/// floor on its own flyout material and is returned unchanged.
+/// Note it is not every dark theme — Catppuccin Macchiato and macOS Classic Dark
+/// already clear the floor on their own flyout materials and are returned unchanged.
 #[test]
 fn bundled_theme_flyout_secondary_corrects_only_where_needed() {
     let mut dark_needing_correction = 0;
 
     for (path, config) in bundled_theme_configs() {
         let colors = resolve_colors(&config);
-        let flyout = flyout_material(&config);
+        let flyout = flyout_material(&config, &colors);
         let corrected = contrast_adjusted(
             colors.muted_foreground,
             flyout,

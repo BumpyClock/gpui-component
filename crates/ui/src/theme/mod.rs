@@ -107,14 +107,6 @@ pub struct ThemeMaterial {
     pub layer_dark: Hsla,
     pub layer_alt_light: Hsla,
     pub layer_alt_dark: Hsla,
-    pub mica_base_light: Hsla,
-    pub mica_base_dark: Hsla,
-    pub mica_base_alt_light: Hsla,
-    pub mica_base_alt_dark: Hsla,
-    pub acrylic_base_light: Hsla,
-    pub acrylic_base_dark: Hsla,
-    pub acrylic_default_light: Hsla,
-    pub acrylic_default_dark: Hsla,
 }
 
 impl Default for ThemeMaterial {

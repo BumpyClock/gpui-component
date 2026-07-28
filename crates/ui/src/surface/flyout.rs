@@ -145,7 +145,7 @@ pub fn flyout_material_color(cx: &App) -> Hsla {
 }
 
 /// Secondary text color inside a flyout: shortcuts, subtitles, categories,
-/// section headers, disabled rows and inactive accessory icons.
+/// section headers and enabled accessory icons.
 ///
 /// Flyout materials sit *above* the window background — in dark mode they are
 /// noticeably lighter than it — so [`Theme::muted_foreground`], which themes tune
@@ -168,9 +168,18 @@ pub fn flyout_secondary_foreground(cx: &App) -> Hsla {
 }
 
 /// Primary text color inside a flyout: row labels and prose body.
-#[inline]
+///
+/// Usually [`Theme::popover_foreground`] as-is; corrected by the minimum lightness
+/// change when a theme's own label color falls under AA on the flyout material
+/// (deliberately dim themes such as Alduin, where even the window foreground is a
+/// mid grey).
 pub fn flyout_primary_foreground(cx: &App) -> Hsla {
-    cx.theme().popover_foreground
+    contrast_adjusted(
+        cx.theme().popover_foreground,
+        flyout_material_color(cx),
+        cx.theme().background,
+        MIN_TEXT_CONTRAST,
+    )
 }
 
 /// Secondary text color on a *selected* row, where the row paints
@@ -178,6 +187,21 @@ pub fn flyout_primary_foreground(cx: &App) -> Hsla {
 #[inline]
 pub fn flyout_selected_secondary_foreground(cx: &App) -> Hsla {
     cx.theme().primary_foreground.opacity(0.8)
+}
+
+/// Opacity applied to [`flyout_secondary_foreground`] for disabled content.
+const DISABLED_OPACITY: f32 = 0.5;
+
+/// Text and icon color for a disabled flyout row — its label, shortcut and icons.
+///
+/// One clear step below [`flyout_secondary_foreground`], so a disabled row reads
+/// as unavailable rather than merely secondary, and so section headers (which
+/// stay at the secondary step) separate from it. Deriving it from the corrected
+/// secondary keeps the three-step ladder consistent in every theme. WCAG 1.4.3
+/// exempts disabled controls from the AA floor, which is what allows this role
+/// to sit below it.
+pub fn flyout_disabled_foreground(cx: &App) -> Hsla {
+    flyout_secondary_foreground(cx).opacity(DISABLED_OPACITY)
 }
 
 #[cfg(test)]

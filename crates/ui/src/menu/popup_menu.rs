@@ -9,7 +9,8 @@ use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::ScrollableElement;
 use crate::{
     ActiveTheme, ElementExt, FlyoutTokens, Icon, IconName, Sizable as _, SurfaceContext,
-    flyout_primary_foreground, flyout_secondary_foreground, flyout_selected_secondary_foreground,
+    flyout_disabled_foreground, flyout_primary_foreground, flyout_secondary_foreground,
+    flyout_selected_secondary_foreground,
 };
 use crate::{Side, Size, SurfacePreset, h_flex, kbd::Kbd, v_flex};
 use gpui::{
@@ -1001,6 +1002,8 @@ impl PopupMenu {
         let action = action?;
         let color = if selected && !disabled {
             flyout_selected_secondary_foreground(cx)
+        } else if disabled {
+            flyout_disabled_foreground(cx)
         } else {
             flyout_secondary_foreground(cx)
         };
@@ -1048,6 +1051,8 @@ impl PopupMenu {
             cx.theme().primary_foreground
         } else if checked && !disabled {
             cx.theme().primary
+        } else if disabled {
+            flyout_disabled_foreground(cx)
         } else {
             flyout_secondary_foreground(cx)
         };
@@ -1103,7 +1108,7 @@ impl PopupMenu {
                     .text_color(if selected && !disabled {
                         cx.theme().primary_foreground
                     } else if disabled {
-                        flyout_secondary_foreground(cx)
+                        flyout_disabled_foreground(cx)
                     } else {
                         cx.theme().primary
                     }),
@@ -1159,6 +1164,10 @@ impl PopupMenu {
                 .child(
                     h_flex()
                         .cursor_default()
+                        // `disabled(true)` above only makes the header inert; its text
+                        // stays on the secondary step so it separates from genuinely
+                        // disabled rows one step further down.
+                        .text_color(flyout_secondary_foreground(cx))
                         .items_center()
                         .gap(tokens.icon_gap)
                         .children(Self::render_icon(
@@ -1215,6 +1224,8 @@ impl PopupMenu {
                     self.render_key_binding(action.as_deref(), selected, *disabled, window, cx);
                 let accessory_color = if selected && !disabled {
                     flyout_selected_secondary_foreground(cx)
+                } else if *disabled {
+                    flyout_disabled_foreground(cx)
                 } else {
                     flyout_secondary_foreground(cx)
                 };
@@ -1322,6 +1333,8 @@ impl PopupMenu {
                                     .child(Icon::new(IconName::ChevronRight).xsmall().text_color(
                                         if selected && !disabled {
                                             flyout_selected_secondary_foreground(cx)
+                                        } else if *disabled {
+                                            flyout_disabled_foreground(cx)
                                         } else {
                                             flyout_secondary_foreground(cx)
                                         },

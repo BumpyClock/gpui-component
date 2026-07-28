@@ -64,14 +64,6 @@ pub(crate) fn theme_material_defaults() -> ThemeMaterial {
         layer_dark: fluent_color("#3A3A3A4C"),
         layer_alt_light: fluent_color("#FFFFFFFF"),
         layer_alt_dark: fluent_color("#FFFFFF0D"),
-        mica_base_light: fluent_color("#F3F3F3"),
-        mica_base_dark: fluent_color("#202020"),
-        mica_base_alt_light: fluent_color("#DADADA80"),
-        mica_base_alt_dark: fluent_color("#0A0A0A00"),
-        acrylic_base_light: fluent_color("#F3F3F3"),
-        acrylic_base_dark: fluent_color("#202020"),
-        acrylic_default_light: fluent_color("#FCFCFC"),
-        acrylic_default_dark: fluent_color("#2C2C2C"),
     }
 }
 

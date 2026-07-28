@@ -147,7 +147,7 @@ impl RenderOnce for MenuItemElement {
                 })
             })
             .when(self.disabled, |this| {
-                this.text_color(cx.theme().muted_foreground)
+                this.text_color(crate::flyout_disabled_foreground(cx))
             })
             .children(self.children)
             .map(|this| {

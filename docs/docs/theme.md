@@ -44,9 +44,17 @@ Key relationships:
   surface has a single left rail.
 - Two type steps only: `label_size` (Fluent body) for row labels, `meta_size`
   (Fluent caption) for shortcuts, subtitles, categories and section headers.
+- The material's tint is theme-derived: the flyout base color is `popover`
+  lifted to the material's luminance step (panels lift `sidebar`, the card wash
+  lifts `background`), so custom themes tint every surface automatically.
 - Text roles come from `flyout_primary_foreground` / `flyout_secondary_foreground`
-  (and `flyout_selected_secondary_foreground` on a selected row) rather than
-  ad-hoc `foreground.opacity(..)` values.
+  (with `flyout_selected_secondary_foreground` on a selected row and
+  `flyout_disabled_foreground` for disabled rows) rather than ad-hoc
+  `foreground.opacity(..)` values. Both roles are contrast-corrected against the
+  composited flyout material — the primary role only in deliberately dim themes,
+  the secondary role in most dark themes — and the disabled role sits one clear
+  step below the secondary, so labels, supporting text and disabled content stay
+  three distinct levels in every theme.
 
 ## AppShell integration
 

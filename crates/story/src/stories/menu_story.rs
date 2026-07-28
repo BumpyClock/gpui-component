@@ -5,7 +5,7 @@ use gpui::{
 use gpui_component::{
     ActiveTheme as _, IconName, Side, StyledExt,
     button::Button,
-    h_flex,
+    flyout_secondary_foreground, h_flex,
     menu::{ContextMenuExt, DropdownMenu as _, PopupMenuItem},
     v_flex,
 };
@@ -177,7 +177,13 @@ impl Render for MenuStory {
                                                     v_flex().child("Inspect selection").child(
                                                         div()
                                                             .text_xs()
-                                                            .text_color(cx.theme().muted_foreground)
+                                                            // Custom flyout content should use the
+                                                            // flyout secondary role, not the window
+                                                            // `muted_foreground`, which is sub-AA on
+                                                            // the flyout material in dark themes.
+                                                            .text_color(
+                                                                flyout_secondary_foreground(cx),
+                                                            )
                                                             .child("Open details panel"),
                                                     )
                                                 })

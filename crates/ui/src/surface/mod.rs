@@ -18,8 +18,8 @@ mod flyout;
 pub use flyout::*;
 
 use gpui::{
-    App, Div, Hsla, ImageSource, IntoElement, ObjectFit, ParentElement, Pixels, Resource, Styled,
-    StyledImage, Window, div, img, px,
+    App, Div, Hsla, ImageSource, IntoElement, ObjectFit, ParentElement, Pixels, Resource, Rgba,
+    Styled, StyledImage, Window, div, img, px,
 };
 
 use crate::{ActiveTheme, StyledExt, ThemeShadowToken, global_state::GlobalState};
@@ -100,15 +100,65 @@ impl ElevationToken {
 }
 
 /// Source for surface background color from theme.
+///
+/// Every variant derives from a theme color, so custom themes tint every surface
+/// automatically. The `Elevated*` variants add the material's luminance character
+/// on top of the theme color — see [`elevated`].
 #[derive(Debug, Clone, Copy, Default)]
 pub enum SurfaceColorSource {
     #[default]
     Popover,
-    Acrylic,
-    Mica,
-    White,
     Sidebar,
     Background,
+    /// [`crate::Theme::popover`] lifted to flyout-material luminance.
+    ElevatedPopover,
+    /// [`crate::Theme::sidebar`] lifted to panel-material luminance.
+    ElevatedSidebar,
+    /// [`crate::Theme::background`] lifted toward white for the card wash.
+    ElevatedBackground,
+}
+
+/// Blend fractions lifting a theme color toward the mode's elevation pole — white
+/// in dark mode (surfaces rise toward light), black in light mode (materials sit a
+/// step under a white window). Calibrated so the neutral default theme reproduces
+/// the Fluent material values these replaced — acrylic `#2C2C2C`/`#FCFCFC` and
+/// mica `#202020`/`#F3F3F3` over the default `#0A0A0A`/`#FFFFFF` window — while
+/// tinted themes keep their hue instead of collapsing to those neutrals.
+const FLYOUT_LIFT_DARK: f32 = 34. / 245.;
+const FLYOUT_LIFT_LIGHT: f32 = 3. / 255.;
+const PANEL_LIFT_DARK: f32 = 22. / 245.;
+const PANEL_LIFT_LIGHT: f32 = 12. / 255.;
+/// The card wash blends far toward white in both modes (it replaced a pure white
+/// wash) but keeps enough of the background to carry the theme's hue.
+const CARD_WASH_LIFT: f32 = 0.85;
+
+/// Blends `base` toward `pole` (per sRGB channel) by `amount`, keeping alpha.
+fn mix_toward(base: Hsla, pole: f32, amount: f32) -> Hsla {
+    let base = Rgba::from(base);
+    let channel = |value: f32| value + (pole - value) * amount;
+    Hsla::from(Rgba {
+        r: channel(base.r),
+        g: channel(base.g),
+        b: channel(base.b),
+        a: base.a,
+    })
+}
+
+/// A theme color carried to a material's luminance step: lifted toward white in
+/// dark mode, settled toward black in light mode.
+pub(crate) fn elevated(base: Hsla, is_dark: bool, dark_lift: f32, light_lift: f32) -> Hsla {
+    if is_dark {
+        mix_toward(base, 1.0, dark_lift)
+    } else {
+        mix_toward(base, 0.0, light_lift)
+    }
+}
+
+/// The flyout material's base color for a given theme popover color, before the
+/// flyout opacity is applied. Shared with the theme contrast tests so they measure
+/// the same surface the runtime renders.
+pub(crate) fn flyout_base_color(popover: Hsla, is_dark: bool) -> Hsla {
+    elevated(popover, is_dark, FLYOUT_LIFT_DARK, FLYOUT_LIFT_LIGHT)
 }
 
 /// Background configuration with light/dark mode variants.
@@ -132,25 +182,21 @@ impl Default for SurfaceBackground {
 impl SurfaceBackground {
     /// Resolves the background color based on theme mode and opacity settings.
     pub fn resolve(&self, cx: &App) -> Hsla {
+        let is_dark = cx.theme().mode.is_dark();
         let base = match self.color_source {
             SurfaceColorSource::Popover => cx.theme().popover,
-            SurfaceColorSource::Acrylic => {
-                if cx.theme().mode.is_dark() {
-                    cx.theme().material.acrylic_default_dark
-                } else {
-                    cx.theme().material.acrylic_default_light
-                }
-            }
-            SurfaceColorSource::Mica => {
-                if cx.theme().mode.is_dark() {
-                    cx.theme().material.mica_base_dark
-                } else {
-                    cx.theme().material.mica_base_light
-                }
-            }
-            SurfaceColorSource::White => gpui::white(),
             SurfaceColorSource::Sidebar => cx.theme().sidebar,
             SurfaceColorSource::Background => cx.theme().background,
+            SurfaceColorSource::ElevatedPopover => flyout_base_color(cx.theme().popover, is_dark),
+            SurfaceColorSource::ElevatedSidebar => elevated(
+                cx.theme().sidebar,
+                is_dark,
+                PANEL_LIFT_DARK,
+                PANEL_LIFT_LIGHT,
+            ),
+            SurfaceColorSource::ElevatedBackground => {
+                mix_toward(cx.theme().background, 1.0, CARD_WASH_LIFT)
+            }
         };
         let opacity = if cx.theme().mode.is_dark() {
             self.dark_opacity
@@ -260,7 +306,7 @@ impl SurfacePreset {
     ///
     /// - 24px blur radius
     /// - Subtle noise
-    /// - Acrylic background at 0.86/0.88 opacity
+    /// - Elevated popover background at 0.86/0.88 opacity
     /// - Medium elevation with subtle stroke
     /// - 12px border radius
     pub fn flyout() -> Self {
@@ -269,7 +315,7 @@ impl SurfacePreset {
             blur_radius: Some(px(24.0)),
             noise_intensity: NoiseIntensity::Subtle,
             background: SurfaceBackground {
-                color_source: SurfaceColorSource::Acrylic,
+                color_source: SurfaceColorSource::ElevatedPopover,
                 light_opacity: 0.86,
                 dark_opacity: 0.88,
             },
@@ -286,7 +332,7 @@ impl SurfacePreset {
     ///
     /// - 48px blur radius
     /// - Subtle noise
-    /// - Mica background at 0.88/0.90 opacity
+    /// - Elevated sidebar background at 0.88/0.90 opacity
     /// - Large elevation with subtle stroke
     /// - 16px border radius
     pub fn panel() -> Self {
@@ -295,7 +341,7 @@ impl SurfacePreset {
             blur_radius: Some(px(48.0)),
             noise_intensity: NoiseIntensity::Subtle,
             background: SurfaceBackground {
-                color_source: SurfaceColorSource::Mica,
+                color_source: SurfaceColorSource::ElevatedSidebar,
                 light_opacity: 0.88,
                 dark_opacity: 0.90,
             },
@@ -312,7 +358,7 @@ impl SurfacePreset {
     ///
     /// - No blur
     /// - No noise
-    /// - White background at 0.70/0.05 opacity
+    /// - Theme-tinted near-white wash at 0.70/0.05 opacity
     /// - Small elevation with default border
     /// - Uses theme radius
     pub fn card() -> Self {
@@ -321,7 +367,7 @@ impl SurfacePreset {
             blur_radius: None,
             noise_intensity: NoiseIntensity::None,
             background: SurfaceBackground {
-                color_source: SurfaceColorSource::White,
+                color_source: SurfaceColorSource::ElevatedBackground,
                 light_opacity: 0.70,
                 dark_opacity: 0.05,
             },
@@ -415,7 +461,7 @@ impl SurfacePreset {
         if let Some(ref stroke) = self.stroke {
             let stroke_color = if matches!(
                 self.background.color_source,
-                SurfaceColorSource::Acrylic | SurfaceColorSource::Mica
+                SurfaceColorSource::ElevatedPopover | SurfaceColorSource::ElevatedSidebar
             ) && matches!(stroke.color, StrokeColor::Subtle)
             {
                 cx.theme().control_stroke

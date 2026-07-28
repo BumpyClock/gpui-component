@@ -136,14 +136,6 @@ pub struct ThemeMaterialConfig {
     pub layer_dark: Option<SharedString>,
     pub layer_alt_light: Option<SharedString>,
     pub layer_alt_dark: Option<SharedString>,
-    pub mica_base_light: Option<SharedString>,
-    pub mica_base_dark: Option<SharedString>,
-    pub mica_base_alt_light: Option<SharedString>,
-    pub mica_base_alt_dark: Option<SharedString>,
-    pub acrylic_base_light: Option<SharedString>,
-    pub acrylic_base_dark: Option<SharedString>,
-    pub acrylic_default_light: Option<SharedString>,
-    pub acrylic_default_dark: Option<SharedString>,
 }
 
 impl ThemeMotion {
@@ -335,46 +327,6 @@ impl ThemeMaterial {
                 .as_ref()
                 .and_then(parse_config_color)
                 .unwrap_or(default_theme.layer_alt_dark);
-            self.mica_base_light = config
-                .mica_base_light
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.mica_base_light);
-            self.mica_base_dark = config
-                .mica_base_dark
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.mica_base_dark);
-            self.mica_base_alt_light = config
-                .mica_base_alt_light
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.mica_base_alt_light);
-            self.mica_base_alt_dark = config
-                .mica_base_alt_dark
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.mica_base_alt_dark);
-            self.acrylic_base_light = config
-                .acrylic_base_light
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.acrylic_base_light);
-            self.acrylic_base_dark = config
-                .acrylic_base_dark
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.acrylic_base_dark);
-            self.acrylic_default_light = config
-                .acrylic_default_light
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.acrylic_default_light);
-            self.acrylic_default_dark = config
-                .acrylic_default_dark
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.acrylic_default_dark);
             return;
         }
 
