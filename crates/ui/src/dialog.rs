@@ -791,3 +791,85 @@ impl RenderOnce for Dialog {
             )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{AppContext as _, Context, Render, TestAppContext, div};
+
+    struct TestRoot;
+    impl Render for TestRoot {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+        }
+    }
+
+    /// Runs `f` inside a real window, since `Dialog::new` needs both a Window
+    /// and an App.
+    fn in_window<R: 'static>(
+        cx: &mut TestAppContext,
+        reduced_motion: bool,
+        f: impl FnOnce(&mut Window, &mut App) -> R + 'static,
+    ) -> R {
+        let window = cx.update(|cx| {
+            crate::init(cx);
+            GlobalState::global_mut(cx).set_reduced_motion(reduced_motion);
+            cx.open_window(Default::default(), |_, cx| cx.new(|_| TestRoot))
+                .unwrap()
+        });
+
+        window.update(cx, |_, window, cx| f(window, cx)).unwrap()
+    }
+
+    #[gpui::test]
+    fn test_dialog_builder(cx: &mut TestAppContext) {
+        in_window(cx, false, |window, cx| {
+            let dialog = Dialog::new(window, cx);
+            assert!(dialog.animate, "chrome animates by default");
+            assert!(!dialog.defer_close, "deferred close is opt-in");
+
+            let configured = Dialog::new(window, cx).animate(false).defer_close(true);
+            assert!(!configured.animate);
+            assert!(configured.defer_close);
+        });
+    }
+
+    /// An animating dialog already stays mounted for its exit; `defer_close` is
+    /// for hosts that opt out of chrome animation and drive their own exit.
+    #[gpui::test]
+    fn test_should_defer_close_covers_both_opt_ins(cx: &mut TestAppContext) {
+        in_window(cx, false, |window, cx| {
+            assert!(
+                Dialog::new(window, cx)
+                    .animate(true)
+                    .defer_close(false)
+                    .should_defer_close(cx)
+            );
+            assert!(
+                Dialog::new(window, cx)
+                    .animate(false)
+                    .defer_close(true)
+                    .should_defer_close(cx),
+                "defer_close must hold a non-animating dialog mounted"
+            );
+            assert!(
+                !Dialog::new(window, cx)
+                    .animate(false)
+                    .defer_close(false)
+                    .should_defer_close(cx),
+                "hosts opting into neither keep the immediate-unmount path"
+            );
+        });
+    }
+
+    /// Reduced motion unmounts immediately regardless of either opt-in, so a
+    /// deferred window can never hold a dialog past its dismissal.
+    #[gpui::test]
+    fn test_reduced_motion_never_defers(cx: &mut TestAppContext) {
+        in_window(cx, true, |window, cx| {
+            let dialog = Dialog::new(window, cx).animate(true).defer_close(true);
+            assert!(!dialog.should_defer_close(cx));
+            assert!(!dialog.should_animate(cx));
+        });
+    }
+}

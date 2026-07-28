@@ -203,9 +203,11 @@ impl Element for Popover {
                     SurfaceContext::new(cx),
                 )
                 .text_color(flyout_primary_foreground(cx))
-                // Prose, not rows: pad to the shared row rhythm so hover docs line up
-                // with the completion menu labels they sit beside.
-                .p(tokens.item_padding_x)
+                // Prose, not rows: content_padding lands on the same 12px rail as
+                // a row's inset + item_padding_x, so hover docs line up with the
+                // completion menu labels they sit beside. item_padding_x alone
+                // would sit 4px inside that rail.
+                .p(tokens.content_padding)
                 .text_size(tokens.meta_size)
                 .max_w(max_width)
                 .max_h(max_height)

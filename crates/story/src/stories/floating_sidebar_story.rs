@@ -69,7 +69,7 @@ impl FloatingSidebarStory {
         &mut self,
         id: &'static str,
         inset: gpui::Pixels,
-        _window: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let side = self.side;
@@ -108,7 +108,7 @@ impl FloatingSidebarStory {
             Duration::from_millis(u64::from(self.content_transition_duration_ms.max(1))),
             Duration::from_millis(u64::from(self.content_transition_duration_ms.max(1))),
             PresenceOptions::default(),
-            _window,
+            window,
             cx,
         );
         let content_transition = if content_presence.transition_active() {
