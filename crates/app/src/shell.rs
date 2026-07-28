@@ -16,12 +16,17 @@ use gpui_component_manifest::schema::IdentityRef;
 use gpui_component_storage::{AppPaths, PathLayout};
 
 use crate::capabilities::PlatformCapabilities;
-use crate::error::AppShellError;
+use crate::error::{
+    AppShellError, BuilderConfigurationError, MenuConfiguration, RuntimeError, StartupHook,
+};
 use crate::handles::{self, AppInfo, PendingEvents};
 use crate::lifecycle::{AppEvent, LaunchRequest};
 use crate::liveness::{ExitPolicy, InitialActivation, Liveness};
 use crate::phases::{Phase, PhaseTracker};
 use crate::plugin::{AppPlugin, BuildContext, EventHandler, ShellSeed};
+
+type StartCallback = Box<dyn FnOnce(&LaunchRequest, &mut App) -> anyhow::Result<()> + 'static>;
+type ErrorReporter = Box<dyn Fn(&RuntimeError, &mut App) + 'static>;
 
 /// Process-global environment policy (plan §3 — explicit, never a silent
 /// default). Applied once in `Preflight`.
@@ -145,6 +150,12 @@ pub struct AppShellBuilder {
     state: HashMap<TypeId, Box<dyn Any>>,
     plugins: Vec<Box<dyn AppPlugin>>,
     handlers: Vec<EventHandler>,
+    start: Option<StartCallback>,
+    startup_hook: Option<StartupHook>,
+    configuration_error: Option<BuilderConfigurationError>,
+    error_reporter: Option<ErrorReporter>,
+    shell_preferences_installed: bool,
+    menu_configuration: Option<MenuConfiguration>,
     runner: PlatformRunner,
 }
 
@@ -161,14 +172,16 @@ impl AppShellBuilder {
             configure_app: None,
             before_platform: Vec::new(),
             state: HashMap::new(),
-            // Always-present services, installed first so user plugins can rely
-            // on them during their own init: the platform-owned preferences
-            // store (theme mode/name, locale) and the window manager.
-            plugins: vec![
-                Box::new(crate::settings::ShellPreferencesPlugin::new()),
-                Box::new(crate::windows::WindowsPlugin::new()),
-            ],
+            // Window management is the only always-present app service.
+            // Shell preferences are installed only by consumers.
+            plugins: vec![Box::new(crate::windows::WindowsPlugin::new())],
             handlers: Vec::new(),
+            start: None,
+            startup_hook: None,
+            configuration_error: None,
+            error_reporter: None,
+            shell_preferences_installed: false,
+            menu_configuration: None,
             runner: PlatformRunner::native(),
         }
     }
@@ -245,6 +258,55 @@ impl AppShellBuilder {
         self
     }
 
+    pub(crate) fn ensure_shell_preferences(mut self) -> Self {
+        if !self.shell_preferences_installed {
+            self.plugins
+                .push(Box::new(crate::settings::ShellPreferencesPlugin::new()));
+            self.shell_preferences_installed = true;
+        }
+        self
+    }
+
+    pub(crate) fn register_menu_configuration(mut self, configuration: MenuConfiguration) -> Self {
+        if let Some(first) = self.menu_configuration {
+            self.configuration_error
+                .get_or_insert(BuilderConfigurationError::DuplicateMenus {
+                    first,
+                    second: configuration,
+                });
+        } else {
+            self.menu_configuration = Some(configuration);
+        }
+        self
+    }
+
+    /// Run fallible application composition after shell services initialize and
+    /// before the app becomes ready.
+    ///
+    /// Only one `start`/`on_launch` callback may be registered. A duplicate is
+    /// returned as [`AppShellError::Configuration`] from [`Self::run`] before
+    /// platform construction.
+    pub fn start(
+        self,
+        start: impl FnOnce(&LaunchRequest, &mut App) -> anyhow::Result<()> + 'static,
+    ) -> Self {
+        self.register_start(StartupHook::Start, Box::new(start))
+    }
+
+    fn register_start(mut self, hook: StartupHook, start: StartCallback) -> Self {
+        if let Some(first) = self.startup_hook {
+            self.configuration_error
+                .get_or_insert(BuilderConfigurationError::DuplicateStartup {
+                    first,
+                    second: hook,
+                });
+        } else {
+            self.startup_hook = Some(hook);
+            self.start = Some(start);
+        }
+        self
+    }
+
     /// Handle every lifecycle [`AppEvent`].
     pub fn on_event(
         mut self,
@@ -255,18 +317,24 @@ impl AppShellBuilder {
         self
     }
 
-    /// Sugar over `on_event(Started)`: run `f` once the app has launched.
+    /// Compatibility sugar for the transactional [`Self::start`] slot.
+    ///
+    /// Unlike the old `Started` event sugar, failures are fatal and the callback
+    /// runs before `Started` observers, queued events, and activation.
     pub fn on_launch(
         self,
         mut f: impl FnMut(&mut App) -> Result<(), AppShellError> + 'static,
     ) -> Self {
-        self.on_event(move |event, cx| {
-            if matches!(event, AppEvent::Started(_)) {
-                f(cx)
-            } else {
-                Ok(())
-            }
-        })
+        self.register_start(
+            StartupHook::OnLaunch,
+            Box::new(move |_launch, cx| f(cx).map_err(anyhow::Error::new)),
+        )
+    }
+
+    /// Observe nonfatal runtime errors. The default reporter logs each error.
+    pub fn on_error(mut self, reporter: impl Fn(&RuntimeError, &mut App) + 'static) -> Self {
+        self.error_reporter = Some(Box::new(reporter));
+        self
     }
 
     /// Sugar over `on_event(Reopened)`.
@@ -305,10 +373,19 @@ impl AppShellBuilder {
             state,
             mut plugins,
             handlers,
+            start,
+            configuration_error,
+            error_reporter,
+            shell_preferences_installed: _,
+            menu_configuration: _,
+            startup_hook: _,
             runner,
         } = self;
 
         // ---- Preflight (no GPUI) ----
+        if let Some(error) = configuration_error {
+            return Err(AppShellError::Configuration(error));
+        }
         validate_identity(&identity)?;
         let paths =
             AppPaths::new(identity.data_namespace, path_layout).map_err(AppShellError::Paths)?;
@@ -369,20 +446,27 @@ impl AppShellBuilder {
             pending,
             state,
             launch,
+            start,
+            error_reporter: error_reporter.unwrap_or_else(|| {
+                Box::new(|error, _cx| {
+                    log::error!("{error}");
+                })
+            }),
         };
         let error_slot = Arc::clone(&error_cell);
         application.run(move |cx| {
             if let Err(err) = boot.run(cx) {
-                // On macOS `cx.quit()` terminates the process with status 0
-                // before `Application::run` returns, which would convert a
-                // startup failure into a successful exit (and let broken boots
-                // pass the CI smoke gate). Initialized plugins were already
-                // unwound in reverse by `boot.run`'s error path, so exit
-                // directly with a failing status. On platforms where `run`
-                // returns, the error cell below still reports the same error.
+                // On macOS and Windows `cx.quit()` terminates the process with
+                // status 0 before `Application::run` returns, which would
+                // convert a startup failure into a successful exit (and let
+                // broken boots pass the CI smoke gate). Initialized plugins
+                // were already unwound in reverse by `boot.run`'s error path,
+                // so exit directly with a failing status. On platforms where
+                // `run` returns, the error cell below still reports the same
+                // error.
                 log::error!("app shell startup failed: {err}");
                 *error_slot.lock().expect("error cell poisoned") = Some(err);
-                if cfg!(target_os = "macos") {
+                if cfg!(any(target_os = "macos", target_os = "windows")) {
                     std::process::exit(2);
                 }
                 cx.quit();
@@ -407,6 +491,8 @@ struct Boot {
     pending: Arc<PendingEvents>,
     state: HashMap<TypeId, Box<dyn Any>>,
     launch: LaunchRequest,
+    start: Option<StartCallback>,
+    error_reporter: ErrorReporter,
 }
 
 impl Boot {
@@ -420,6 +506,8 @@ impl Boot {
             pending,
             state,
             launch,
+            start,
+            error_reporter,
         } = self;
 
         let mut phases = PhaseTracker::new();
@@ -442,6 +530,7 @@ impl Boot {
             Arc::clone(&pending),
             state,
             phases,
+            error_reporter,
         );
         cx.global_mut::<crate::handles::ShellState>()
             .record_phase(Phase::CoreServices);
@@ -475,15 +564,39 @@ impl Boot {
         if let Some(err) = init_error {
             // The failing plugin never completed init and is not shut down; the
             // successfully-initialized prefix is torn down in reverse order.
-            for plugin in installed[..initialized].iter_mut().rev() {
-                plugin.shutdown(cx);
-            }
+            installed.truncate(initialized);
+            cx.global_mut::<crate::handles::ShellState>()
+                .restore_plugins(installed);
+            handles::fail_startup(cx);
             return Err(err);
         }
         cx.global_mut::<crate::handles::ShellState>()
             .restore_plugins(installed);
         cx.global_mut::<crate::handles::ShellState>()
             .record_phase(Phase::PluginInit);
+
+        // Start: the one fatal application-owned composition transaction.
+        if let Some(start) = start
+            && let Err(source) = start(&launch, cx)
+        {
+            handles::fail_startup(cx);
+            return Err(AppShellError::Startup(source));
+        }
+        cx.global_mut::<crate::handles::ShellState>()
+            .record_phase(Phase::Start);
+
+        // A quit requested during plugin init/start is deferred so a later
+        // startup error wins. Successful startup now performs normal shutdown,
+        // without publishing readiness events or activating.
+        if let Some(reason) = handles::finish_start(cx) {
+            pending
+                .queue
+                .lock()
+                .expect("pending queue poisoned")
+                .clear();
+            handles::request_quit_with(cx, reason);
+            return Ok(());
+        }
 
         // DrainQueue: deliver Started, enable post-ready delivery, drain buffer.
         handles::deliver_event(cx, &AppEvent::Started(launch));
@@ -493,9 +606,8 @@ impl Boot {
             .record_phase(Phase::DrainQueue);
 
         // Activation.
-        match initial_activation {
-            InitialActivation::Regular => cx.activate(false),
-            InitialActivation::Passive => {}
+        if let Some(force) = activation_force(initial_activation) {
+            cx.activate(force);
         }
         cx.global_mut::<crate::handles::ShellState>()
             .record_phase(Phase::Activation);
@@ -509,6 +621,14 @@ impl Boot {
         // `Requested`.
         handles::evaluate_exit(cx);
         Ok(())
+    }
+}
+
+fn activation_force(activation: InitialActivation) -> Option<bool> {
+    match activation {
+        InitialActivation::Regular => Some(false),
+        InitialActivation::Forced => Some(true),
+        InitialActivation::Passive => None,
     }
 }
 
@@ -574,12 +694,22 @@ impl ChainedAssets {
 
 impl AssetSource for ChainedAssets {
     fn load(&self, path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {
+        let mut first_error = None;
         for source in &self.sources {
-            if let Some(bytes) = source.load(path)? {
-                return Ok(Some(bytes));
+            match source.load(path) {
+                Ok(Some(bytes)) => return Ok(Some(bytes)),
+                Ok(None) => {}
+                Err(error) => {
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
+                }
             }
         }
-        Ok(None)
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(None),
+        }
     }
 
     fn list(&self, path: &str) -> gpui::Result<Vec<SharedString>> {
@@ -596,6 +726,28 @@ impl AssetSource for ChainedAssets {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    enum AssetOutcome {
+        Bytes(&'static [u8]),
+        Missing,
+        Error(&'static str),
+    }
+
+    struct TestAssets(AssetOutcome);
+
+    impl AssetSource for TestAssets {
+        fn load(&self, _path: &str) -> gpui::Result<Option<Cow<'static, [u8]>>> {
+            match self.0 {
+                AssetOutcome::Bytes(bytes) => Ok(Some(Cow::Borrowed(bytes))),
+                AssetOutcome::Missing => Ok(None),
+                AssetOutcome::Error(message) => Err(anyhow::anyhow!(message)),
+            }
+        }
+
+        fn list(&self, _path: &str) -> gpui::Result<Vec<SharedString>> {
+            Ok(Vec::new())
+        }
+    }
 
     fn identity() -> IdentityRef {
         IdentityRef {
@@ -636,5 +788,103 @@ mod tests {
         // pure no-op; the LoginShell path is intentionally not exercised here (it
         // would spawn the login shell and mutate process env in CI).
         apply_environment(EnvironmentPolicy::Inherit);
+    }
+
+    #[test]
+    fn start_and_on_launch_share_one_slot() {
+        let builder = AppShellBuilder::new(identity())
+            .start(|_, _| Ok(()))
+            .on_launch(|_| Ok(()));
+        assert!(matches!(
+            builder.configuration_error,
+            Some(BuilderConfigurationError::DuplicateStartup {
+                first: StartupHook::Start,
+                second: StartupHook::OnLaunch,
+            })
+        ));
+    }
+
+    #[test]
+    fn duplicate_start_records_configuration_error() {
+        let builder = AppShellBuilder::new(identity())
+            .start(|_, _| Ok(()))
+            .start(|_, _| Ok(()));
+        assert!(matches!(
+            builder.configuration_error,
+            Some(BuilderConfigurationError::DuplicateStartup {
+                first: StartupHook::Start,
+                second: StartupHook::Start,
+            })
+        ));
+        assert!(matches!(
+            builder.run(),
+            Err(AppShellError::Configuration(
+                BuilderConfigurationError::DuplicateStartup { .. }
+            ))
+        ));
+    }
+
+    #[test]
+    fn shell_preferences_are_consumer_driven_and_idempotent() {
+        let builder = AppShellBuilder::new(identity());
+        assert!(!builder.shell_preferences_installed);
+        assert_eq!(builder.plugins.len(), 1);
+
+        let builder = builder.shell_preferences().shell_preferences();
+        assert!(builder.shell_preferences_installed);
+        assert_eq!(builder.plugins.len(), 2);
+    }
+
+    #[test]
+    fn raw_and_standard_menus_are_mutually_exclusive() {
+        let builder = AppShellBuilder::new(identity())
+            .menus(crate::commands::MenuPlan::standard())
+            .standard_menus(crate::commands::StandardMenus::new());
+        assert!(matches!(
+            builder.configuration_error,
+            Some(BuilderConfigurationError::DuplicateMenus {
+                first: MenuConfiguration::MenuPlan,
+                second: MenuConfiguration::StandardMenus,
+            })
+        ));
+    }
+
+    #[test]
+    fn activation_policy_maps_force_flag() {
+        assert_eq!(activation_force(InitialActivation::Regular), Some(false));
+        assert_eq!(activation_force(InitialActivation::Forced), Some(true));
+        assert_eq!(activation_force(InitialActivation::Passive), None);
+    }
+
+    #[test]
+    fn asset_chain_continues_after_error_to_later_hit() {
+        let chain = ChainedAssets::new(vec![
+            Arc::new(TestAssets(AssetOutcome::Error("first failed"))),
+            Arc::new(TestAssets(AssetOutcome::Bytes(b"found"))),
+        ]);
+        assert_eq!(
+            chain.load("asset").expect("later source should win"),
+            Some(Cow::Borrowed(b"found".as_slice()))
+        );
+    }
+
+    #[test]
+    fn asset_chain_returns_first_error_when_no_source_hits() {
+        let chain = ChainedAssets::new(vec![
+            Arc::new(TestAssets(AssetOutcome::Error("first failed"))),
+            Arc::new(TestAssets(AssetOutcome::Missing)),
+            Arc::new(TestAssets(AssetOutcome::Error("second failed"))),
+        ]);
+        let error = chain.load("asset").expect_err("first error is retained");
+        assert_eq!(error.to_string(), "first failed");
+    }
+
+    #[test]
+    fn asset_chain_returns_none_when_every_source_misses_cleanly() {
+        let chain = ChainedAssets::new(vec![
+            Arc::new(TestAssets(AssetOutcome::Missing)),
+            Arc::new(TestAssets(AssetOutcome::Missing)),
+        ]);
+        assert!(chain.load("asset").expect("clean misses").is_none());
     }
 }

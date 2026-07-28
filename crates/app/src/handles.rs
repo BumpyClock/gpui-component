@@ -20,7 +20,7 @@ use gpui_component_manifest::schema::IdentityRef;
 use gpui_component_storage::AppPaths;
 
 use crate::capabilities::PlatformCapabilities;
-use crate::error::AppClosed;
+use crate::error::{AppClosed, RuntimeError};
 use crate::lifecycle::{AppEvent, OpenRequest, ShutdownReason};
 use crate::liveness::{Liveness, ShellHold};
 use crate::phases::PhaseTracker;
@@ -185,6 +185,39 @@ impl PendingEvents {
     }
 }
 
+#[derive(Debug)]
+enum Readiness {
+    Starting {
+        deferred_quit: Option<ShutdownReason>,
+    },
+    Ready,
+    Failed,
+}
+
+impl Readiness {
+    fn defer_quit(&mut self, reason: ShutdownReason) -> bool {
+        let Self::Starting { deferred_quit } = self else {
+            return false;
+        };
+        if deferred_quit.is_none() {
+            *deferred_quit = Some(reason);
+        }
+        true
+    }
+
+    fn finish_start(&mut self) -> Option<ShutdownReason> {
+        match std::mem::replace(self, Self::Ready) {
+            Self::Starting { deferred_quit } => deferred_quit,
+            state => {
+                *self = state;
+                None
+            }
+        }
+    }
+}
+
+type ErrorReporter = Box<dyn Fn(&RuntimeError, &mut App)>;
+
 /// Main-thread shell state. A GPUI [`gpui::Global`]; intentionally not `Send`.
 pub struct ShellState {
     app_info: AppInfo,
@@ -196,6 +229,9 @@ pub struct ShellState {
     pending: Arc<PendingEvents>,
     state: HashMap<TypeId, Box<dyn Any>>,
     subscriptions: Vec<gpui::Subscription>,
+    readiness: Readiness,
+    error_reporter: Option<ErrorReporter>,
+    reporting_error: bool,
     /// Re-entrancy guard for `deliver_event`.
     delivery: crate::lifecycle::ReentrantQueue,
     /// The reason to attribute if the next idle evaluation triggers an exit.
@@ -312,6 +348,7 @@ pub(crate) fn install(
     pending: Arc<PendingEvents>,
     state: HashMap<TypeId, Box<dyn Any>>,
     phases: PhaseTracker,
+    error_reporter: ErrorReporter,
 ) -> AppProxy {
     let proxy = AppProxy::new(cx);
 
@@ -325,6 +362,11 @@ pub(crate) fn install(
         pending,
         state,
         subscriptions: Vec::new(),
+        readiness: Readiness::Starting {
+            deferred_quit: None,
+        },
+        error_reporter: Some(error_reporter),
+        reporting_error: false,
         delivery: crate::lifecycle::ReentrantQueue::new(),
         pending_exit_reason: None,
         shutdown_requested: false,
@@ -396,20 +438,84 @@ fn deliver_one(cx: &mut App, event: &AppEvent) {
         )
     };
 
+    let mut errors = Vec::new();
     for plugin in &mut plugins {
         if let Err(err) = plugin.on_event(event, cx) {
-            log::error!("plugin failed handling {event:?}: {err}");
+            errors.push(err);
         }
     }
     for handler in &mut handlers {
         if let Err(err) = handler(event, cx) {
-            log::error!("event handler failed handling {event:?}: {err}");
+            errors.push(err);
         }
     }
 
     let st = cx.global_mut::<ShellState>();
     st.plugins = plugins;
     st.handlers = handlers;
+    for error in errors {
+        report_error(cx, RuntimeError::lifecycle(event.name(), error));
+    }
+}
+
+/// Report a nonfatal runtime error through the configured sink.
+///
+/// A reporter that recursively reports falls back to logging rather than
+/// re-entering itself.
+pub(crate) fn report_error(cx: &mut App, error: RuntimeError) {
+    if !cx.has_global::<ShellState>() {
+        log::error!("{error}");
+        return;
+    }
+    let reporter = {
+        let state = cx.global_mut::<ShellState>();
+        if state.reporting_error {
+            log::error!("{error}");
+            return;
+        }
+        state.reporting_error = true;
+        state.error_reporter.take()
+    };
+    if let Some(reporter) = reporter {
+        reporter(&error, cx);
+        let state = cx.global_mut::<ShellState>();
+        state.error_reporter = Some(reporter);
+        state.reporting_error = false;
+    } else {
+        log::error!("{error}");
+        cx.global_mut::<ShellState>().reporting_error = false;
+    }
+}
+
+/// Complete the transactional startup state and return any deferred quit.
+pub(crate) fn finish_start(cx: &mut App) -> Option<ShutdownReason> {
+    cx.global_mut::<ShellState>().readiness.finish_start()
+}
+
+/// Abort startup, discard queued events, and run fatal teardown exactly once.
+pub(crate) fn fail_startup(cx: &mut App) {
+    if !cx.has_global::<ShellState>()
+        || matches!(cx.global::<ShellState>().readiness, Readiness::Failed)
+    {
+        return;
+    }
+    let pending = {
+        let state = cx.global_mut::<ShellState>();
+        state.readiness = Readiness::Failed;
+        state.shutdown_requested = true;
+        state.pending.clone()
+    };
+    pending
+        .queue
+        .lock()
+        .expect("pending queue poisoned")
+        .clear();
+    cx.global::<ShellState>().proxy.close();
+    deliver_event(
+        cx,
+        &AppEvent::ShutdownRequested(ShutdownReason::StartupFailure),
+    );
+    run_will_exit(cx);
 }
 
 /// Drain events buffered by early platform listeners and deliver them.
@@ -476,6 +582,12 @@ pub(crate) fn request_quit_with(cx: &mut App, reason: ShutdownReason) {
     }
     {
         let st = cx.global_mut::<ShellState>();
+        if st.readiness.defer_quit(reason) {
+            return;
+        }
+        if matches!(st.readiness, Readiness::Failed) {
+            return;
+        }
         if st.shutdown_requested {
             return;
         }
@@ -568,6 +680,25 @@ const _: fn() = || {
 mod tests {
     use super::*;
     use gpui::TestAppContext;
+
+    #[test]
+    fn starting_latches_only_first_quit_reason() {
+        let mut readiness = Readiness::Starting {
+            deferred_quit: None,
+        };
+        assert!(readiness.defer_quit(ShutdownReason::Requested));
+        assert!(readiness.defer_quit(ShutdownReason::LastWindowClosed));
+        assert_eq!(readiness.finish_start(), Some(ShutdownReason::Requested));
+        assert!(matches!(readiness, Readiness::Ready));
+    }
+
+    #[test]
+    fn ready_and_failed_do_not_defer_quit() {
+        let mut ready = Readiness::Ready;
+        assert!(!ready.defer_quit(ShutdownReason::Requested));
+        let mut failed = Readiness::Failed;
+        assert!(!failed.defer_quit(ShutdownReason::Requested));
+    }
 
     /// Posted work runs on the main thread; once closed, `dispatch` rejects.
     #[gpui::test]

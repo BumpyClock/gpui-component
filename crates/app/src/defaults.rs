@@ -9,8 +9,10 @@
 use gpui::{App, MenuItem};
 use gpui_component::ThemeModePreference;
 
-use crate::commands::{AppCommandsExt, MenuPlan, MenusPlugin, THEME_SECTION, menus_invalidate};
-use crate::error::AppShellError;
+use crate::commands::{
+    AppCommandsExt, MenuPlan, MenusPlugin, StandardMenus, THEME_SECTION, menus_invalidate,
+};
+use crate::error::{AppShellError, MenuConfiguration};
 use crate::plugin::{AppPlugin, ShellSeed};
 use crate::settings::{
     AppSettings, SettingsPlugin, StoreKey, ThemeMode, shell_preferences, update_shell_preferences,
@@ -19,6 +21,12 @@ use crate::shell::AppShellBuilder;
 use crate::theme::{ThemeMenuGroup, ThemePlugin, ThemeSelection, ThemeSource, theme_menu_items};
 
 impl AppShellBuilder {
+    /// Install persistence for shell-owned preferences such as theme selection
+    /// and locale. Repeated calls are idempotent.
+    pub fn shell_preferences(self) -> Self {
+        self.ensure_shell_preferences()
+    }
+
     /// Install a typed, persisted settings store (see [`crate::settings`]).
     pub fn settings<T: AppSettings>(self, key: StoreKey) -> Self {
         self.plugin(SettingsPlugin::<T>::new(key))
@@ -28,16 +36,24 @@ impl AppShellBuilder {
     /// [`ShellPreferences`](crate::settings::ShellPreferences) store, and its
     /// Appearance/Theme items projected into the reserved menu section.
     pub fn theme(self, source: ThemeSource) -> Self {
-        self.plugin(
-            ThemePlugin::new(source)
-                .with_preferences(read_theme_preference, write_theme_preference),
-        )
-        .plugin(ThemeMenuBridge)
+        self.shell_preferences()
+            .plugin(
+                ThemePlugin::new(source)
+                    .with_preferences(read_theme_preference, write_theme_preference),
+            )
+            .plugin(ThemeMenuBridge)
     }
 
     /// Install native menus built from the command registry.
     pub fn menus(self, plan: MenuPlan) -> Self {
-        self.plugin(MenusPlugin::new(plan))
+        self.register_menu_configuration(MenuConfiguration::MenuPlan)
+            .plugin(MenusPlugin::new(plan))
+    }
+
+    /// Install platform-conventional desktop menus and shortcuts.
+    pub fn standard_menus(self, menus: StandardMenus) -> Self {
+        self.register_menu_configuration(MenuConfiguration::StandardMenus)
+            .plugin(MenusPlugin::standard_menus(menus))
     }
 }
 
@@ -64,7 +80,10 @@ fn write_theme_preference(cx: &mut App, selection: &ThemeSelection) {
         prefs.theme_mode = mode;
         prefs.theme_name = name;
     }) {
-        log::error!("failed to persist theme preference: {e}");
+        crate::handles::report_error(
+            cx,
+            crate::error::RuntimeError::service(anyhow::Error::new(e)),
+        );
     }
 }
 

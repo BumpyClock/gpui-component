@@ -45,6 +45,22 @@ If your app has its own assets, do not replace `gpui_component_assets::Assets`. 
 
 This is the recommended downstream integration pattern.
 
+With AppShell, register sources in precedence order:
+
+```rs
+AppShell::builder(APP_IDENTITY)
+    .assets(AppAssets)
+    .assets(gpui_component_assets::Assets)
+    // ...
+```
+
+Loading uses first-hit-wins semantics. An earlier source error is remembered but
+does not prevent a later source from resolving the path. If no source resolves
+it, AppShell returns the first remembered error; it returns `Ok(None)` only when
+every source reports a clean miss.
+
+For a raw GPUI host, use the two-source helper:
+
 ```rs
 use gpui::*;
 use gpui_component::{v_flex, IconName, Root};

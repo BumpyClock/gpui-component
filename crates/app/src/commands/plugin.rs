@@ -14,8 +14,10 @@
 
 use gpui::{Action, App, DummyKeyboardMapper, KeyBinding, KeyBindingMetaIndex, Subscription};
 
-use super::{CommandId, CommandRegistry, MenuPlan, menu, standard};
-use crate::error::AppShellError;
+use super::{
+    Command, CommandError, CommandId, CommandRegistry, MenuPlan, StandardMenus, menu, standard,
+};
+use crate::error::{AppShellError, BuilderConfigurationError};
 use crate::plugin::{AppPlugin, ShellSeed, sealed};
 
 /// Meta tag stamped on every keybinding this module installs, so a rebuild can
@@ -27,6 +29,7 @@ const COMMANDS_BINDING_META: KeyBindingMetaIndex = KeyBindingMetaIndex(0xC0FFEE)
 /// Installs and maintains the native menu bar from the command registry.
 pub struct MenusPlugin {
     plan: Option<MenuPlan>,
+    standard: Option<StandardMenus>,
     theme_observer: Option<Subscription>,
 }
 
@@ -35,6 +38,7 @@ impl MenusPlugin {
     pub fn new(plan: MenuPlan) -> Self {
         Self {
             plan: Some(plan),
+            standard: None,
             theme_observer: None,
         }
     }
@@ -43,21 +47,37 @@ impl MenusPlugin {
     pub fn standard() -> Self {
         Self::new(MenuPlan::standard())
     }
+
+    /// A plugin driving platform-conventional standard desktop menus.
+    pub fn standard_menus(menus: StandardMenus) -> Self {
+        Self {
+            plan: None,
+            standard: Some(menus),
+            theme_observer: None,
+        }
+    }
 }
 
 impl sealed::Sealed for MenusPlugin {}
 
 impl AppPlugin for MenusPlugin {
-    fn init(&mut self, cx: &mut App, _shell: &ShellSeed) -> Result<(), AppShellError> {
+    fn init(&mut self, cx: &mut App, shell: &ShellSeed) -> Result<(), AppShellError> {
+        ensure_menu_owner_available(cx)?;
+
         // Register the standard commands and the shell-owned handlers; this also
         // creates the registry global if a contributor has not already.
-        standard::install(cx);
+        let plan = if let Some(standard) = self.standard.take() {
+            standard.install(cx, shell.info.display_name())
+        } else {
+            standard::install_raw(cx, shell.info.display_name())
+                .map(|()| self.plan.take().unwrap_or_else(MenuPlan::standard))
+        }
+        .map_err(command_startup_error)?;
 
         // Shell/app-tier default bindings, in registration order (component tier
         // was bound by gpui_component::init already).
-        install_bindings(cx);
+        install_bindings(cx).map_err(command_startup_error)?;
 
-        let plan = self.plan.take().unwrap_or_else(MenuPlan::standard);
         cx.global_mut::<CommandRegistry>().set_plan(plan);
 
         // Initial projection, then rebuild whenever the theme changes.
@@ -74,6 +94,22 @@ impl AppPlugin for MenusPlugin {
     }
 }
 
+fn ensure_menu_owner_available(cx: &App) -> Result<(), AppShellError> {
+    if cx.has_global::<CommandRegistry>() && cx.global::<CommandRegistry>().is_active() {
+        return Err(AppShellError::Configuration(
+            BuilderConfigurationError::DuplicateMenuOwner,
+        ));
+    }
+    Ok(())
+}
+
+fn command_startup_error(source: CommandError) -> AppShellError {
+    AppShellError::Service {
+        service: "menus",
+        source: anyhow::Error::new(source),
+    }
+}
+
 /// Bind a *newly added* command's default keybinding (if any) and re-project the
 /// menus.
 ///
@@ -82,11 +118,12 @@ impl AppPlugin for MenusPlugin {
 /// and below any future user overrides — preserving precedence. For *replacing*
 /// an existing id, use [`rebuild_bindings_and_reproject`], which also removes the
 /// replaced command's now-stale chord.
-pub(super) fn bind_and_reproject(cx: &mut App, id: CommandId) {
-    if let Some(binding) = binding_for(cx, id) {
+pub(super) fn bind_and_reproject(cx: &mut App, id: CommandId) -> Result<(), CommandError> {
+    if let Some(binding) = binding_for(cx, id)? {
         cx.bind_keys([binding]);
     }
     menus_invalidate(cx);
+    Ok(())
 }
 
 /// Rebuild the registry's keybindings from scratch and re-project the menus.
@@ -100,7 +137,7 @@ pub(super) fn bind_and_reproject(cx: &mut App, id: CommandId) {
 /// installed after stay after (see [`split_around_registry`]). Net effect: stale
 /// registry chords disappear while every foreign tier keeps its bindings, order,
 /// and precedence relative to ours.
-pub(super) fn rebuild_bindings_and_reproject(cx: &mut App) {
+pub(super) fn rebuild_bindings_and_reproject(cx: &mut App) -> Result<(), CommandError> {
     let snapshot: Vec<KeyBinding> = {
         let keymap = cx.key_bindings();
         let keymap = keymap.borrow();
@@ -109,9 +146,10 @@ pub(super) fn rebuild_bindings_and_reproject(cx: &mut App) {
     let (before, after) = split_around_registry(snapshot);
     cx.clear_key_bindings();
     cx.bind_keys(before);
-    install_bindings(cx);
+    install_bindings(cx)?;
     cx.bind_keys(after);
     menus_invalidate(cx);
+    Ok(())
 }
 
 /// Split a keymap snapshot around the registry tier, dropping the registry-owned
@@ -142,19 +180,38 @@ fn split_around_registry(snapshot: Vec<KeyBinding>) -> (Vec<KeyBinding>, Vec<Key
 
 /// Build the [`KeyBinding`] for a registered command's default binding, if it has
 /// one.
-fn binding_for(cx: &App, id: CommandId) -> Option<KeyBinding> {
+fn binding_for(cx: &App, id: CommandId) -> Result<Option<KeyBinding>, CommandError> {
     let registry = cx.global::<CommandRegistry>();
-    let command = registry.get(id)?;
-    let keystroke = command.default_binding()?;
-    Some(load_binding(keystroke, command.boxed_action()))
+    let Some(command) = registry.get(id) else {
+        return Ok(None);
+    };
+    let Some(keystroke) = command.default_binding() else {
+        return Ok(None);
+    };
+    load_binding(id, keystroke, command.boxed_action()).map(Some)
 }
 
 /// Construct a global (context-less) keybinding from a keystroke and boxed
 /// action, tagged as registry-owned so a rebuild can identify and replace it.
-fn load_binding(keystroke: &str, action: Box<dyn Action>) -> KeyBinding {
+fn load_binding(
+    id: CommandId,
+    keystroke: &'static str,
+    action: Box<dyn Action>,
+) -> Result<KeyBinding, CommandError> {
     KeyBinding::load(keystroke, action, None, false, None, &DummyKeyboardMapper)
-        .expect("command default binding must parse")
-        .with_meta(COMMANDS_BINDING_META)
+        .map(|binding| binding.with_meta(COMMANDS_BINDING_META))
+        .map_err(|source| CommandError::InvalidBinding {
+            command: id,
+            binding: keystroke,
+            source,
+        })
+}
+
+pub(super) fn validate_command_binding(command: &Command) -> Result<(), CommandError> {
+    let Some(keystroke) = command.default_binding() else {
+        return Ok(());
+    };
+    load_binding(command.id(), keystroke, command.boxed_action()).map(drop)
 }
 
 /// Re-project the registry into the native menu bar (and the macOS dock menu).
@@ -173,6 +230,7 @@ pub fn menus_invalidate(cx: &mut App) {
     if let Some(menus) = menus {
         cx.set_menus(menus);
     }
+    reload_menu_bars(cx);
 
     #[cfg(target_os = "macos")]
     {
@@ -189,8 +247,8 @@ pub fn menus_invalidate(cx: &mut App) {
 
 /// Register default keybindings from the registry, in registration order. GPUI
 /// resolves bindings in reverse insertion order, so later registrations win.
-fn install_bindings(cx: &mut App) {
-    let bindings: Vec<KeyBinding> = {
+fn install_bindings(cx: &mut App) -> Result<(), CommandError> {
+    let bindings: Result<Vec<KeyBinding>, CommandError> = {
         let registry = cx.global::<CommandRegistry>();
         registry
             .commands()
@@ -198,11 +256,26 @@ fn install_bindings(cx: &mut App) {
             .filter_map(|command| {
                 command
                     .default_binding()
-                    .map(|keystroke| load_binding(keystroke, command.boxed_action()))
+                    .map(|keystroke| load_binding(command.id(), keystroke, command.boxed_action()))
             })
             .collect()
     };
-    cx.bind_keys(bindings);
+    cx.bind_keys(bindings?);
+    Ok(())
+}
+
+fn reload_menu_bars(cx: &mut App) {
+    let menu_bars = cx.global_mut::<CommandRegistry>().take_menu_bars();
+    let mut live = Vec::with_capacity(menu_bars.len());
+    for menu_bar in menu_bars {
+        if menu_bar
+            .update(cx, |menu_bar, cx| menu_bar.reload(cx))
+            .is_ok()
+        {
+            live.push(menu_bar);
+        }
+    }
+    cx.global_mut::<CommandRegistry>().replace_menu_bars(live);
 }
 
 #[cfg(test)]
@@ -230,8 +303,8 @@ mod tests {
         // component tier (before) | two registry (tagged) | app raw bind (after).
         let snapshot = vec![
             KeyBinding::new("ctrl-a", A, None),
-            load_binding("cmd-1", Box::new(B)),
-            load_binding("cmd-2", Box::new(B)),
+            load_binding(CommandId("b1"), "cmd-1", Box::new(B)).unwrap(),
+            load_binding(CommandId("b2"), "cmd-2", Box::new(B)).unwrap(),
             KeyBinding::new("ctrl-b", C, None),
         ];
         let (before, after) = split_around_registry(snapshot);
@@ -244,18 +317,24 @@ mod tests {
     #[test]
     fn bindings_follow_registration_order() {
         let mut registry = CommandRegistry::new();
-        registry.register(
-            Command::new(CommandId("a"), "A", CommandScope::App, A)
-                .with_binding("cmd-k")
-                .with_placement(super::super::MenuPlacement::new(APP_MENU, 0, 0)),
-        );
+        registry
+            .register(
+                Command::new(CommandId("a"), "A", CommandScope::App, A)
+                    .with_binding("cmd-k")
+                    .with_placement(super::super::MenuPlacement::new(APP_MENU, 0, 0)),
+            )
+            .unwrap();
         // No binding -> excluded.
-        registry.register(Command::new(CommandId("b"), "B", CommandScope::App, B));
-        registry.register(
-            Command::new(CommandId("c"), "C", CommandScope::App, C)
-                .with_binding("cmd-k")
-                .with_placement(super::super::MenuPlacement::new(EDIT_MENU, 0, 0)),
-        );
+        registry
+            .register(Command::new(CommandId("b"), "B", CommandScope::App, B))
+            .unwrap();
+        registry
+            .register(
+                Command::new(CommandId("c"), "C", CommandScope::App, C)
+                    .with_binding("cmd-k")
+                    .with_placement(super::super::MenuPlacement::new(EDIT_MENU, 0, 0)),
+            )
+            .unwrap();
 
         // "c" comes after "a": it is registered later, so it wins the shared
         // "cmd-k" chord under GPUI's reverse-order resolution.
@@ -271,9 +350,11 @@ mod tests {
 
         let mut registry = CommandRegistry::new();
         // Initial batch, bound by `install_bindings`.
-        registry.register(
-            Command::new(CommandId("std"), "Std", CommandScope::App, A).with_binding("cmd-1"),
-        );
+        registry
+            .register(
+                Command::new(CommandId("std"), "Std", CommandScope::App, A).with_binding("cmd-1"),
+            )
+            .unwrap();
         assert!(!registry.is_active());
 
         // The plugin has finished its initial pass.
@@ -283,11 +364,13 @@ mod tests {
         // An app registers a new command from `on_launch` (post-activation). The
         // ext path would call `bind_and_reproject`; the registry state it reads is
         // what we assert here.
-        registry.register(
-            Command::new(CommandId("late"), "Late", CommandScope::App, B)
-                .with_binding("cmd-2")
-                .with_placement(MenuPlacement::new(APP_MENU, 0, 0)),
-        );
+        registry
+            .register(
+                Command::new(CommandId("late"), "Late", CommandScope::App, B)
+                    .with_binding("cmd-2")
+                    .with_placement(MenuPlacement::new(APP_MENU, 0, 0)),
+            )
+            .unwrap();
 
         // The late binding is present, ordered after the initial one (so it wins
         // a shared chord and sits in the app tier).
@@ -311,5 +394,20 @@ mod tests {
         // headless integration test.
         fn assert_impls<T: AppCommandsExt>() {}
         assert_impls::<App>();
+    }
+
+    #[gpui::test]
+    fn active_registry_rejects_second_menu_owner(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            cx.set_global(CommandRegistry::new());
+            cx.global_mut::<CommandRegistry>().activate();
+
+            assert!(matches!(
+                ensure_menu_owner_available(cx),
+                Err(AppShellError::Configuration(
+                    BuilderConfigurationError::DuplicateMenuOwner
+                ))
+            ));
+        });
     }
 }

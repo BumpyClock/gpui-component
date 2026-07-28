@@ -216,17 +216,22 @@ dependencies = [
 name = "app_shell"
 version = "0.6.0"
 dependencies = [
+ "anyhow",
  "gpui-component-app",
+ "gpui-component-assets",
  "gpui-component-manifest",
+ "log",
  "serde",
 ]
 
 [[package]]
-name = "app_shell_tray"
+name = "app_shell_background"
 version = "0.6.0"
 dependencies = [
+ "anyhow",
  "gpui-component-app",
  "gpui-component-manifest",
+ "log",
 ]
 
 [[package]]
@@ -3292,6 +3297,7 @@ dependencies = [
  "fake",
  "gpui",
  "gpui-component",
+ "gpui-component-app",
  "gpui-component-assets",
  "gpui_platform",
  "gtk",

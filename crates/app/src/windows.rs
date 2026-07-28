@@ -42,6 +42,7 @@ use crate::liveness::ShellHold;
 use crate::plugin::{AppPlugin, ShellSeed, sealed};
 
 pub use key::WindowKey;
+use registry::SingletonMetadata;
 pub use registry::{SingletonPhase, SurfaceKind, WindowRecord};
 pub use spec::{OverlaySpec, RootPolicy, WindowSize, WindowSpec};
 
@@ -67,6 +68,30 @@ pub enum WindowError {
     Unsupported {
         /// Human-readable reason, from [`Capability::Unsupported`].
         reason: &'static str,
+    },
+
+    /// A singleton key is already live or opening with a different content
+    /// view type.
+    #[error("singleton window {key} has content type {expected}, not requested type {actual}")]
+    ContentTypeMismatch {
+        /// Stable singleton key.
+        key: WindowKey,
+        /// Content type registered by the live/in-flight singleton.
+        expected: &'static str,
+        /// Content type requested by this open attempt.
+        actual: &'static str,
+    },
+
+    /// A manager method does not match the requested root policy, or a
+    /// singleton key is reused with a different root policy.
+    #[error("window {key} has root policy {expected:?}, not requested policy {actual:?}")]
+    RootPolicyMismatch {
+        /// Stable window key.
+        key: WindowKey,
+        /// Root policy expected by the manager or registered singleton.
+        expected: RootPolicy,
+        /// Root policy requested by the spec.
+        actual: RootPolicy,
     },
 }
 
@@ -125,23 +150,15 @@ impl WindowManager {
     /// `build`. Returns the `Root` handle and the content entity.
     pub fn open<V: 'static + Render>(
         cx: &mut App,
-        spec: WindowSpec,
+        mut spec: WindowSpec,
         build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
     ) -> Result<OpenedWindow<V>, WindowError> {
-        debug_assert_eq!(
-            spec.declared_root_policy(),
-            RootPolicy::ComponentRoot,
-            "open() wraps in Root; use open_raw() for RootPolicy::Raw"
-        );
+        validate_root_policy(&spec, RootPolicy::ComponentRoot)?;
         let key = spec.key();
         let base = base_title(cx, &spec);
         let (number, title) = cx.global_mut::<WindowManager>().registry.allocate(&base);
 
-        let mut options = spec::base_window_options(&title, spec.background);
-        options.window_bounds = Some(centered_bounds(spec.size, cx));
-        if let Some(pre_show) = spec.pre_show {
-            pre_show(&mut options);
-        }
+        let options = window_options(cx, &mut spec, &title);
 
         let post_open = spec.post_open;
         let mut content_slot: Option<Entity<V>> = None;
@@ -179,6 +196,7 @@ impl WindowManager {
         spec: WindowSpec,
         build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
     ) -> Result<Singleton<V>, WindowError> {
+        validate_root_policy(&spec, RootPolicy::ComponentRoot)?;
         let key = spec.key();
         let phase = cx.global::<WindowManager>().registry.singleton_phase(key);
 
@@ -192,8 +210,14 @@ impl WindowManager {
         };
 
         match registry::plan_singleton(phase, alive) {
-            registry::SingletonAction::InFlight => return Ok(Singleton::InFlight),
-            registry::SingletonAction::Reuse(_) => return Ok(Singleton::Reused),
+            registry::SingletonAction::InFlight => {
+                validate_singleton_metadata::<V>(cx, key, spec.declared_root_policy())?;
+                return Ok(Singleton::InFlight);
+            }
+            registry::SingletonAction::Reuse(_) => {
+                validate_singleton_metadata::<V>(cx, key, spec.declared_root_policy())?;
+                return Ok(Singleton::Reused);
+            }
             registry::SingletonAction::Create => {
                 // Clear any stale record before recreating.
                 if let SingletonPhase::Open(handle) = phase {
@@ -206,20 +230,20 @@ impl WindowManager {
         // this key sees the in-flight state.
         cx.global_mut::<WindowManager>()
             .registry
-            .set_singleton(key, SingletonPhase::Opening);
+            .begin_singleton(key, SingletonMetadata::of::<V>(spec.declared_root_policy()));
 
         match Self::open(cx, spec, build) {
             Ok(opened) => {
                 let handle: AnyWindowHandle = opened.window.into();
                 cx.global_mut::<WindowManager>()
                     .registry
-                    .set_singleton(key, SingletonPhase::Open(handle));
+                    .finish_singleton(key, handle);
                 Ok(Singleton::Opened(opened))
             }
             Err(err) => {
                 cx.global_mut::<WindowManager>()
                     .registry
-                    .set_singleton(key, SingletonPhase::Closed);
+                    .clear_singleton(key);
                 Err(err)
             }
         }
@@ -229,23 +253,15 @@ impl WindowManager {
     /// [`RootPolicy::Raw`] specs.
     pub fn open_raw<V: 'static + Render>(
         cx: &mut App,
-        spec: WindowSpec,
+        mut spec: WindowSpec,
         build: impl FnOnce(&mut Window, &mut App) -> Entity<V>,
     ) -> Result<WindowHandle<V>, WindowError> {
-        debug_assert_eq!(
-            spec.declared_root_policy(),
-            RootPolicy::Raw,
-            "open_raw() does not wrap in Root; use open() for RootPolicy::ComponentRoot"
-        );
+        validate_root_policy(&spec, RootPolicy::Raw)?;
         let key = spec.key();
         let base = base_title(cx, &spec);
         let (number, title) = cx.global_mut::<WindowManager>().registry.allocate(&base);
 
-        let mut options = spec::base_window_options(&title, spec.background);
-        options.window_bounds = Some(centered_bounds(spec.size, cx));
-        if let Some(pre_show) = spec.pre_show {
-            pre_show(&mut options);
-        }
+        let options = window_options(cx, &mut spec, &title);
 
         let post_open = spec.post_open;
         let opened = cx.open_window(options, |window, cx| {
@@ -427,11 +443,118 @@ fn deregister(cx: &mut App, handle: AnyWindowHandle) {
         let manager = cx.global_mut::<WindowManager>();
         if let SingletonPhase::Open(open_handle) = manager.registry.singleton_phase(record.key) {
             if open_handle == handle {
-                manager
-                    .registry
-                    .set_singleton(record.key, SingletonPhase::Closed);
+                manager.registry.clear_singleton(record.key);
             }
         }
+    }
+}
+
+fn validate_root_policy(spec: &WindowSpec, expected: RootPolicy) -> Result<(), WindowError> {
+    let actual = spec.declared_root_policy();
+    if actual == expected {
+        Ok(())
+    } else {
+        Err(WindowError::RootPolicyMismatch {
+            key: spec.key(),
+            expected,
+            actual,
+        })
+    }
+}
+
+fn validate_singleton_metadata<V: 'static>(
+    cx: &App,
+    key: WindowKey,
+    root_policy: RootPolicy,
+) -> Result<(), WindowError> {
+    let metadata = cx
+        .global::<WindowManager>()
+        .registry
+        .singleton_metadata(key)
+        .expect("live or in-flight singleton has metadata");
+    validate_singleton_contract::<V>(key, metadata, root_policy)
+}
+
+fn validate_singleton_contract<V: 'static>(
+    key: WindowKey,
+    metadata: SingletonMetadata,
+    root_policy: RootPolicy,
+) -> Result<(), WindowError> {
+    if metadata.content_type != std::any::TypeId::of::<V>() {
+        return Err(WindowError::ContentTypeMismatch {
+            key,
+            expected: metadata.content_type_name,
+            actual: std::any::type_name::<V>(),
+        });
+    }
+    if metadata.root_policy != root_policy {
+        return Err(WindowError::RootPolicyMismatch {
+            key,
+            expected: metadata.root_policy,
+            actual: root_policy,
+        });
+    }
+    Ok(())
+}
+
+fn window_options(cx: &App, spec: &mut WindowSpec, title: &str) -> gpui::WindowOptions {
+    let mut options = spec::base_window_options(title, spec.background);
+    options.window_bounds = Some(centered_bounds(spec.size, cx));
+    if let Some(pre_show) = spec.pre_show.take() {
+        pre_show(&mut options);
+    }
+    spec::apply_app_id(&mut options, spec.resolved_app_id(cx.app_info().app_id()));
+    options
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn root_policy_mismatches_are_typed_errors() {
+        let error = validate_root_policy(&WindowSpec::new("main").raw(), RootPolicy::ComponentRoot)
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            WindowError::RootPolicyMismatch {
+                key,
+                expected: RootPolicy::ComponentRoot,
+                actual: RootPolicy::Raw,
+            } if key == WindowKey::new("main")
+        ));
+    }
+
+    #[test]
+    fn singleton_content_type_mismatch_is_typed() {
+        let error = validate_singleton_contract::<String>(
+            WindowKey::new("settings"),
+            SingletonMetadata::of::<u32>(RootPolicy::ComponentRoot),
+            RootPolicy::ComponentRoot,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            WindowError::ContentTypeMismatch { key, .. } if key == WindowKey::new("settings")
+        ));
+    }
+
+    #[test]
+    fn singleton_root_policy_mismatch_is_typed() {
+        let error = validate_singleton_contract::<String>(
+            WindowKey::new("settings"),
+            SingletonMetadata::of::<String>(RootPolicy::Raw),
+            RootPolicy::ComponentRoot,
+        )
+        .unwrap_err();
+        assert!(matches!(
+            error,
+            WindowError::RootPolicyMismatch {
+                key,
+                expected: RootPolicy::Raw,
+                actual: RootPolicy::ComponentRoot,
+            } if key == WindowKey::new("settings")
+        ));
     }
 }
 

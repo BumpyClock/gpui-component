@@ -67,7 +67,8 @@ jobs:
       # compiles all targets), typos, machete, and the native launch smoke below.
 
   # Native launch smoke test for the app-platform conformance examples
-  # (examples/app_shell single-window, examples/app_shell_tray tray-first). Each
+  # (examples/app_shell single-window, examples/app_shell_background zero-window
+  # background liveness). Each
   # example boots the real shell, opens its window(s), then `--smoke` requests a
   # clean quit and exits 0. See docs/learned/app-platform-plan.md §5 Phase 1 and
   # §6 gate 7. Keep the matrix in sync with the `test` job above.
@@ -94,7 +95,7 @@ jobs:
       # include_identity!) cross-platform, even where we do not launch a
       # GPU-backed window below.
       - name: Build conformance examples
-        run: cargo build -p app_shell -p app_shell_tray
+        run: cargo build -p app_shell -p app_shell_background
       # Launch smoke runs on macOS only. Platform parity (CLAUDE.md) requires
       # documenting why the other two are gated off rather than silently skipped:
       #   - macOS: GitHub arm64 runners provide a working Metal device; the
@@ -104,13 +105,44 @@ jobs:
       #     software driver (lavapipe) that is not guaranteed present. Gated off
       #     to avoid flaky reds; enable once the runner image ships them:
       #         xvfb-run -a cargo run -p app_shell -- --smoke
-      #         xvfb-run -a cargo run -p app_shell_tray -- --smoke
+      #         xvfb-run -a cargo run -p app_shell_background -- --smoke
       #   - Windows: GPUI renders via DirectX; headless runners have no reliable
       #     present surface. Gated off pending a WARP-backed offscreen path:
       #         cargo run -p app_shell -- --smoke
-      #         cargo run -p app_shell_tray -- --smoke
+      #         cargo run -p app_shell_background -- --smoke
       - name: Native launch smoke (macOS)
         if: ${{ matrix.run_on == 'macos-latest' }}
         run: |
+          cargo run -p app_shell -- --asset-smoke
           cargo run -p app_shell -- --smoke
-          cargo run -p app_shell_tray -- --smoke
+          cargo run -p app_shell_background -- --smoke
+      # This path opens no window, so it does not require a render surface.
+      # Windows is included because GPUI's Windows `quit` path exits with status
+      # zero; AppShell must preserve a transactional startup failure as nonzero.
+      - name: Transactional startup failure smoke (macOS)
+        if: ${{ matrix.run_on == 'macos-latest' }}
+        shell: bash
+        run: |
+          set +e
+          output="$(cargo run -p app_shell -- --fail-start 2>&1)"
+          exit_code=$?
+          set -e
+          printf '%s\n' "$output"
+          if [ "$exit_code" -ne 2 ]; then
+            echo "expected transactional startup failure to exit 2, got $exit_code"
+            exit 1
+          fi
+          grep -Fq APP_SHELL_FAIL_START_REACHED <<<"$output"
+      - name: Transactional startup failure smoke (Windows)
+        if: ${{ matrix.run_on == 'windows-latest' }}
+        shell: pwsh
+        run: |
+          $output = cargo run -p app_shell -- --fail-start 2>&1 | Out-String
+          $exitCode = $LASTEXITCODE
+          Write-Output $output
+          if ($exitCode -ne 2) {
+            throw "expected transactional startup failure to exit 2, got $exitCode"
+          }
+          if (-not $output.Contains("APP_SHELL_FAIL_START_REACHED")) {
+            throw "transactional start callback marker was not emitted"
+          }

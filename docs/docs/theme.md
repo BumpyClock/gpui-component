@@ -19,6 +19,21 @@ cx.theme().foreground
 
 So if you want use the colors from the current theme, you should keep your component or view have [App] context.
 
+## AppShell integration
+
+AppShell can initialize the registry, persist mode/name in its
+`shell-preferences` store, and project theme choices into `StandardMenus`:
+
+```rs
+AppShell::builder(APP_IDENTITY)
+    .theme(ThemeSource::registry())
+    .standard_menus(StandardMenus::new().with_theme_menu())
+    // ...
+```
+
+Calling `.theme(...)` opts into shell preferences automatically. Apps without a
+theme or explicit `.shell_preferences()` consumer do not create that store.
+
 ## Theme Registry
 
 There have more than 20 built-in themes available in [themes](https://github.com/BumpyClock/gpui-component/tree/main/themes) folder.

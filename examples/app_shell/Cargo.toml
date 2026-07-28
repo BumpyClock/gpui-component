@@ -11,7 +11,10 @@ display_name = "App Shell Example"
 categories = ["Development"]
 
 [dependencies]
+anyhow.workspace = true
 gpui-component-app.workspace = true
+gpui-component-assets.workspace = true
+log.workspace = true
 serde.workspace = true
 
 # Only a build dependency: `build.rs` calls `emit_identity()`. The runtime

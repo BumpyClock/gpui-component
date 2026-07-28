@@ -285,7 +285,7 @@ impl AppPlugin for ThemePlugin {
                 let config_dir = shell.info.paths().config_dir();
                 let themes_dir = config_dir.join("themes");
                 if let Err(error) = sync_bundled_themes(assets.as_ref(), config_dir) {
-                    log::warn!("failed to sync bundled themes: {error:#}");
+                    crate::handles::report_error(cx, crate::error::RuntimeError::service(error));
                 }
                 watch_dir = Some(themes_dir);
                 None
@@ -311,7 +311,7 @@ impl AppPlugin for ThemePlugin {
             cx.observe_global::<ThemeRegistry>(registry_reloaded)
                 .detach();
             if let Err(error) = ThemeRegistry::watch_dir(dir, cx, |_| {}) {
-                log::warn!("failed to watch theme registry: {error:#}");
+                crate::handles::report_error(cx, crate::error::RuntimeError::service(error));
             }
         }
 

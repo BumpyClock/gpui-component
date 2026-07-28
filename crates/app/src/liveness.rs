@@ -17,10 +17,16 @@ use crate::handles::AppProxy;
 
 /// How the app presents itself at launch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[non_exhaustive]
 pub enum InitialActivation {
     /// Normal foreground activation (default).
     #[default]
     Regular,
+    /// Force foreground activation.
+    ///
+    /// The distinction from [`InitialActivation::Regular`] is observable on
+    /// macOS. Current Windows and Linux backends ignore the force flag.
+    Forced,
     /// Do not steal focus / show in the foreground. For tray-first apps that
     /// launch with no window (plan §3 — "no unconditional `activate(true)`").
     Passive,

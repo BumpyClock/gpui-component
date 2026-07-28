@@ -10,9 +10,11 @@
 //! 2. [`build_menus`] (App-bound): resolve each node into a `gpui::Menu`,
 //!    evaluating labels/checked/enabled and expanding section providers.
 
-use gpui::{App, Menu, MenuItem};
+use std::collections::HashSet;
 
-use super::{APP_MENU, Command, CommandId, CommandRegistry, EDIT_MENU, WINDOW_MENU};
+use gpui::{App, Menu, MenuItem, SystemMenuType};
+
+use super::{APP_MENU, Command, CommandId, CommandRegistry, DOCK_MENU, EDIT_MENU, WINDOW_MENU};
 
 /// One node in a projected menu.
 #[derive(Debug, PartialEq, Eq)]
@@ -24,6 +26,8 @@ pub enum MenuNode {
     /// A reserved section slot, expanded by its registered provider at build
     /// time (skipped if no provider is registered).
     Section(&'static str),
+    /// The macOS system-managed Services menu.
+    Services,
 }
 
 /// The pure, ordered structure of one top-level menu.
@@ -40,7 +44,13 @@ pub struct MenuOutline {
 /// appended after its commands.
 struct TopMenu {
     key: &'static str,
-    sections: Vec<&'static str>,
+    fixed: Vec<FixedNode>,
+}
+
+struct FixedNode {
+    group: u16,
+    order: u16,
+    node: MenuNode,
 }
 
 /// A declarative description of the native menu bar. Menus are projections of
@@ -52,22 +62,52 @@ pub struct MenuPlan {
 impl MenuPlan {
     /// The standard App + Edit + Window menu bar, projected from the registry.
     pub fn standard() -> Self {
-        Self {
-            menus: vec![
-                TopMenu {
-                    key: APP_MENU,
-                    sections: Vec::new(),
-                },
-                TopMenu {
-                    key: EDIT_MENU,
-                    sections: Vec::new(),
-                },
-                TopMenu {
-                    key: WINDOW_MENU,
-                    sections: Vec::new(),
-                },
-            ],
+        Self::from_keys([APP_MENU, EDIT_MENU, WINDOW_MENU])
+    }
+
+    /// Create a plan containing exactly the top-level menu keys in declaration
+    /// order. Duplicate keys are ignored after their first occurrence.
+    pub fn from_keys(keys: impl IntoIterator<Item = &'static str>) -> Self {
+        let mut seen = HashSet::new();
+        let menus = keys
+            .into_iter()
+            .filter(|key| seen.insert(*key))
+            .map(|key| TopMenu {
+                key,
+                fixed: Vec::new(),
+            })
+            .collect();
+        Self { menus }
+    }
+
+    /// Append a top-level menu. Existing keys are not duplicated.
+    #[must_use]
+    pub fn with_menu(mut self, key: &'static str) -> Self {
+        if !self.menus.iter().any(|menu| menu.key == key) {
+            self.menus.push(TopMenu {
+                key,
+                fixed: Vec::new(),
+            });
         }
+        self
+    }
+
+    pub(super) fn insert_before(&mut self, before: &'static str, key: &'static str) {
+        if self.menus.iter().any(|menu| menu.key == key) {
+            return;
+        }
+        let ix = self
+            .menus
+            .iter()
+            .position(|menu| menu.key == before)
+            .unwrap_or(self.menus.len());
+        self.menus.insert(
+            ix,
+            TopMenu {
+                key,
+                fixed: Vec::new(),
+            },
+        );
     }
 
     /// Reserve an Appearance/Theme section in the App menu, fed by the
@@ -81,13 +121,12 @@ impl MenuPlan {
     /// Reserve a section `slot` at the end of the menu keyed by `menu_key`. The
     /// same seam serves a future Move-to-Window section.
     pub fn reserve_section(&mut self, menu_key: &'static str, slot: &'static str) {
-        if let Some(menu) = self.menus.iter_mut().find(|m| m.key == menu_key) {
-            menu.sections.push(slot);
-        }
+        self.reserve_section_at(menu_key, u16::MAX, 0, slot);
     }
 
     /// Compute the pure menu outline from the registered `commands`.
     pub fn outline(&self, commands: &[Command]) -> Vec<MenuOutline> {
+        self.warn_unknown_placements(commands);
         self.menus
             .iter()
             .map(|menu| MenuOutline {
@@ -95,6 +134,49 @@ impl MenuPlan {
                 nodes: outline_nodes(menu, commands),
             })
             .collect()
+    }
+
+    pub(super) fn reserve_section_at(
+        &mut self,
+        menu_key: &'static str,
+        group: u16,
+        order: u16,
+        slot: &'static str,
+    ) {
+        let Some(menu) = self.menus.iter_mut().find(|menu| menu.key == menu_key) else {
+            log::warn!("menu section `{slot}` targets missing top-level menu `{menu_key}`");
+            return;
+        };
+        menu.fixed.push(FixedNode {
+            group,
+            order,
+            node: MenuNode::Section(slot),
+        });
+    }
+
+    pub(super) fn reserve_services_at(&mut self, menu_key: &'static str, group: u16, order: u16) {
+        let Some(menu) = self.menus.iter_mut().find(|menu| menu.key == menu_key) else {
+            log::warn!("Services targets missing top-level menu `{menu_key}`");
+            return;
+        };
+        menu.fixed.push(FixedNode {
+            group,
+            order,
+            node: MenuNode::Services,
+        });
+    }
+
+    fn warn_unknown_placements(&self, commands: &[Command]) {
+        for placement in commands.iter().filter_map(Command::placement) {
+            if placement.menu != DOCK_MENU
+                && !self.menus.iter().any(|menu| menu.key == placement.menu)
+            {
+                log::warn!(
+                    "command targets missing top-level menu `{}`",
+                    placement.menu
+                );
+            }
+        }
     }
 }
 
@@ -105,33 +187,45 @@ pub const THEME_SECTION: &str = "appearance";
 /// separated by `(group, order)`, then each reserved section (preceded by a
 /// separator when the menu already has items).
 fn outline_nodes(menu: &TopMenu, commands: &[Command]) -> Vec<MenuNode> {
-    let mut placed: Vec<(u16, u16, CommandId)> = commands
+    enum PlacedNode<'a> {
+        Command(CommandId),
+        Fixed(&'a MenuNode),
+    }
+
+    let mut placed: Vec<(u16, u16, usize, PlacedNode<'_>)> = commands
         .iter()
+        .enumerate()
         .filter_map(|c| {
-            c.placement()
+            c.1.placement()
                 .filter(|p| p.menu == menu.key)
-                .map(|p| (p.group, p.order, c.id()))
+                .map(|p| (p.group, p.order, c.0, PlacedNode::Command(c.1.id())))
         })
         .collect();
-    placed.sort_by_key(|(group, order, _)| (*group, *order));
+    placed.extend(menu.fixed.iter().enumerate().map(|(ix, fixed)| {
+        (
+            fixed.group,
+            fixed.order,
+            commands.len() + ix,
+            PlacedNode::Fixed(&fixed.node),
+        )
+    }));
+    placed.sort_by_key(|(group, order, insertion, _)| (*group, *order, *insertion));
 
     let mut nodes = Vec::new();
     let mut last_group: Option<u16> = None;
-    for (group, _, id) in placed {
+    for (group, _, _, node) in placed {
         if let Some(prev) = last_group {
             if prev != group {
                 nodes.push(MenuNode::Separator);
             }
         }
         last_group = Some(group);
-        nodes.push(MenuNode::Command(id));
-    }
-
-    for &slot in &menu.sections {
-        if !nodes.is_empty() {
-            nodes.push(MenuNode::Separator);
+        match node {
+            PlacedNode::Command(id) => nodes.push(MenuNode::Command(id)),
+            PlacedNode::Fixed(MenuNode::Section(slot)) => nodes.push(MenuNode::Section(slot)),
+            PlacedNode::Fixed(MenuNode::Services) => nodes.push(MenuNode::Services),
+            PlacedNode::Fixed(_) => unreachable!("fixed nodes are sections or Services"),
         }
-        nodes.push(MenuNode::Section(slot));
     }
     nodes
 }
@@ -175,6 +269,9 @@ pub(super) fn build_menus(cx: &App, registry: &CommandRegistry) -> Option<Vec<Me
                     } else if matches!(items.last(), Some(MenuItem::Separator)) {
                         items.pop();
                     }
+                }
+                MenuNode::Services => {
+                    items.push(MenuItem::os_submenu("Services", SystemMenuType::Services));
                 }
             }
         }
@@ -301,5 +398,21 @@ mod tests {
         let plan = MenuPlan::standard().with_theme_menu();
         let outline = plan.outline(&[]);
         assert_eq!(outline[0].nodes, vec![MenuNode::Section(THEME_SECTION)]);
+    }
+
+    #[test]
+    fn exact_and_appended_menu_keys_preserve_order() {
+        let plan = MenuPlan::from_keys([EDIT_MENU, "Tools"]).with_menu(WINDOW_MENU);
+        let outline = plan.outline(&[]);
+        assert_eq!(
+            outline.iter().map(|menu| menu.key).collect::<Vec<_>>(),
+            vec![EDIT_MENU, "Tools", WINDOW_MENU]
+        );
+    }
+
+    #[test]
+    fn duplicate_appended_menu_key_is_ignored() {
+        let plan = MenuPlan::from_keys([EDIT_MENU]).with_menu(EDIT_MENU);
+        assert_eq!(plan.outline(&[]).len(), 1);
     }
 }

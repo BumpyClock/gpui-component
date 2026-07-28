@@ -13,30 +13,47 @@ Add dependencies to your `Cargo.toml`:
 
 ```toml-vue
 [dependencies]
-gpui = "{{ GPUI_VERSION }}"
-gpui-component = "{{ VERSION }}"
-# Optional, for default bundled assets
+gpui-component-app = "{{ VERSION }}"
 gpui-component-assets = "{{ VERSION }}"
-anyhow = "1.0"
+serde = { version = "1", features = ["derive"] }
+
+[build-dependencies]
+gpui-component-manifest = "{{ VERSION }}"
+
+[package.metadata.gpui-app]
+app_id = "com.example.hello"
+display_name = "Hello"
+categories = ["Development"]
 ```
 
 :::tip
-The `gpui-component-assets` crate is optional.
-
-It provides bundled component assets, including icons and library-owned files like `surface/NoiseAsset_256.png`. If your app has its own assets, compose them with `gpui_component_assets::chain(app_assets, gpui_component_assets::Assets)` instead of replacing the bundled source.
-
-See [Icons & Assets](./assets.md) for more details.
+`gpui-component-app` is experimental/pre-1.0. Until it is published as a stable
+release, pin AppShell, manifest, assets, and any direct GPUI dependencies to one
+repository revision. See [Building an Application](./app-shell.md).
 :::
 
 ## Quick Start
 
-Here's a simple example to get you started:
+Add an app-local `build.rs`:
 
 ```rust
-use gpui::*;
-use gpui_component::{button::*, *};
+fn main() {
+    gpui_component_manifest::build::emit_identity()
+        .expect("invalid [package.metadata.gpui-app]");
+}
+```
 
-pub struct HelloWorld;
+Then build the native app:
+
+```rust
+use gpui_component_app::gpui::*;
+use gpui_component_app::prelude::*;
+use gpui_component_app::{StandardMenus, WindowManager};
+use gpui_component_app::ui::{button::*, *};
+
+gpui_component_app::include_identity!();
+
+struct HelloWorld;
 
 impl Render for HelloWorld {
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
@@ -56,32 +73,35 @@ impl Render for HelloWorld {
     }
 }
 
-fn main() {
-    let app = gpui_platform::application().with_assets(gpui_component_assets::Assets);
-
-    app.run(move |cx| {
-        // This must be called before using any GPUI Component features.
-        gpui_component::init(cx);
-
-        cx.spawn(async move |cx| {
-            cx.open_window(WindowOptions::default(), |window, cx| {
-                let view = cx.new(|_| HelloWorld);
-                // This first level on the window, should be a Root.
-                cx.new(|cx| Root::new(view, window, cx))
+fn main() -> Result<(), AppShellError> {
+    AppShell::builder(APP_IDENTITY)
+        .assets(gpui_component_assets::Assets)
+        .standard_menus(StandardMenus::new())
+        .start(|_, cx| {
+            WindowManager::open(cx, WindowSpec::new("main"), |_, cx| {
+                cx.new(|_| HelloWorld)
             })?;
-
-            Ok::<_, anyhow::Error>(())
+            Ok(())
         })
-        .detach();
-    });
+        .run()
 }
 ```
 
 :::info
-Make sure to call `gpui_component::init(cx);` at first line inside the `app.run` closure. This initializes the GPUI Component system.
-
-This is required for theming and other global settings to work correctly.
+AppShell calls `gpui_component::init`, applies compiled identity, wraps managed
+windows in `Root`, and sequences startup/shutdown. Your `start` callback owns app
+services and initial windows.
 :::
+
+For standard Settings/About actions, persistent controls, native macOS menus,
+Windows/Linux in-window menu bars, lifecycle, and platform limitations, continue
+to [Building an Application](./app-shell.md).
+
+## Manual bootstrap
+
+Raw `gpui::Application` remains available for advanced hosts. In that mode the app
+must call `gpui_component::init(cx)` before creating components and must place
+`Root` at the first level of every managed window. See [Root View](./root.md).
 
 ## Basic Concepts
 

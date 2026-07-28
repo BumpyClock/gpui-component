@@ -21,8 +21,6 @@ use std::path::PathBuf;
 pub enum AppEvent {
     /// The application finished launching. Carries the initial launch request.
     Started(LaunchRequest),
-    /// The application was activated (brought to foreground).
-    Activated,
     /// The application was reopened (e.g. dock icon clicked with no windows).
     Reopened,
     /// The platform asked the app to open URLs or files. May arrive *before*
@@ -31,15 +29,25 @@ pub enum AppEvent {
     /// The last application window closed. Liveness policy decides whether this
     /// leads to exit.
     LastWindowClosed,
-    /// The system is about to suspend. Reserved seam; may be unsupported.
-    Suspend,
-    /// The system resumed from suspend. Reserved seam; may be unsupported.
-    Resume,
     /// A quit was requested through any path (menu, programmatic, tray, last
     /// window). Delivered once, before shutdown proceeds.
     ShutdownRequested(ShutdownReason),
     /// The process is about to exit; last chance for a bounded flush.
     WillExit,
+}
+
+impl AppEvent {
+    /// Stable name used by runtime error reporting.
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Started(_) => "started",
+            Self::Reopened => "reopened",
+            Self::OpenRequested(_) => "open_requested",
+            Self::LastWindowClosed => "last_window_closed",
+            Self::ShutdownRequested(_) => "shutdown_requested",
+            Self::WillExit => "will_exit",
+        }
+    }
 }
 
 /// The context in which the application was launched.
@@ -75,6 +83,8 @@ pub struct OpenRequest {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum ShutdownReason {
+    /// The transactional startup callback failed.
+    StartupFailure,
     /// The last window closed and liveness policy chose to exit.
     LastWindowClosed,
     /// Shutdown was requested programmatically via `request_quit`.
@@ -246,14 +256,14 @@ mod tests {
         assert!(q.is_delivering());
         // Events raised during the pass are buffered, not delivered.
         assert!(!q.try_enter(&AppEvent::Reopened));
-        assert!(!q.try_enter(&AppEvent::Activated));
+        assert!(!q.try_enter(&open("nested")));
         // Drained in arrival order after the pass.
         assert!(matches!(q.take_next(), Some(AppEvent::Reopened)));
-        assert!(matches!(q.take_next(), Some(AppEvent::Activated)));
+        assert!(matches!(q.take_next(), Some(AppEvent::OpenRequested(_))));
         assert!(q.take_next().is_none());
         assert!(!q.is_delivering());
         // A fresh pass can start again.
-        assert!(q.try_enter(&AppEvent::Activated));
+        assert!(q.try_enter(&AppEvent::Reopened));
     }
 
     #[test]

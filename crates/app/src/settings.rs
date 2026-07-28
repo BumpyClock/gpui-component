@@ -308,9 +308,9 @@ impl<T: AppSettings> SettingsPlugin<T> {
             .entry_mut::<T>(&self.key)
             .and_then(ErasedSettingsEntry::flush_for_exit);
         if let Err(error) = result {
-            log::error!(
-                "failed to flush settings store {:?}: {error}",
-                self.key.as_str()
+            crate::handles::report_error(
+                cx,
+                crate::error::RuntimeError::service(anyhow::Error::new(error)),
             );
         }
     }

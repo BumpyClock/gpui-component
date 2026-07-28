@@ -8,10 +8,12 @@
 //! [`super::WindowManager`] instantiates it with `gpui::AnyWindowHandle` and
 //! sequences the borrows around `open_window`.
 
+use std::any::TypeId;
 use std::collections::{BTreeSet, HashMap};
 use std::hash::Hash;
 
 use super::key::WindowKey;
+use super::spec::RootPolicy;
 
 /// Whether a registered surface is a real window (Root-wrappable, numbered,
 /// holds a liveness lease) or an overlay surface (capability-gated, not
@@ -52,6 +54,35 @@ pub enum SingletonPhase<H> {
     Opening,
     /// A window is open with the given handle (subject to a liveness probe).
     Open(H),
+}
+
+/// Type and root-policy contract held while a singleton is opening or live.
+///
+/// The manager intentionally does not offer typed access to a singleton's
+/// content yet; this metadata only prevents callers from reusing a window key
+/// with an incompatible view or root policy.
+#[derive(Debug, Clone, Copy)]
+pub struct SingletonMetadata {
+    pub(super) content_type: TypeId,
+    pub(super) content_type_name: &'static str,
+    pub(super) root_policy: RootPolicy,
+}
+
+impl SingletonMetadata {
+    pub(super) fn of<V: 'static>(root_policy: RootPolicy) -> Self {
+        Self {
+            content_type: TypeId::of::<V>(),
+            content_type_name: std::any::type_name::<V>(),
+            root_policy,
+        }
+    }
+}
+
+/// Current singleton state plus the contract registered at creation time.
+#[derive(Debug, Clone, Copy)]
+pub struct SingletonRecord<H> {
+    pub(super) phase: SingletonPhase<H>,
+    pub(super) metadata: SingletonMetadata,
 }
 
 /// What an `open_singleton` call should do, given the current phase and whether
@@ -105,7 +136,7 @@ pub struct Registry<H> {
     /// `remove`/`release`, so numbering survives a build that reentrantly opens
     /// another window of the same base.
     numbers: HashMap<String, BTreeSet<u32>>,
-    singletons: HashMap<WindowKey, SingletonPhase<H>>,
+    singletons: HashMap<WindowKey, SingletonRecord<H>>,
     version: u64,
 }
 
@@ -213,20 +244,36 @@ impl<H: Copy + Eq + Hash> Registry<H> {
     pub fn singleton_phase(&self, key: WindowKey) -> SingletonPhase<H> {
         self.singletons
             .get(&key)
-            .copied()
+            .map(|record| record.phase)
             .unwrap_or(SingletonPhase::Closed)
     }
 
-    /// Set the singleton phase for `key`. `Closed` clears the entry.
-    pub fn set_singleton(&mut self, key: WindowKey, phase: SingletonPhase<H>) {
-        match phase {
-            SingletonPhase::Closed => {
-                self.singletons.remove(&key);
-            }
-            other => {
-                self.singletons.insert(key, other);
-            }
+    /// The contract for a live or in-flight singleton.
+    pub fn singleton_metadata(&self, key: WindowKey) -> Option<SingletonMetadata> {
+        self.singletons.get(&key).map(|record| record.metadata)
+    }
+
+    /// Register a singleton before its window build begins.
+    pub fn begin_singleton(&mut self, key: WindowKey, metadata: SingletonMetadata) {
+        self.singletons.insert(
+            key,
+            SingletonRecord {
+                phase: SingletonPhase::Opening,
+                metadata,
+            },
+        );
+    }
+
+    /// Mark an in-flight singleton as open, retaining its original contract.
+    pub fn finish_singleton(&mut self, key: WindowKey, handle: H) {
+        if let Some(record) = self.singletons.get_mut(&key) {
+            record.phase = SingletonPhase::Open(handle);
         }
+    }
+
+    /// Remove singleton state after failure or window closure.
+    pub fn clear_singleton(&mut self, key: WindowKey) {
+        self.singletons.remove(&key);
     }
 }
 
@@ -345,16 +392,34 @@ mod tests {
         let mut reg: Registry<u64> = Registry::new();
         assert_eq!(reg.singleton_phase(SETTINGS), SingletonPhase::Closed);
 
-        reg.set_singleton(SETTINGS, SingletonPhase::Opening);
+        let metadata = SingletonMetadata::of::<u64>(RootPolicy::ComponentRoot);
+        reg.begin_singleton(SETTINGS, metadata);
         assert_eq!(reg.singleton_phase(SETTINGS), SingletonPhase::Opening);
 
-        reg.set_singleton(SETTINGS, SingletonPhase::Open(42));
+        reg.finish_singleton(SETTINGS, 42);
         assert_eq!(reg.singleton_phase(SETTINGS), SingletonPhase::Open(42));
 
-        reg.set_singleton(SETTINGS, SingletonPhase::Closed);
+        reg.clear_singleton(SETTINGS);
         assert_eq!(reg.singleton_phase(SETTINGS), SingletonPhase::Closed);
         // Keys are independent.
         assert_eq!(reg.singleton_phase(MAIN), SingletonPhase::Closed);
+    }
+
+    #[test]
+    fn singleton_metadata_is_retained_for_opening_and_live_windows() {
+        let mut reg: Registry<u64> = Registry::new();
+        let metadata = SingletonMetadata::of::<String>(RootPolicy::ComponentRoot);
+        reg.begin_singleton(SETTINGS, metadata);
+
+        let opening = reg.singleton_metadata(SETTINGS).unwrap();
+        assert_eq!(opening.content_type, TypeId::of::<String>());
+        assert_eq!(opening.content_type_name, std::any::type_name::<String>());
+        assert_eq!(opening.root_policy, RootPolicy::ComponentRoot);
+
+        reg.finish_singleton(SETTINGS, 42);
+        let open = reg.singleton_metadata(SETTINGS).unwrap();
+        assert_eq!(open.content_type, TypeId::of::<String>());
+        assert_eq!(open.root_policy, RootPolicy::ComponentRoot);
     }
 
     #[test]

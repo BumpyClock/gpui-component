@@ -10,6 +10,12 @@ The [Root] component for as the root provider of GPUI Component features in a wi
 
 This is important, if we don't use [Root] as the first level child of a window, there will have some unexpected behaviors.
 
+:::tip
+`gpui-component-app::WindowManager::open` and `open_singleton` wrap content in
+`Root` automatically. Use the manual pattern below only with raw GPUI bootstrap;
+`open_raw` intentionally opts out.
+:::
+
 ```rs
 fn main() {
     let app = gpui_platform::application().with_assets(gpui_component_assets::Assets);

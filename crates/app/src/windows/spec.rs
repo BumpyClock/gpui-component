@@ -49,6 +49,7 @@ impl Default for WindowSize {
 pub struct WindowSpec {
     pub(super) key: WindowKey,
     pub(super) title: Option<String>,
+    pub(super) app_id: Option<String>,
     pub(super) size: WindowSize,
     pub(super) root_policy: RootPolicy,
     pub(super) background: WindowBackgroundAppearance,
@@ -62,6 +63,7 @@ impl WindowSpec {
         Self {
             key: key.into(),
             title: None,
+            app_id: None,
             size: WindowSize::default(),
             root_policy: RootPolicy::default(),
             background: WindowBackgroundAppearance::Opaque,
@@ -74,6 +76,13 @@ impl WindowSpec {
     /// pass the un-numbered base here. Defaults to the app display name.
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
+        self
+    }
+
+    /// Override the manifest application id for this window. Most apps should
+    /// use the manifest identity supplied by [`super::WindowManager`].
+    pub fn app_id(mut self, app_id: impl Into<String>) -> Self {
+        self.app_id = Some(app_id.into());
         self
     }
 
@@ -152,6 +161,10 @@ impl WindowSpec {
     pub fn declared_root_policy(&self) -> RootPolicy {
         self.root_policy
     }
+
+    pub(super) fn resolved_app_id<'a>(&'a self, manifest_app_id: &'a str) -> &'a str {
+        self.app_id.as_deref().unwrap_or(manifest_app_id)
+    }
 }
 
 /// Build base `WindowOptions` from `WindowShell`/`TitleBar` defaults, then apply
@@ -167,6 +180,12 @@ pub(super) fn base_window_options(
     }
     options.window_background = background;
     options
+}
+
+/// Apply the resolved identity after arbitrary caller option customization, so
+/// a normal window cannot accidentally lose its manifest identity.
+pub(super) fn apply_app_id(options: &mut WindowOptions, app_id: &str) {
+    options.app_id = Some(app_id.to_string());
 }
 
 /// An overlay-surface specification (capability-gated, not `Root`-wrapped, not
@@ -253,6 +272,7 @@ mod tests {
         assert_eq!(spec.key(), WindowKey::new("main"));
         assert_eq!(spec.declared_root_policy(), RootPolicy::ComponentRoot);
         assert!(spec.title.is_none());
+        assert!(spec.app_id.is_none());
         assert!(matches!(
             spec.size,
             WindowSize::DisplayFraction(f) if (f - 0.85).abs() < f32::EPSILON
@@ -267,12 +287,17 @@ mod tests {
         // Mutators + hooks.
         let spec = WindowSpec::new(WindowKey::new("main"))
             .title("MyApp")
+            .app_id("com.example.override")
             .fixed_size(px(640.), px(480.))
             .raw()
             .blurred(px(8.))
             .customize_options(|_| {})
             .on_open(|_, _| {});
         assert_eq!(spec.title.as_deref(), Some("MyApp"));
+        assert_eq!(
+            spec.resolved_app_id("com.example.default"),
+            "com.example.override"
+        );
         assert_eq!(spec.declared_root_policy(), RootPolicy::Raw);
         assert!(matches!(
             spec.size,
@@ -344,5 +369,24 @@ mod tests {
             assert_eq!(scaled.width, px(85.));
             assert_eq!(scaled.height, px(170.));
         }
+    }
+
+    #[test]
+    fn manifest_identity_wins_after_option_customization_without_an_override() {
+        let mut spec = WindowSpec::new(WindowKey::new("main")).customize_options(|options| {
+            options.app_id = Some("com.example.accidental".to_string());
+        });
+        let mut options = base_window_options("App", WindowBackgroundAppearance::Opaque);
+        spec.pre_show.take().unwrap()(&mut options);
+        apply_app_id(&mut options, spec.resolved_app_id("com.example.app"));
+        assert_eq!(options.app_id.as_deref(), Some("com.example.app"));
+    }
+
+    #[test]
+    fn explicit_window_identity_overrides_the_manifest() {
+        let spec = WindowSpec::new(WindowKey::new("main")).app_id("com.example.window");
+        let mut options = base_window_options("App", WindowBackgroundAppearance::Opaque);
+        apply_app_id(&mut options, spec.resolved_app_id("com.example.app"));
+        assert_eq!(options.app_id.as_deref(), Some("com.example.window"));
     }
 }

@@ -60,15 +60,14 @@ impl PlatformCapabilities {
     ///
     /// Judgements (each traceable to a plan finding or verified fork stub):
     ///
-    /// - `url_schemes`: registration is implemented only on macOS. Windows
-    ///   (`gpui_windows/src/platform.rs`) and Linux (`gpui_linux/src/platform.rs`)
-    ///   are verified stubs, so both report `Unsupported` (plan §1.5, D9).
+    /// - `url_schemes`: listening for delivered URLs is not registration.
+    ///   Registration plus packaged launch delivery is not proven on any target,
+    ///   so every target reports `Unsupported`.
     /// - `overlay_surface`: macOS only for now. X11 click-through is a silent
     ///   no-op and Wayland is unverified, so non-macOS reports `Unsupported`
     ///   until end-to-end verification (plan §7).
-    /// - `tray`: macOS and Windows report `Supported`; Linux is `Unsupported`
-    ///   because tray reliability depends on the desktop session
-    ///   (Wayland/GNOME) and needs a runtime, not compile-time, check (plan §7).
+    /// - `tray`: the shell exposes no tray API yet, so every target reports
+    ///   `Unsupported`. Apps may own raw integrations without changing this.
     /// - `dock_menu`: macOS dock menu / Windows jump list only.
     /// - `credential_store`: not yet wired through the shell on any platform; the
     ///   credential-store abstraction is deferred (plan §3, Phase 3).
@@ -102,16 +101,7 @@ const fn overlay_surface() -> Capability {
 }
 
 const fn tray() -> Capability {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
-    {
-        Capability::Supported
-    }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    {
-        Capability::unsupported(
-            "tray reliability depends on the Linux desktop session; verify at runtime",
-        )
-    }
+    Capability::unsupported("system tray integration is not implemented by the app shell")
 }
 
 const fn dock_menu() -> Capability {
@@ -132,16 +122,9 @@ const fn dock_menu() -> Capability {
 }
 
 const fn url_schemes() -> Capability {
-    #[cfg(target_os = "macos")]
-    {
-        Capability::Supported
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        Capability::unsupported(
-            "URL-scheme registration is an unimplemented fork stub on Windows and Linux",
-        )
-    }
+    Capability::unsupported(
+        "URL-scheme packaging registration and launch delivery are not verified",
+    )
 }
 
 const fn precise_window_positioning() -> Capability {
@@ -165,11 +148,9 @@ mod tests {
         // credential_store is always deferred for now.
         assert!(!caps.credential_store.is_supported());
 
-        // url_schemes support only ever claimed where registration is real.
-        #[cfg(target_os = "macos")]
-        assert!(caps.url_schemes.is_supported());
-        #[cfg(not(target_os = "macos"))]
+        // The shell must not claim capabilities for APIs it does not expose.
         assert!(!caps.url_schemes.is_supported());
+        assert!(!caps.tray.is_supported());
     }
 
     #[test]

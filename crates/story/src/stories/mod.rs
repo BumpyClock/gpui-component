@@ -3,6 +3,7 @@ use gpui_component::dock::PanelControl;
 
 mod accordion_story;
 mod alert_story;
+mod app_shell_story;
 mod avatar_story;
 mod badge_story;
 mod breadcrumb_story;
@@ -62,6 +63,7 @@ mod welcome_story;
 
 pub use accordion_story::AccordionStory;
 pub use alert_story::AlertStory;
+pub use app_shell_story::AppShellStory;
 pub use avatar_story::AvatarStory;
 pub use badge_story::BadgeStory;
 pub use breadcrumb_story::BreadcrumbStory;
@@ -121,6 +123,7 @@ pub use virtual_list_story::VirtualListStory;
 pub use welcome_story::WelcomeStory;
 
 pub(crate) fn init(cx: &mut App) {
+    app_shell_story::init(cx);
     input_story::init(cx);
     rating_story::init(cx);
     number_input_story::init(cx);

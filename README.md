@@ -37,7 +37,34 @@ gpui-component = "0.5.1"
 gpui-component-assets = "0.5.1"
 ```
 
-### Basic Example
+### AppShell (experimental)
+
+Native applications can use `gpui-component-app` to centralize identity, paths,
+component initialization, startup/shutdown, settings, managed windows, standard
+desktop menus, and platform capability reporting:
+
+```rs
+AppShell::builder(APP_IDENTITY)
+    .assets(gpui_component_assets::Assets)
+    .standard_menus(
+        StandardMenus::new()
+            .on_settings(open_settings)
+            .on_about(open_about),
+    )
+    .start(|_, cx| {
+        WindowManager::open(cx, WindowSpec::new("main"), |_, cx| {
+            cx.new(|_| MainView)
+        })?;
+        Ok(())
+    })
+    .run()
+```
+
+See [Building an Application](docs/docs/app-shell.md) for identity codegen,
+Windows/Linux menu-bar placement, persistent settings, platform evidence, and
+current limitations.
+
+### Manual GPUI bootstrap
 
 ```rs
 use gpui::*;

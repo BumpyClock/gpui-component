@@ -23,6 +23,8 @@ pub enum Phase {
     CoreServices,
     /// Initialize plugins in registration order.
     PluginInit,
+    /// Run the application-owned transactional startup callback.
+    Start,
     /// Deliver `Started` and drain any events queued before readiness.
     DrainQueue,
     /// Apply the initial-activation policy.
@@ -30,13 +32,14 @@ pub enum Phase {
 }
 
 /// The canonical startup order.
-pub const STARTUP_PHASES: [Phase; 8] = [
+pub const STARTUP_PHASES: [Phase; 9] = [
     Phase::Preflight,
     Phase::ConfigureApp,
     Phase::EarlyListeners,
     Phase::ComponentInit,
     Phase::CoreServices,
     Phase::PluginInit,
+    Phase::Start,
     Phase::DrainQueue,
     Phase::Activation,
 ];

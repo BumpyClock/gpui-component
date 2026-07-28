@@ -1,51 +1,45 @@
 //! `app_shell` — single-window AppShell conformance example.
 //!
-//! Exercises the whole downstream chain in-repo: a `[package.metadata.gpui-app]`
-//! table + `build.rs` produce the compiled-in `APP_IDENTITY`, and the shell
-//! builder wires the wave-2 services (typed settings, theme, native menus) around
-//! a single `gpui-component` window.
+//! Exercises the downstream application chain in-repo: generated identity,
+//! ordered app/component assets, persistent settings, standard desktop menus,
+//! singleton Settings/About surfaces, and an app-owned service.
 //!
-//! Run it: `cargo run -p app_shell`. The `--smoke` flag makes it launch, then
-//! request a clean quit after a few seconds with exit code 0 — the shape the CI
-//! `native-launch-smoke` job depends on.
-//!
-//! Smoke contract: **exit 0 iff the window opened and the shell quit cleanly.**
-//! A failed native launch must exit non-zero, so a broken window path cannot pass
-//! CI. This matters because a `Started` handler error is only *logged* by the
-//! shell (`deliver_event`), not propagated — returning `Err` from `on_launch`
-//! would otherwise let startup idle-exit 0 with no window ever shown.
+//! Run it: `cargo run -p app_shell`. `--smoke` requests a clean quit after the
+//! initial window opens. `--asset-smoke` validates app-first asset fallback then
+//! quits without opening a window. `--fail-start` demonstrates that a startup
+//! error exits nonzero through `AppShellError::Startup`.
 
 #![cfg_attr(
     all(not(debug_assertions), target_os = "windows"),
     windows_subsystem = "windows"
 )]
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::borrow::Cow;
+use std::path::PathBuf;
 use std::thread;
 use std::time::Duration;
 
+use anyhow::bail;
+#[cfg(any(target_os = "windows", target_os = "linux"))]
+use gpui_component_app::commands::AppMenusExt as _;
+use gpui_component_app::commands::StandardMenus;
 use gpui_component_app::gpui::*;
 use gpui_component_app::prelude::*;
-use gpui_component_app::ui::{ActiveTheme as _, v_flex};
+use gpui_component_app::ui::{ActiveTheme as _, switch::Switch, v_flex};
 use serde::{Deserialize, Serialize};
 
 gpui_component_app::include_identity!();
 
 /// How long a `--smoke` run stays up before requesting a clean quit.
 const SMOKE_LIFETIME: Duration = Duration::from_secs(3);
-/// Hard upper bound: if the app never reaches launch, fail loudly instead of
-/// hanging CI. Mirrors the watchdog in `crates/app/tests/headless.rs`.
-const SMOKE_WATCHDOG: Duration = Duration::from_secs(30);
-
-/// Set once the main window has actually opened. The `--smoke` quit path asserts
-/// it: a run that never opened its window exits non-zero (see the module docs).
-static WINDOW_READY: AtomicBool = AtomicBool::new(false);
+const APP_ASSET_PATH: &str = "app_shell/example.txt";
+const COMPONENT_ASSET_PATH: &str = "surface/NoiseAsset_256.png";
 
 /// A tiny persisted settings schema, proving the identity -> storage chain: it is
 /// keyed by the app's `data_namespace`, which comes from `APP_IDENTITY`.
 #[derive(Serialize, Deserialize, Default)]
 struct ExampleSettings {
-    /// Number of times this app has been launched.
+    show_status: bool,
     launch_count: u32,
 }
 
@@ -53,97 +47,218 @@ impl AppSettings for ExampleSettings {
     const SCHEMA_VERSION: u32 = 1;
 }
 
-/// The window content: a themed placeholder so the theme service is visibly live.
-struct MainView;
+/// App-owned path-aware state. AppShell owns path resolution; product services
+/// choose their own lifecycle and storage policy.
+struct ExampleService {
+    config_dir: PathBuf,
+}
+
+impl Global for ExampleService {}
+
+/// First asset source in the AppShell chain. Component assets remain available
+/// from the bundled source registered after this one.
+struct ExampleAssets;
+
+impl AssetSource for ExampleAssets {
+    fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
+        Ok((path == APP_ASSET_PATH)
+            .then(|| Cow::Borrowed(include_bytes!("../assets/example.txt").as_slice())))
+    }
+
+    fn list(&self, path: &str) -> Result<Vec<SharedString>> {
+        Ok((path.is_empty() || APP_ASSET_PATH.starts_with(path))
+            .then(|| APP_ASSET_PATH.into())
+            .into_iter()
+            .collect())
+    }
+}
+
+struct MainView {
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    menu_bar: Entity<gpui_component_app::ui::menu::AppMenuBar>,
+}
+
+impl MainView {
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    fn with_menu_bar(menu_bar: Entity<gpui_component_app::ui::menu::AppMenuBar>) -> Self {
+        Self { menu_bar }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn new() -> Self {
+        Self {}
+    }
+}
 
 impl Render for MainView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        v_flex()
-            .size_full()
+        let config_dir = cx
+            .global::<ExampleService>()
+            .config_dir
+            .display()
+            .to_string();
+        let content = v_flex()
+            .flex_1()
             .items_center()
             .justify_center()
             .bg(cx.theme().background)
             .text_color(cx.theme().foreground)
             .child("App Shell conformance example")
+            .child(format!("Settings live in {}", config_dir));
+        #[cfg(any(target_os = "windows", target_os = "linux"))]
+        return v_flex()
+            .size_full()
+            .child(self.menu_bar.clone())
+            .child(content);
+        #[cfg(target_os = "macos")]
+        content
     }
 }
 
-fn main() {
-    let smoke = std::env::args().any(|arg| arg == "--smoke");
-    if smoke {
-        spawn_watchdog();
-    }
+struct SettingsView;
 
-    let result = AppShell::builder(APP_IDENTITY)
+impl Render for SettingsView {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let show_status = cx
+            .settings::<ExampleSettings>(StoreKey::PRIMARY)
+            .show_status;
+        v_flex()
+            .size_full()
+            .p_4()
+            .gap_3()
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .child("Settings")
+            .child(
+                Switch::new("show-status")
+                    .label("Show status")
+                    .checked(show_status)
+                    .on_click(cx.listener(|_, checked, _, cx| {
+                        if let Err(error) = cx.update_settings(
+                            StoreKey::PRIMARY,
+                            |settings: &mut ExampleSettings, _| settings.show_status = *checked,
+                        ) {
+                            log::error!("app_shell settings update failed: {error}");
+                        }
+                        cx.notify();
+                    })),
+            )
+    }
+}
+
+struct AboutView;
+
+impl Render for AboutView {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let info = cx.app_info();
+        v_flex()
+            .size_full()
+            .p_4()
+            .gap_2()
+            .bg(cx.theme().background)
+            .text_color(cx.theme().foreground)
+            .child(format!("About {}", info.display_name()))
+            .child(format!("Version {}", info.version()))
+            .child(info.app_id().to_string())
+    }
+}
+
+fn main() -> Result<(), AppShellError> {
+    let smoke = std::env::args().any(|arg| arg == "--smoke");
+    let asset_smoke = std::env::args().any(|arg| arg == "--asset-smoke");
+    let fail_start = std::env::args().any(|arg| arg == "--fail-start");
+
+    AppShell::builder(APP_IDENTITY)
+        .assets(ExampleAssets)
+        .assets(gpui_component_assets::Assets)
+        .initial_activation(InitialActivation::Forced)
         .settings::<ExampleSettings>(StoreKey::PRIMARY)
         .theme(ThemeSource::registry())
-        .menus(MenuPlan::standard().with_theme_menu())
-        .on_launch(move |cx| {
-            // Arm the smoke quit/verify thread first: even a startup that returns
-            // early below still reaches a decision (and fails non-zero) instead
-            // of idling to the watchdog.
+        .standard_menus(
+            StandardMenus::new()
+                .with_theme_menu()
+                .on_settings(open_settings)
+                .on_about(open_about),
+        )
+        .start(move |_launch, cx| {
+            if fail_start {
+                // Startup failure wins over a quit requested during Starting:
+                // AppShell discards the deferred reason and exits nonzero.
+                eprintln!("APP_SHELL_FAIL_START_REACHED");
+                cx.request_quit();
+                bail!("requested startup failure");
+            }
+
+            if asset_smoke {
+                validate_asset_chain(cx)?;
+                cx.request_quit();
+                return Ok(());
+            }
+
+            cx.set_global(ExampleService {
+                config_dir: cx.app_info().paths().config_dir().to_path_buf(),
+            });
+            cx.update_settings(StoreKey::PRIMARY, |settings: &mut ExampleSettings, _| {
+                settings.launch_count += 1;
+            })?;
+            WindowManager::open(
+                cx,
+                WindowSpec::new("main").title("App Shell Example"),
+                |_, cx| {
+                    #[cfg(any(target_os = "windows", target_os = "linux"))]
+                    let menu_bar = cx.new_app_menu_bar();
+                    cx.new(|_| {
+                        #[cfg(any(target_os = "windows", target_os = "linux"))]
+                        return MainView::with_menu_bar(menu_bar);
+                        #[cfg(target_os = "macos")]
+                        MainView::new()
+                    })
+                },
+            )?;
             if smoke {
                 schedule_smoke_quit(cx);
             }
-
-            // Touch the settings store so persistence is actually exercised.
-            // A returned `Err` is only *logged* by the shell and would let
-            // startup idle-exit 0, so any startup failure fails hard instead.
-            if let Err(err) = cx.update_settings(StoreKey::PRIMARY, |s: &mut ExampleSettings, _| {
-                s.launch_count += 1;
-            }) {
-                eprintln!("app_shell settings update failed: {err}");
-                std::process::exit(1);
-            }
-
-            match WindowManager::open(
-                cx,
-                WindowSpec::new("main").title("App Shell Example"),
-                |_, cx| cx.new(|_| MainView),
-            ) {
-                Ok(_) => WINDOW_READY.store(true, Ordering::SeqCst),
-                // A failed native launch must not pass the smoke gate as a clean
-                // exit 0: fail hard here rather than let startup idle-exit.
-                Err(err) => {
-                    eprintln!("app_shell failed to open window: {err}");
-                    std::process::exit(1);
-                }
-            }
             Ok(())
         })
-        .run();
-
-    // FORK REALITY: on macOS the platform terminates the process inside `run()`
-    // (NSApp terminate -> exit(0)), so this is reached only on platforms whose
-    // event loop returns (Linux/Windows). Do not rely on post-`run` code there.
-    if let Err(err) = result {
-        eprintln!("app_shell exited with error: {err}");
-        std::process::exit(1);
-    }
+        .run()
 }
 
-/// After [`SMOKE_LIFETIME`], either quit cleanly (window opened) or fail the run
-/// (window never became ready) — the smoke contract's decision point.
 fn schedule_smoke_quit(cx: &mut App) {
     let proxy = cx.app_proxy();
     thread::spawn(move || {
         thread::sleep(SMOKE_LIFETIME);
-        if WINDOW_READY.load(Ordering::SeqCst) {
-            // Quit through the single shutdown path so settings flush + plugin
-            // shutdown run; a clean quit exits 0.
-            let _ = proxy.dispatch(|cx| cx.request_quit());
-        } else {
-            eprintln!("app_shell smoke: window never became ready; failing");
-            std::process::exit(1);
-        }
+        let _ = proxy.dispatch(|cx| cx.request_quit());
     });
 }
 
-/// Fail the process (non-zero) if a `--smoke` run never boots and quits in time.
-fn spawn_watchdog() {
-    thread::spawn(|| {
-        thread::sleep(SMOKE_WATCHDOG);
-        eprintln!("app_shell smoke watchdog fired: shell did not boot/quit in time");
-        std::process::exit(1);
-    });
+fn validate_asset_chain(cx: &App) -> anyhow::Result<()> {
+    let app_asset = cx
+        .asset_source()
+        .load(APP_ASSET_PATH)?
+        .ok_or_else(|| anyhow::anyhow!("app asset missing"))?;
+    if app_asset.as_ref() != include_bytes!("../assets/example.txt") {
+        bail!("app asset contents differ");
+    }
+    cx.asset_source()
+        .load(COMPONENT_ASSET_PATH)?
+        .ok_or_else(|| anyhow::anyhow!("bundled component asset missing"))?;
+    Ok(())
+}
+
+fn open_settings(cx: &mut App) -> anyhow::Result<()> {
+    WindowManager::open_singleton(
+        cx,
+        WindowSpec::new("settings").title("Settings"),
+        |_, cx| cx.new(|_| SettingsView),
+    )?;
+    Ok(())
+}
+
+fn open_about(cx: &mut App) -> anyhow::Result<()> {
+    WindowManager::open_singleton(
+        cx,
+        WindowSpec::new("about").title("About App Shell Example"),
+        |_, cx| cx.new(|_| AboutView),
+    )?;
+    Ok(())
 }

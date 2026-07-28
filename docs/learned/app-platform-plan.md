@@ -1,13 +1,91 @@
+---
+title: "App Platform Plan"
+summary: "Current AppShell architecture, platform contract, evidence gates, and adopter roadmap."
+read_when: "starting work on gpui-component-app, app storage/manifest, identity, or an adopter migration"
+---
+
 # App Platform Plan — making gpui-component a viable app-building platform
 
-> Status: architecture plan v2, 2026-07-16. v1 was synthesized from a full shell-code
-> inventory of agent-term, ansible, and Andromeda + three competing proposals +
-> adversarial review. v2 folds in two independent external reviews (codex/gpt-5.6-sol,
-> which verified claims against the vendored fork source, and GPT-5.5 Pro via oracle).
-> Both approved the direction and independently found the same blocker and contract
-> gaps — convergent findings below are high-confidence.
-> `read_when`: starting work on `gpui-component-app`, `gpui-component-storage`,
-> `gpui-component-manifest`, app identity, or migrating one of the three apps.
+> Status: current architecture plan v3, 2026-07-27.
+
+## Current plan (v3)
+
+The workspace already contains the platform foundation:
+
+- `gpui-component-manifest`: compiled identity and metadata verification
+- `gpui-component-storage`: paths, envelopes, atomic/debounced stores, backups
+- `gpui-component-app`: lifecycle, proxy, liveness, managed windows, settings,
+  commands/menus, theme, capabilities, and headless runner
+- `examples/app_shell`: conventional windowed-app conformance
+- `examples/app_shell_background`: passive activation, zero-window liveness, and
+  orderly exit conformance; it is not a tray example
+
+The current “windowed AppShell and standard desktop controls” milestone extends
+this foundation instead of adding a second framework abstraction:
+
+1. transactional `start` after shell initialization and before readiness,
+   queued-event drain, activation, and idle evaluation
+2. fatal startup errors with one reverse-shutdown path; nonfatal runtime failures
+   routed through an app-configurable error reporter
+3. one standard command model for native macOS menus and Windows/Linux
+   in-window menu bars
+4. conventional conditional Settings/About actions and shortcuts, with the app
+   retaining ownership of schema and UI presentation
+5. honest capability reporting, managed-window identity, safe singleton reuse,
+   binding validation, and ordered asset fallback
+
+### Current reference-app reality
+
+- **Agent Term** at audited commit
+  `c533566b80014c42e831ff28369f74bf53ee2049` is Tauri 2 + React/WebView.
+  Moving it to AppShell requires a native GPUI UI rewrite plus explicit
+  replacements for invoke IPC, packaging, updater, sidecar bundling, and platform
+  effects. It is a parity benchmark, not a current adopter. See
+  [Agent Term AppShell parity audit](agent-term-appshell-parity.md).
+- **Andromeda** is a native single-window GPUI app and a candidate first external
+  adopter after explicit authorization, clean worktree, and legacy-session-path
+  preservation.
+- **Agent Limits** is the native tray/multi-window stress case. Real cross-platform
+  tray support must land before adoption; a liveness hold alone is not a tray API.
+
+### Standard desktop control contract
+
+| Behavior | macOS | Windows | Linux |
+|---|---|---|---|
+| Menu surface | Native global application menu | App-owned in-window `AppMenuBar` | App-owned in-window `AppMenuBar` |
+| Structure | App, Edit, custom, Window | File, Edit, optional View/custom, Window, Help | File, Edit, optional View/custom, Window, Help |
+| Settings | Settings… / `cmd-,` | Settings / `ctrl-,` | Preferences / `ctrl-,` |
+| Quit | `cmd-q` | `ctrl-q` | `ctrl-q` |
+| Close window | `cmd-w` | `ctrl-w` | `ctrl-w` |
+
+Optional Settings/About items, commands, and chords do not exist without a
+callback. Raw `MenuPlan` stays available for exact custom ordering. Direct
+`set_menus`, raw `MenuPlan`, and `StandardMenus` are separate ownership modes.
+
+### Capability boundary
+
+Native tray and URL-scheme registration report unsupported on every platform
+until AppShell provides and verifies the complete behavior. URL delivery on one
+platform is not registration. Packaging, updater, signing, single-instance,
+sidecar bundling, credential storage, and a React/WebView bridge remain separate
+milestones.
+
+### Evidence and adoption order
+
+1. Unit/headless contracts plus native macOS launch smoke in this workspace.
+2. Windows/Linux compile gates and native smoke where display-capable runners
+   exist; otherwise use the explicit `compiled-not-natively-validated` label and
+   documented manual commands.
+3. First authorized clean native adopter; Andromeda is a candidate.
+4. Real tray milestone, then authorized Agent Limits adoption.
+5. Agent Term only as an explicit native-UI product project, using its parity
+   audit as release gate.
+
+## Historical v2 record
+
+The remainder records the 2026-07-16 proposal that produced the initial crates.
+It is retained for rationale, not current reference-app facts, API signatures, or
+adoption order. Where it conflicts with v3 above, v3 wins.
 
 ## 1. Problem statement (verified, not aspirational)
 
@@ -21,7 +99,7 @@ Three real apps build on gpui-component today. Each re-implements the same app s
 | Settings | TOML via `dirs`, dual configs, `~/.agent-term` root | `config.rs` — dirs + atomic write + schema-version envelope, tested (best impl) | none (dead Settings UI) |
 | Window/layout persistence | 766-LOC layout crate (debounced JSON, backup rotation); no bounds | none | none |
 | Theme | hardcoded Rust palettes (opts out of JSON registry) | bundled-theme sync + watch_dir + settings glue | watch_dir + menu rebuild |
-| Extra | window registry, custom updater (ed25519 key **zeroed**), objc2 titlebar | tray + tokio bridge, permission gate, singleton settings window | — |
+| Extra | Tauri updater (configured key is nonempty; authenticity unverified) | tray + tokio bridge, permission gate, singleton settings window | — |
 
 Cross-cutting problems:
 
@@ -124,11 +202,11 @@ Corrected invariant:
 - **Release-candidate CI builds all three app repos** against the proposed platform
   rev — an automated downstream gate, stronger than a matrix doc + policy.
 
-**D7 — Updater: disable the live hole now, not just freeze.**
-agent-term ships a **zeroed ed25519 public key** — verification is non-functional
-*today*. Action in agent-term (independent of platform work): disable the updater or
-make release builds fail while the placeholder key is present. Then key custody
-(keypair, private key in CI secret/1Password), then revisit extraction.
+**D7 — Historical updater claim corrected.**
+The audited current Agent Term configuration contains a nonempty updater public
+key. This review did not verify provenance or signatures. Keep the existing
+updater until a replacement proves download, verification, install, restart, and
+failure behavior; do not disable it based on the former “zeroed key” claim.
 
 **D8 — wasm out of scope for v1** (unchanged). Storage goes behind a small backend
 trait so a shim is possible later; nothing wasm is built now.
@@ -306,7 +384,7 @@ legacy path migration aliases (agent-term's `~/.agent-term`).
 | Tray + dock policy | Opt-in feature/crate; uses core `AppProxy`; **no bundled tokio** (app supplies handle) | ansible |
 | Window bounds persistence | Opt-in, net-new; persists logical size + scale + monitor id + maximized/fullscreen + position-unavailable (Wayland) | nobody has it |
 | Permission gate | App code + `.state()` preflight + gate-window-in-launch pattern | ansible |
-| Updater | **Disabled in agent-term now** (D7); extraction later | — |
+| Updater | Agent-owned Tauri updater; replacement later and parity-gated (D7 correction) | — |
 | Layout/session schema | App code on `DebouncedStore` | agent-term |
 | URL schemes / single-instance / CLI / crash reporting | **Not built**; lifecycle events + capability slots reserved | fork stubs incomplete (§1.5) |
 
@@ -318,7 +396,7 @@ legacy path migration aliases (agent-term's `~/.agent-term`).
 2. `gpui-component-storage` with the §4a contract + process-level concurrency tests.
 3. `gpui-component-manifest` + downstream-workspace test fixture (D4 blocker fix).
 4. Tag discipline; add missing `[workspace.package] version`; `/update-gpui` owns bumps.
-5. agent-term: disable/release-block the zeroed-key updater (D7).
+5. agent-term: retain its updater until an independently verified replacement exists (D7).
 
 **Phase 1 — `gpui-component-app` MVP**
 Identity include, `AppShell` phases/plugin core (sealed trait until all three
@@ -326,9 +404,9 @@ migrations exercised it), lifecycle events + queueing, `AppInfo`/`AppProxy`/glob
 split (+ auto-trait compile assertions), window manager, settings plugin,
 `ShellPreferences`, command registry + standard menus, theme plugin, capabilities,
 headless runner. Two in-repo conformance examples: `examples/app_shell` (single-window
-happy path) and **`examples/app_shell_tray`** (tray-first, zero windows, passive
-activation, tray-failure fallback — ansible's shape proves the platform; Andromeda's
-only proves the happy path). Phase-1 `doctor` command: parse normalized manifest and
+happy path) and **`examples/app_shell_background`** (zero windows, passive
+activation, and liveness only — it does not prove native tray behavior). Phase-1
+`doctor` command: parse normalized manifest and
 *verify* the apps' existing Info.plist/.desktop/wix/MSIX/Inno/Flatpak/bundle metadata
 against it (identity converges before the generator exists, instead of adding an
 eighth copy).
@@ -369,7 +447,8 @@ CI workflow, default logging policy).
 7. CI launches native smoke apps on 3 OSes and checks min/max feature sets.
 8. Release-candidate CI builds all three real app repos against one resolved gpui stack.
 9. Stable command IDs exist before menus/keybindings are generalized.
-10. agent-term's zero-key updater is disabled or release-blocked.
+10. Agent Term keeps its existing updater until replacement signature/install
+    behavior is independently verified.
 
 ## 7. Known risks
 

@@ -26,20 +26,27 @@ GPUI Component is a comprehensive UI component library for building fantastic de
 
 ## Quick Example
 
-Add `gpui` and `gpui-component` to your `Cargo.toml`:
+For a native application, start with the experimental AppShell layer:
 
 ```toml-vue
 [dependencies]
-gpui = "{{ VERSION }}"
-gpui-component = "{{ VERSION }}"
+gpui-component-app = "{{ VERSION }}"
 gpui-component-assets = "{{ VERSION }}"
+
+[build-dependencies]
+gpui-component-manifest = "{{ VERSION }}"
 ```
 
-Then create a simple "Hello, World!" application with a button:
+Declare `[package.metadata.gpui-app]` and the two-line identity `build.rs`
+described in [Building an Application](./app-shell.md), then create the window:
 
 ```rust
-use gpui::*;
-use gpui_component::{button::*, *};
+use gpui_component_app::gpui::*;
+use gpui_component_app::prelude::*;
+use gpui_component_app::{StandardMenus, WindowManager};
+use gpui_component_app::ui::{button::*, *};
+
+gpui_component_app::include_identity!();
 
 pub struct HelloWorld;
 impl Render for HelloWorld {
@@ -60,26 +67,23 @@ impl Render for HelloWorld {
     }
 }
 
-fn main() {
-    let app = gpui_platform::application().with_assets(gpui_component_assets::Assets);
-
-    app.run(move |cx| {
-        // This must be called before using any GPUI Component features.
-        gpui_component::init(cx);
-
-        cx.spawn(async move |cx| {
-            cx.open_window(WindowOptions::default(), |window, cx| {
-                let view = cx.new(|_| HelloWorld);
-                // This first level on the window, should be a Root.
-                cx.new(|cx| Root::new(view, window, cx))
+fn main() -> Result<(), AppShellError> {
+    AppShell::builder(APP_IDENTITY)
+        .assets(gpui_component_assets::Assets)
+        .standard_menus(StandardMenus::new())
+        .start(|_, cx| {
+            WindowManager::open(cx, WindowSpec::new("main"), |_, cx| {
+                cx.new(|_| HelloWorld)
             })?;
-
-            Ok::<_, anyhow::Error>(())
+            Ok(())
         })
-        .detach();
-    });
+        .run()
 }
 ```
+
+AppShell initializes GPUI Component, wraps managed windows in `Root`, and wires
+desktop lifecycle. See [Building an Application](./app-shell.md) for standard
+Settings/About controls and Windows/Linux menu-bar placement.
 
 ## Community & Support
 

@@ -171,6 +171,11 @@ The `TitleBarElement` provides window dragging functionality on Linux platforms.
 
 ### Application Title Bar
 
+With AppShell on Windows/Linux, create this entity through
+`cx.new_app_menu_bar()` rather than `AppMenuBar::new(cx)`. AppShell weakly
+registers the bar and reloads it when commands or theme state change. macOS uses
+the native global application menu.
+
 ```rust
 use gpui_component::{TitleBar, button::Button, menu::AppMenuBar};
 

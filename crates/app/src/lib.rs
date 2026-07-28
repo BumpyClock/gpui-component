@@ -38,7 +38,10 @@ pub use gpui_component_storage::{AppPaths, PathLayout};
 
 // Core surface.
 pub use capabilities::{Capability, PlatformCapabilities};
-pub use error::{AppClosed, AppShellError};
+pub use error::{
+    AppClosed, AppShellError, BuilderConfigurationError, MenuConfiguration, RuntimeError,
+    RuntimeOperation, StartupHook,
+};
 pub use handles::{AppInfo, AppProxy, AppShellExt, ShellHandle, ShellState};
 pub use lifecycle::{AppEvent, LaunchRequest, OpenRequest, ShutdownReason};
 pub use liveness::{ExitPolicy, InitialActivation, ShellHold};
@@ -48,8 +51,10 @@ pub use shell::{AppShell, AppShellBuilder, EnvironmentPolicy, LoggingPolicy, Pla
 
 // Service surface.
 pub use commands::{
-    AppCommandsExt, Command, CommandId, CommandRegistry, CommandScope, MenuPlacement, MenuPlan,
-    MenuSection, MenusPlugin, THEME_SECTION, menus_invalidate,
+    ABOUT_COMMAND_ID, About, AppCommandsExt, AppMenusExt, Command, CommandError, CommandId,
+    CommandRegistry, CommandScope, MenuPlacement, MenuPlan, MenuSection, MenusPlugin,
+    OPEN_SETTINGS_COMMAND_ID, OpenSettings, QUIT_COMMAND_ID, StandardMenus, THEME_SECTION,
+    menus_invalidate,
 };
 pub use settings::{
     AppSettings, FutureVersionPolicy, SettingsExt, SettingsPlugin, ShellPreferences,
@@ -57,21 +62,23 @@ pub use settings::{
 };
 pub use theme::{ThemePlugin, ThemeSelection, ThemeSource};
 pub use windows::{
-    AppWindowsExt, OpenedWindow, OverlaySpec, RootPolicy, WindowKey, WindowManager, WindowSpec,
-    WindowsPlugin,
+    AppWindowsExt, OpenedWindow, OverlaySpec, RootPolicy, Singleton, WindowError, WindowKey,
+    WindowManager, WindowSpec, WindowsPlugin,
 };
 
 /// Common imports for application entry points: `use gpui_component_app::prelude::*;`.
 pub mod prelude {
-    pub use crate::commands::{AppCommandsExt, MenuPlan};
-    pub use crate::error::{AppClosed, AppShellError};
+    pub use crate::commands::{AppCommandsExt, AppMenusExt, MenuPlan, StandardMenus};
+    pub use crate::error::{AppClosed, AppShellError, RuntimeError, RuntimeOperation};
     pub use crate::handles::{AppInfo, AppProxy, AppShellExt, ShellHandle};
     pub use crate::lifecycle::{AppEvent, LaunchRequest, OpenRequest, ShutdownReason};
     pub use crate::liveness::{ExitPolicy, InitialActivation, ShellHold};
     pub use crate::settings::{AppSettings, SettingsExt, StoreKey};
     pub use crate::shell::{AppShell, EnvironmentPolicy, LoggingPolicy, PlatformRunner};
     pub use crate::theme::ThemeSource;
-    pub use crate::windows::{AppWindowsExt, RootPolicy, WindowKey, WindowManager, WindowSpec};
+    pub use crate::windows::{
+        AppWindowsExt, RootPolicy, Singleton, WindowError, WindowKey, WindowManager, WindowSpec,
+    };
     pub use crate::{IdentityRef, PathLayout};
     pub use gpui::App;
 }
