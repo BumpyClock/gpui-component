@@ -1,7 +1,15 @@
-use gpui::{Animation, App, SharedString, Window, spring};
+use gpui::{
+    Animation, AnimationExt as _, AnyElement, App, Axis, IntoElement, ParentElement as _,
+    SharedString, Styled as _, Window, div, px, spring,
+};
 use std::time::Duration;
 
-use crate::ThemeMotion;
+use crate::{ActiveTheme as _, ThemeMotion, global_state::GlobalState};
+
+/// Returns whether motion should be reduced for the current component context.
+pub fn reduced_motion(cx: &App) -> bool {
+    GlobalState::global(cx).reduced_motion()
+}
 
 /// A cubic bezier function like CSS `cubic-bezier`.
 ///
@@ -91,110 +99,89 @@ pub fn theme_animation(duration_ms: u16, easing: &str, reduced_motion: bool) -> 
     Some(animation_with_theme_easing(anim, easing))
 }
 
-/// Fast invoke animation (187ms, fast_invoke_easing).
-pub fn fast_invoke_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
+/// Enter animation: `enter` duration on the decelerate curve. For opacity/reveal
+/// of surfaces that are appearing.
+pub fn enter_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
     theme_animation(
-        motion.fast_duration_ms,
-        &motion.fast_invoke_easing,
+        motion.enter_duration_ms,
+        &motion.decelerate_easing,
         reduced_motion,
     )
 }
 
-/// Soft dismiss animation (167ms, soft_dismiss_easing).
-pub fn soft_dismiss_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
+/// Exit animation: `exit` duration on the standard curve. The one dismiss
+/// motion — presence close windows must use [`exit_duration`] so this can play
+/// to completion before its element unmounts. Decelerating rather than
+/// accelerating: an accelerating opacity fade dumps most of its change into the
+/// final frame and reads as a snap at 60Hz (measured ~5x the per-frame delta of
+/// this curve's tail).
+pub fn exit_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
     theme_animation(
-        motion.soft_dismiss_duration_ms,
-        &motion.soft_dismiss_easing,
+        motion.exit_duration_ms,
+        &motion.standard_easing,
         reduced_motion,
     )
 }
 
-/// Point-to-point animation (187ms, point_to_point_easing).
-pub fn point_to_point_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
+/// Point-to-point animation: `enter` duration on the standard curve. For moves
+/// between two on-screen states (switch knobs, progress, widths).
+pub fn standard_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
     theme_animation(
-        motion.fast_duration_ms,
-        &motion.point_to_point_easing,
+        motion.enter_duration_ms,
+        &motion.standard_easing,
         reduced_motion,
     )
 }
 
-/// Fade animation (83ms, linear).
+/// Fade animation (83ms, linear) for micro state changes.
 pub fn fade_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
     theme_animation(motion.fade_duration_ms, &motion.fade_easing, reduced_motion)
 }
 
-/// Strong invoke animation (667ms, strong_invoke_easing with overshoot bounce).
-pub fn strong_invoke_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
+/// Emphasis animation: long overshoot curve for attention accents.
+pub fn emphasis_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
     theme_animation(
-        motion.strong_invoke_duration_ms,
-        &motion.strong_invoke_easing,
+        motion.emphasis_duration_ms,
+        &motion.emphasis_easing,
         reduced_motion,
     )
 }
 
-pub const DEFAULT_SPRING_DAMPING_RATIO: f32 = 0.75;
-pub const DEFAULT_SPRING_FREQUENCY: f32 = 1.8;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SpringPreset {
-    Mild,
-    Medium,
+/// The enter window as a [`Duration`] — how long a presence must keep an
+/// entering element mounted (also the spring settle window).
+pub fn enter_duration(motion: &ThemeMotion) -> Duration {
+    Duration::from_millis(u64::from(motion.enter_duration_ms))
 }
 
-/// Duration (ms) for a spring preset.
-pub fn spring_preset_duration_ms(motion: &ThemeMotion, preset: SpringPreset) -> u16 {
-    match preset {
-        SpringPreset::Mild => motion.spring_mild_duration_ms,
-        SpringPreset::Medium => motion.spring_medium_duration_ms,
-    }
+/// Two frames of headroom after the exit animation before unmount: presence
+/// timers and the animation clock do not start on the same frame, and without
+/// slack the last frames of a fade get clipped (measured as a visible pop).
+/// The extra frames render at opacity 0, so the slack is invisible.
+const EXIT_UNMOUNT_GRACE_MS: u16 = 33;
+
+/// The exit window as a [`Duration`] — how long a presence must keep an exiting
+/// element mounted so [`exit_animation`] plays to completion. Slightly longer
+/// than the animation itself; see [`EXIT_UNMOUNT_GRACE_MS`].
+pub fn exit_duration(motion: &ThemeMotion) -> Duration {
+    Duration::from_millis(u64::from(motion.exit_duration_ms + EXIT_UNMOUNT_GRACE_MS))
 }
 
-/// Spring animation preset for transform-only motion.
-pub fn spring_preset_animation(
-    motion: &ThemeMotion,
-    reduced_motion: bool,
-    preset: SpringPreset,
-) -> Option<Animation> {
+/// The one spring, for transform-only reveal motion. Settles within the `enter`
+/// window. Unbounded easing: pair it with transforms, not opacity.
+pub fn spring_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
     if reduced_motion {
         return None;
     }
 
-    let (duration_ms, damping_ratio, frequency) = match preset {
-        SpringPreset::Mild => (
-            motion.spring_mild_duration_ms,
-            motion.spring_mild_damping_ratio,
-            motion.spring_mild_frequency,
-        ),
-        SpringPreset::Medium => (
-            motion.spring_medium_duration_ms,
-            motion.spring_medium_damping_ratio,
-            motion.spring_medium_frequency,
-        ),
-    };
-
     Some(
-        Animation::new(Duration::from_millis(u64::from(duration_ms)))
-            .with_unbounded_easing(spring(damping_ratio, frequency)),
+        Animation::new(enter_duration(motion))
+            .with_unbounded_easing(spring(motion.spring_damping_ratio, motion.spring_frequency)),
     )
 }
 
 /// Shared open/close durations for expand-collapse patterns.
-pub fn expand_collapse_durations(
-    motion: &ThemeMotion,
-    reduced_motion: bool,
-    preset: SpringPreset,
-) -> (Duration, Duration) {
-    let open_duration_ms = if reduced_motion {
-        motion.fast_duration_ms
-    } else {
-        spring_preset_duration_ms(motion, preset).max(motion.fast_duration_ms)
-    };
-    let close_duration_ms = motion.soft_dismiss_duration_ms;
-
-    (
-        Duration::from_millis(u64::from(open_duration_ms)),
-        Duration::from_millis(u64::from(close_duration_ms)),
-    )
+pub fn expand_collapse_durations(motion: &ThemeMotion) -> (Duration, Duration) {
+    (enter_duration(motion), exit_duration(motion))
 }
 
 /// Shared layout animation for expand-collapse wrappers.
@@ -204,38 +191,10 @@ pub fn expand_collapse_layout_animation(
     entering: bool,
 ) -> Option<Animation> {
     if entering {
-        theme_animation(
-            motion.fast_duration_ms,
-            &motion.fast_invoke_easing,
-            reduced_motion,
-        )
+        enter_animation(motion, reduced_motion)
     } else {
-        theme_animation(
-            motion.soft_dismiss_duration_ms,
-            &motion.soft_dismiss_easing,
-            reduced_motion,
-        )
+        exit_animation(motion, reduced_motion)
     }
-}
-
-/// Shared subtle spring for transform-only content reveal motion.
-///
-/// This is a semantic wrapper over `spring_preset_animation` for call sites that
-/// animate inner content translation/scale/rotation during reveal, as opposed to
-/// `expand_collapse_layout_animation` which is for layout-driven expand/collapse
-/// wrappers. It delegates to `spring_preset_animation` with the provided motion,
-/// reduced-motion flag, and spring preset.
-pub fn subtle_reveal_transform_animation(
-    motion: &ThemeMotion,
-    reduced_motion: bool,
-    preset: SpringPreset,
-) -> Option<Animation> {
-    spring_preset_animation(motion, reduced_motion, preset)
-}
-
-/// Spring invoke animation (uses unbounded easing, transform-only).
-pub fn spring_invoke_animation(motion: &ThemeMotion, reduced_motion: bool) -> Option<Animation> {
-    spring_preset_animation(motion, reduced_motion, SpringPreset::Mild)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -378,10 +337,151 @@ pub fn keyed_presence(
     }
 }
 
+/// The slide a flyout travels as it enters and exits, in logical pixels.
+///
+/// `direction` is +1.0 when the surface opens away from its trigger along the
+/// positive axis (downward / rightward) and -1.0 when flipped.
+#[derive(Clone, Copy, Debug)]
+pub struct FlyoutSlide {
+    pub axis: Axis,
+    pub direction: f32,
+    pub enter_distance: f32,
+    pub exit_distance: f32,
+}
+
+impl FlyoutSlide {
+    /// Vertical slide with the shared flyout distances (4px in, 2px out).
+    pub fn vertical(direction: f32) -> Self {
+        Self {
+            axis: Axis::Vertical,
+            direction,
+            enter_distance: 4.0,
+            exit_distance: 2.0,
+        }
+    }
+
+    /// Horizontal slide with the submenu distances (6px both ways).
+    pub fn horizontal(direction: f32) -> Self {
+        Self {
+            axis: Axis::Horizontal,
+            direction,
+            enter_distance: 6.0,
+            exit_distance: 6.0,
+        }
+    }
+
+    /// Override the exit travel distance.
+    pub fn exit_distance(mut self, distance: f32) -> Self {
+        self.exit_distance = distance;
+        self
+    }
+
+    fn offset(&self, distance: f32, progress: f32) -> gpui::Pixels {
+        px(distance * (1.0 - progress) * self.direction)
+    }
+}
+
+/// The shared presence for flyout surfaces: enter/exit windows come from the
+/// motion tokens (so an exit always outlives its animation) and reduced motion
+/// applies the final state immediately.
+pub fn flyout_presence(
+    key: SharedString,
+    open: bool,
+    options: PresenceOptions,
+    window: &mut Window,
+    cx: &mut App,
+) -> PresenceTransition {
+    let motion = cx.theme().motion.clone();
+    let reduced_motion = GlobalState::global(cx).reduced_motion();
+    keyed_presence(
+        key,
+        open,
+        !reduced_motion,
+        enter_duration(&motion),
+        exit_duration(&motion),
+        options,
+        window,
+        cx,
+    )
+}
+
+/// The one flyout open/close motion, shared by popover, context menu, submenu,
+/// select popup and hover card: enter is the spring sliding from the trigger
+/// plus a standard fade, exit is a standard fade sliding back.
+///
+/// Wrap the surface element with this at the point where its host already
+/// paints it (inside any `deferred`/`anchored` — wrappers outside `anchored`
+/// have no visual effect). `id_base` scopes the animation element ids per
+/// surface instance.
+pub fn flyout_motion(
+    id_base: impl Into<SharedString>,
+    presence: PresenceTransition,
+    slide: FlyoutSlide,
+    motion: &ThemeMotion,
+    reduced_motion: bool,
+    el: impl IntoElement,
+) -> AnyElement {
+    if !presence.transition_active() {
+        return el.into_any_element();
+    }
+
+    let id_base = id_base.into();
+    if matches!(presence.phase, PresencePhase::Entering) {
+        let transformed = if let Some(anim) = spring_animation(motion, reduced_motion) {
+            div()
+                .child(el.into_any_element())
+                .with_animation(
+                    SharedString::from(format!("{}-open-transform", id_base)),
+                    anim,
+                    move |el, delta| match slide.axis {
+                        Axis::Vertical => el.translate_y(slide.offset(slide.enter_distance, delta)),
+                        Axis::Horizontal => {
+                            el.translate_x(slide.offset(slide.enter_distance, delta))
+                        }
+                    },
+                )
+                .into_any_element()
+        } else {
+            el.into_any_element()
+        };
+        if let Some(anim) = standard_animation(motion, reduced_motion) {
+            div()
+                .child(transformed)
+                .with_animation(
+                    SharedString::from(format!("{}-open-fade", id_base)),
+                    anim,
+                    move |el, delta| el.opacity(presence.progress(delta).clamp(0.0, 1.0)),
+                )
+                .into_any_element()
+        } else {
+            transformed
+        }
+    } else if let Some(anim) = exit_animation(motion, reduced_motion) {
+        div()
+            .child(el.into_any_element())
+            .with_animation(
+                SharedString::from(format!("{}-close", id_base)),
+                anim,
+                move |el, delta| {
+                    let progress = presence.progress(delta).clamp(0.0, 1.0);
+                    let offset = slide.offset(slide.exit_distance, progress);
+                    let el = el.opacity(progress);
+                    match slide.axis {
+                        Axis::Vertical => el.translate_y(offset),
+                        Axis::Horizontal => el.translate_x(offset),
+                    }
+                },
+            )
+            .into_any_element()
+    } else {
+        el.into_any_element()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        cubic_bezier, cubic_bezier_unbounded, parse_cubic_bezier_easing, spring_invoke_animation,
+        cubic_bezier, cubic_bezier_unbounded, parse_cubic_bezier_easing, spring_animation,
     };
     use crate::ThemeMotion;
 
@@ -434,9 +534,9 @@ mod tests {
     }
 
     #[test]
-    fn spring_invoke_respects_reduced_motion() {
+    fn spring_respects_reduced_motion() {
         let motion = ThemeMotion::default();
-        assert!(spring_invoke_animation(&motion, true).is_none());
-        assert!(spring_invoke_animation(&motion, false).is_some());
+        assert!(spring_animation(&motion, true).is_none());
+        assert!(spring_animation(&motion, false).is_some());
     }
 }

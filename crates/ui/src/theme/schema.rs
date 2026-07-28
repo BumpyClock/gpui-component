@@ -81,23 +81,15 @@ pub struct ThemeConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct ThemeMotionConfig {
-    pub fast_duration_ms: Option<u16>,
-    pub normal_duration_ms: Option<u16>,
-    pub slow_duration_ms: Option<u16>,
-    pub strong_invoke_duration_ms: Option<u16>,
-    pub soft_dismiss_duration_ms: Option<u16>,
     pub fade_duration_ms: Option<u16>,
-    pub spring_mild_duration_ms: Option<u16>,
-    pub spring_medium_duration_ms: Option<u16>,
-    pub spring_mild_damping_ratio: Option<f32>,
-    pub spring_medium_damping_ratio: Option<f32>,
-    pub spring_mild_frequency: Option<f32>,
-    pub spring_medium_frequency: Option<f32>,
-    pub fast_invoke_easing: Option<SharedString>,
-    pub strong_invoke_easing: Option<SharedString>,
-    pub fast_dismiss_easing: Option<SharedString>,
-    pub soft_dismiss_easing: Option<SharedString>,
-    pub point_to_point_easing: Option<SharedString>,
+    pub exit_duration_ms: Option<u16>,
+    pub enter_duration_ms: Option<u16>,
+    pub emphasis_duration_ms: Option<u16>,
+    pub spring_damping_ratio: Option<f32>,
+    pub spring_frequency: Option<f32>,
+    pub decelerate_easing: Option<SharedString>,
+    pub standard_easing: Option<SharedString>,
+    pub emphasis_easing: Option<SharedString>,
     pub fade_easing: Option<SharedString>,
 }
 
@@ -136,79 +128,43 @@ pub struct ThemeMaterialConfig {
     pub layer_dark: Option<SharedString>,
     pub layer_alt_light: Option<SharedString>,
     pub layer_alt_dark: Option<SharedString>,
-    pub mica_base_light: Option<SharedString>,
-    pub mica_base_dark: Option<SharedString>,
-    pub mica_base_alt_light: Option<SharedString>,
-    pub mica_base_alt_dark: Option<SharedString>,
-    pub acrylic_base_light: Option<SharedString>,
-    pub acrylic_base_dark: Option<SharedString>,
-    pub acrylic_default_light: Option<SharedString>,
-    pub acrylic_default_dark: Option<SharedString>,
 }
 
 impl ThemeMotion {
     fn apply_config(&mut self, config: Option<&ThemeMotionConfig>, default_theme: &ThemeMotion) {
         if let Some(config) = config {
-            self.fast_duration_ms = config
-                .fast_duration_ms
-                .unwrap_or(default_theme.fast_duration_ms);
-            self.normal_duration_ms = config
-                .normal_duration_ms
-                .unwrap_or(default_theme.normal_duration_ms);
-            self.slow_duration_ms = config
-                .slow_duration_ms
-                .unwrap_or(default_theme.slow_duration_ms);
-            self.strong_invoke_duration_ms = config
-                .strong_invoke_duration_ms
-                .unwrap_or(default_theme.strong_invoke_duration_ms);
-            self.soft_dismiss_duration_ms = config
-                .soft_dismiss_duration_ms
-                .unwrap_or(default_theme.soft_dismiss_duration_ms);
             self.fade_duration_ms = config
                 .fade_duration_ms
                 .unwrap_or(default_theme.fade_duration_ms);
-            self.spring_mild_duration_ms = config
-                .spring_mild_duration_ms
-                .unwrap_or(default_theme.spring_mild_duration_ms);
-            self.spring_medium_duration_ms = config
-                .spring_medium_duration_ms
-                .unwrap_or(default_theme.spring_medium_duration_ms);
-            self.spring_mild_damping_ratio = config
-                .spring_mild_damping_ratio
-                .unwrap_or(default_theme.spring_mild_damping_ratio);
-            self.spring_medium_damping_ratio = config
-                .spring_medium_damping_ratio
-                .unwrap_or(default_theme.spring_medium_damping_ratio);
-            self.spring_mild_frequency = config
-                .spring_mild_frequency
-                .unwrap_or(default_theme.spring_mild_frequency);
-            self.spring_medium_frequency = config
-                .spring_medium_frequency
-                .unwrap_or(default_theme.spring_medium_frequency);
-            self.fast_invoke_easing = config
-                .fast_invoke_easing
+            self.exit_duration_ms = config
+                .exit_duration_ms
+                .unwrap_or(default_theme.exit_duration_ms);
+            self.enter_duration_ms = config
+                .enter_duration_ms
+                .unwrap_or(default_theme.enter_duration_ms);
+            self.emphasis_duration_ms = config
+                .emphasis_duration_ms
+                .unwrap_or(default_theme.emphasis_duration_ms);
+            self.spring_damping_ratio = config
+                .spring_damping_ratio
+                .unwrap_or(default_theme.spring_damping_ratio);
+            self.spring_frequency = config
+                .spring_frequency
+                .unwrap_or(default_theme.spring_frequency);
+            self.decelerate_easing = config
+                .decelerate_easing
                 .as_ref()
-                .unwrap_or(&default_theme.fast_invoke_easing)
+                .unwrap_or(&default_theme.decelerate_easing)
                 .clone();
-            self.strong_invoke_easing = config
-                .strong_invoke_easing
+            self.standard_easing = config
+                .standard_easing
                 .as_ref()
-                .unwrap_or(&default_theme.strong_invoke_easing)
+                .unwrap_or(&default_theme.standard_easing)
                 .clone();
-            self.fast_dismiss_easing = config
-                .fast_dismiss_easing
+            self.emphasis_easing = config
+                .emphasis_easing
                 .as_ref()
-                .unwrap_or(&default_theme.fast_dismiss_easing)
-                .clone();
-            self.soft_dismiss_easing = config
-                .soft_dismiss_easing
-                .as_ref()
-                .unwrap_or(&default_theme.soft_dismiss_easing)
-                .clone();
-            self.point_to_point_easing = config
-                .point_to_point_easing
-                .as_ref()
-                .unwrap_or(&default_theme.point_to_point_easing)
+                .unwrap_or(&default_theme.emphasis_easing)
                 .clone();
             self.fade_easing = config
                 .fade_easing
@@ -260,7 +216,7 @@ impl ThemeElevation {
 }
 
 impl ThemeMaterial {
-    fn apply_config(
+    pub(crate) fn apply_config(
         &mut self,
         config: Option<&ThemeMaterialConfig>,
         default_theme: &ThemeMaterial,
@@ -335,46 +291,6 @@ impl ThemeMaterial {
                 .as_ref()
                 .and_then(parse_config_color)
                 .unwrap_or(default_theme.layer_alt_dark);
-            self.mica_base_light = config
-                .mica_base_light
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.mica_base_light);
-            self.mica_base_dark = config
-                .mica_base_dark
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.mica_base_dark);
-            self.mica_base_alt_light = config
-                .mica_base_alt_light
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.mica_base_alt_light);
-            self.mica_base_alt_dark = config
-                .mica_base_alt_dark
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.mica_base_alt_dark);
-            self.acrylic_base_light = config
-                .acrylic_base_light
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.acrylic_base_light);
-            self.acrylic_base_dark = config
-                .acrylic_base_dark
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.acrylic_base_dark);
-            self.acrylic_default_light = config
-                .acrylic_default_light
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.acrylic_default_light);
-            self.acrylic_default_dark = config
-                .acrylic_default_dark
-                .as_ref()
-                .and_then(parse_config_color)
-                .unwrap_or(default_theme.acrylic_default_dark);
             return;
         }
 

@@ -4,25 +4,17 @@ use crate::{ThemeElevation, ThemeMaterial, ThemeMotion, ThemeShadowToken, try_pa
 
 pub(crate) fn theme_motion_defaults() -> ThemeMotion {
     ThemeMotion {
-        // Fluent animation tokens: 187 / 333 / 500 ms cadence
-        fast_duration_ms: 187,
-        normal_duration_ms: 333,
-        slow_duration_ms: 500,
-        strong_invoke_duration_ms: 667,
-        soft_dismiss_duration_ms: 167,
+        // Fluent cadence: 83 fade / 167 dismiss / 187 invoke / 667 emphasis.
         fade_duration_ms: 83,
-        // Spring presets for transform-only open motion.
-        spring_mild_duration_ms: 187,
-        spring_medium_duration_ms: 240,
-        spring_mild_damping_ratio: 0.78,
-        spring_medium_damping_ratio: 0.70,
-        spring_mild_frequency: 2.0,
-        spring_medium_frequency: 1.6,
-        fast_invoke_easing: "cubic-bezier(0, 0, 0, 1)".into(),
-        strong_invoke_easing: "cubic-bezier(0.13, 1.62, 0, 0.92)".into(),
-        fast_dismiss_easing: "cubic-bezier(0, 0, 0, 1)".into(),
-        soft_dismiss_easing: "cubic-bezier(1, 0, 1, 1)".into(),
-        point_to_point_easing: "cubic-bezier(0.55, 0.55, 0, 1)".into(),
+        exit_duration_ms: 167,
+        enter_duration_ms: 187,
+        emphasis_duration_ms: 667,
+        // One spring for transform reveals; settles within the enter window.
+        spring_damping_ratio: 0.78,
+        spring_frequency: 2.0,
+        decelerate_easing: "cubic-bezier(0, 0, 0, 1)".into(),
+        standard_easing: "cubic-bezier(0.55, 0.55, 0, 1)".into(),
+        emphasis_easing: "cubic-bezier(0.13, 1.62, 0, 0.92)".into(),
         fade_easing: "linear".into(),
     }
 }
@@ -38,8 +30,7 @@ pub(crate) fn theme_elevation_defaults() -> ThemeElevation {
         shell_level: 36,
         inactive_window_level: 64,
         active_window_level: 128,
-        // Preserve current gpui-component surface shadow behavior
-        surface_flyout_shadow: ThemeShadowToken::Sm,
+        surface_flyout_shadow: ThemeShadowToken::Md,
         surface_panel_shadow: ThemeShadowToken::Lg,
         surface_card_shadow: ThemeShadowToken::Sm,
     }
@@ -47,12 +38,11 @@ pub(crate) fn theme_elevation_defaults() -> ThemeElevation {
 
 pub(crate) fn theme_material_defaults() -> ThemeMaterial {
     ThemeMaterial {
-        // Preserve existing surface behavior when no config is supplied
-        flyout_blur_radius: px(60.0),
-        panel_blur_radius: px(120.0),
-        flyout_light_opacity: 0.60,
-        flyout_dark_opacity: 0.70,
-        panel_light_opacity: 0.85,
+        flyout_blur_radius: px(24.0),
+        panel_blur_radius: px(48.0),
+        flyout_light_opacity: 0.86,
+        flyout_dark_opacity: 0.88,
+        panel_light_opacity: 0.88,
         panel_dark_opacity: 0.90,
         card_light_opacity: 0.70,
         card_dark_opacity: 0.05,
@@ -66,14 +56,6 @@ pub(crate) fn theme_material_defaults() -> ThemeMaterial {
         layer_dark: fluent_color("#3A3A3A4C"),
         layer_alt_light: fluent_color("#FFFFFFFF"),
         layer_alt_dark: fluent_color("#FFFFFF0D"),
-        mica_base_light: fluent_color("#F3F3F3"),
-        mica_base_dark: fluent_color("#202020"),
-        mica_base_alt_light: fluent_color("#DADADA80"),
-        mica_base_alt_dark: fluent_color("#0A0A0A00"),
-        acrylic_base_light: fluent_color("#F3F3F3"),
-        acrylic_base_dark: fluent_color("#202020"),
-        acrylic_default_light: fluent_color("#FCFCFC"),
-        acrylic_default_dark: fluent_color("#2C2C2C"),
     }
 }
 

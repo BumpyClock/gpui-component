@@ -13,12 +13,16 @@
 //!     .wrap_with_bounds(content, width, height, window, cx, ctx);
 //! ```
 
+mod flyout;
+
+pub use flyout::*;
+
 use gpui::{
-    App, Div, Hsla, ImageSource, IntoElement, ObjectFit, ParentElement, Pixels, Resource, Styled,
-    StyledImage, Window, div, img, px,
+    App, Div, Hsla, ImageSource, IntoElement, ObjectFit, ParentElement, Pixels, Resource, Rgba,
+    Styled, StyledImage, Window, div, img, px,
 };
 
-use crate::{ActiveTheme, StyledExt, ThemeShadowToken};
+use crate::{ActiveTheme, StyledExt, ThemeShadowToken, global_state::GlobalState};
 
 const GLASS_NOISE_ASSET_PATH: &str = "surface/NoiseAsset_256.png";
 const GLASS_NOISE_TILE_SIZE_BASE: f32 = 128.0;
@@ -28,6 +32,15 @@ const GLASS_NOISE_TILE_SIZE_BASE: f32 = 128.0;
 pub struct SurfaceContext {
     /// Whether blur effects are enabled (controlled by app settings).
     pub blur_enabled: bool,
+}
+
+impl SurfaceContext {
+    /// Builds a context from the app's current blur setting.
+    pub(crate) fn new(cx: &App) -> Self {
+        Self {
+            blur_enabled: GlobalState::global(cx).blur_enabled(),
+        }
+    }
 }
 
 /// Semantic categorization of surface types.
@@ -87,13 +100,65 @@ impl ElevationToken {
 }
 
 /// Source for surface background color from theme.
+///
+/// Every variant derives from a theme color, so custom themes tint every surface
+/// automatically. The `Elevated*` variants add the material's luminance character
+/// on top of the theme color — see [`elevated`].
 #[derive(Debug, Clone, Copy, Default)]
 pub enum SurfaceColorSource {
     #[default]
     Popover,
-    White,
     Sidebar,
     Background,
+    /// [`crate::Theme::popover`] lifted to flyout-material luminance.
+    ElevatedPopover,
+    /// [`crate::Theme::sidebar`] lifted to panel-material luminance.
+    ElevatedSidebar,
+    /// [`crate::Theme::background`] lifted toward white for the card wash.
+    ElevatedBackground,
+}
+
+/// Blend fractions lifting a theme color toward the mode's elevation pole — white
+/// in dark mode (surfaces rise toward light), black in light mode (materials sit a
+/// step under a white window). Calibrated so the neutral default theme reproduces
+/// the Fluent material values these replaced — acrylic `#2C2C2C`/`#FCFCFC` and
+/// mica `#202020`/`#F3F3F3` over the default `#0A0A0A`/`#FFFFFF` window — while
+/// tinted themes keep their hue instead of collapsing to those neutrals.
+const FLYOUT_LIFT_DARK: f32 = 34. / 245.;
+const FLYOUT_LIFT_LIGHT: f32 = 3. / 255.;
+const PANEL_LIFT_DARK: f32 = 22. / 245.;
+const PANEL_LIFT_LIGHT: f32 = 12. / 255.;
+/// The card wash blends far toward white in both modes (it replaced a pure white
+/// wash) but keeps enough of the background to carry the theme's hue.
+const CARD_WASH_LIFT: f32 = 0.85;
+
+/// Blends `base` toward `pole` (per sRGB channel) by `amount`, keeping alpha.
+fn mix_toward(base: Hsla, pole: f32, amount: f32) -> Hsla {
+    let base = Rgba::from(base);
+    let channel = |value: f32| value + (pole - value) * amount;
+    Hsla::from(Rgba {
+        r: channel(base.r),
+        g: channel(base.g),
+        b: channel(base.b),
+        a: base.a,
+    })
+}
+
+/// A theme color carried to a material's luminance step: lifted toward white in
+/// dark mode, settled toward black in light mode.
+pub(crate) fn elevated(base: Hsla, is_dark: bool, dark_lift: f32, light_lift: f32) -> Hsla {
+    if is_dark {
+        mix_toward(base, 1.0, dark_lift)
+    } else {
+        mix_toward(base, 0.0, light_lift)
+    }
+}
+
+/// The flyout material's base color for a given theme popover color, before the
+/// flyout opacity is applied. Shared with the theme contrast tests so they measure
+/// the same surface the runtime renders.
+pub(crate) fn flyout_base_color(popover: Hsla, is_dark: bool) -> Hsla {
+    elevated(popover, is_dark, FLYOUT_LIFT_DARK, FLYOUT_LIFT_LIGHT)
 }
 
 /// Background configuration with light/dark mode variants.
@@ -117,11 +182,21 @@ impl Default for SurfaceBackground {
 impl SurfaceBackground {
     /// Resolves the background color based on theme mode and opacity settings.
     pub fn resolve(&self, cx: &App) -> Hsla {
+        let is_dark = cx.theme().mode.is_dark();
         let base = match self.color_source {
             SurfaceColorSource::Popover => cx.theme().popover,
-            SurfaceColorSource::White => gpui::white(),
             SurfaceColorSource::Sidebar => cx.theme().sidebar,
             SurfaceColorSource::Background => cx.theme().background,
+            SurfaceColorSource::ElevatedPopover => flyout_base_color(cx.theme().popover, is_dark),
+            SurfaceColorSource::ElevatedSidebar => elevated(
+                cx.theme().sidebar,
+                is_dark,
+                PANEL_LIFT_DARK,
+                PANEL_LIFT_LIGHT,
+            ),
+            SurfaceColorSource::ElevatedBackground => {
+                mix_toward(cx.theme().background, 1.0, CARD_WASH_LIFT)
+            }
         };
         let opacity = if cx.theme().mode.is_dark() {
             self.dark_opacity
@@ -229,22 +304,22 @@ impl SurfacePreset {
 
     /// Creates a flyout surface preset for menus and dropdowns.
     ///
-    /// - 60px blur radius
+    /// - 24px blur radius
     /// - Subtle noise
-    /// - Popover background at 0.60/0.70 opacity
-    /// - Small elevation with subtle stroke
+    /// - Elevated popover background at 0.86/0.88 opacity
+    /// - Medium elevation with subtle stroke
     /// - 12px border radius
     pub fn flyout() -> Self {
         Self {
             kind: SurfaceKind::Flyout,
-            blur_radius: Some(px(60.0)),
+            blur_radius: Some(px(24.0)),
             noise_intensity: NoiseIntensity::Subtle,
             background: SurfaceBackground {
-                color_source: SurfaceColorSource::Popover,
-                light_opacity: 0.60,
-                dark_opacity: 0.70,
+                color_source: SurfaceColorSource::ElevatedPopover,
+                light_opacity: 0.86,
+                dark_opacity: 0.88,
             },
-            elevation: ElevationToken::Sm,
+            elevation: ElevationToken::Md,
             stroke: Some(StrokeSpec::subtle()),
             transparency_factor: 1.0,
             radius: Some(px(12.0)),
@@ -255,19 +330,19 @@ impl SurfacePreset {
 
     /// Creates a panel surface preset for sidebars and navigation.
     ///
-    /// - 120px blur radius
-    /// - Heavy noise
-    /// - Sidebar background at 0.85/0.90 opacity
+    /// - 48px blur radius
+    /// - Subtle noise
+    /// - Elevated sidebar background at 0.88/0.90 opacity
     /// - Large elevation with subtle stroke
     /// - 16px border radius
     pub fn panel() -> Self {
         Self {
             kind: SurfaceKind::Panel,
-            blur_radius: Some(px(120.0)),
-            noise_intensity: NoiseIntensity::Heavy,
+            blur_radius: Some(px(48.0)),
+            noise_intensity: NoiseIntensity::Subtle,
             background: SurfaceBackground {
-                color_source: SurfaceColorSource::Sidebar,
-                light_opacity: 0.85,
+                color_source: SurfaceColorSource::ElevatedSidebar,
+                light_opacity: 0.88,
                 dark_opacity: 0.90,
             },
             elevation: ElevationToken::Lg,
@@ -283,7 +358,7 @@ impl SurfacePreset {
     ///
     /// - No blur
     /// - No noise
-    /// - White background at 0.70/0.05 opacity
+    /// - Theme-tinted near-white wash at 0.70/0.05 opacity
     /// - Small elevation with default border
     /// - Uses theme radius
     pub fn card() -> Self {
@@ -292,7 +367,7 @@ impl SurfacePreset {
             blur_radius: None,
             noise_intensity: NoiseIntensity::None,
             background: SurfaceBackground {
-                color_source: SurfaceColorSource::White,
+                color_source: SurfaceColorSource::ElevatedBackground,
                 light_opacity: 0.70,
                 dark_opacity: 0.05,
             },
@@ -344,6 +419,61 @@ impl SurfacePreset {
         self
     }
 
+    /// Applies the surface material (radius, background, backdrop blur, stroke, elevation)
+    /// directly to an element.
+    ///
+    /// Use this when the element already owns its layout and only needs the material, e.g.
+    /// a popover body. Use [`Self::wrap_with_bounds`] instead when the surface should also
+    /// render the noise overlay, which requires known bounds.
+    pub(crate) fn apply_material<E>(&self, mut surface: E, cx: &App, ctx: SurfaceContext) -> E
+    where
+        E: Styled + StyledExt,
+    {
+        let radius = self.radius.unwrap_or(cx.theme().radius);
+        let blur_radius = self.resolve_blur_radius(cx);
+        let mut background = self.resolve_background(cx);
+        let elevation = self.resolve_elevation(cx);
+        let uses_opaque_fallback = !ctx.blur_enabled && blur_radius.is_some();
+
+        if uses_opaque_fallback {
+            background.light_opacity = 1.0;
+            background.dark_opacity = 1.0;
+        }
+
+        let transparency_factor = if uses_opaque_fallback {
+            1.0
+        } else {
+            self.transparency_factor
+        };
+        let bg_color = background.resolve(cx).opacity(transparency_factor);
+        surface = surface.rounded(radius);
+
+        if bg_color.a > 0.0 {
+            surface = surface.bg(bg_color);
+        }
+
+        if ctx.blur_enabled {
+            if let Some(blur_radius) = blur_radius {
+                surface = surface.backdrop_blur(blur_radius);
+            }
+        }
+
+        if let Some(ref stroke) = self.stroke {
+            let stroke_color = if matches!(
+                self.background.color_source,
+                SurfaceColorSource::ElevatedPopover | SurfaceColorSource::ElevatedSidebar
+            ) && matches!(stroke.color, StrokeColor::Subtle)
+            {
+                cx.theme().control_stroke
+            } else {
+                stroke.resolve_color(cx)
+            };
+            surface = surface.border(stroke.width).border_color(stroke_color);
+        }
+
+        elevation.apply(surface, cx)
+    }
+
     /// Wraps content in a surface container with all configured effects.
     ///
     /// This method creates a complete surface element with:
@@ -360,35 +490,11 @@ impl SurfacePreset {
         cx: &App,
         ctx: SurfaceContext,
     ) -> Div {
-        let radius = self.radius.unwrap_or(cx.theme().radius);
         let scale_factor = window.scale_factor();
-        let blur_radius = self.resolve_blur_radius(cx);
-        let background = self.resolve_background(cx);
-        let elevation = self.resolve_elevation(cx);
-
-        let bg_color = background.resolve(cx).opacity(self.transparency_factor);
         let noise_opacity = self.noise_intensity.opacity();
         let should_render_noise = ctx.blur_enabled && noise_opacity > 0.0;
 
-        let mut surface = div().relative().rounded(radius).overflow_hidden();
-
-        if bg_color.a > 0.0 {
-            surface = surface.bg(bg_color);
-        }
-
-        if ctx.blur_enabled {
-            if let Some(blur_radius) = blur_radius {
-                surface = surface.backdrop_blur(blur_radius);
-            }
-        }
-
-        if let Some(ref stroke) = self.stroke {
-            surface = surface
-                .border(stroke.width)
-                .border_color(stroke.resolve_color(cx));
-        }
-
-        surface = elevation.apply(surface, cx);
+        let mut surface = self.apply_material(div().relative().overflow_hidden(), cx, ctx);
 
         if should_render_noise {
             surface = surface.child(render_noise_overlay_unclipped(
@@ -414,7 +520,7 @@ impl SurfacePreset {
         }
     }
 
-    fn resolve_background(&self, cx: &App) -> SurfaceBackground {
+    pub(crate) fn resolve_background(&self, cx: &App) -> SurfaceBackground {
         if !self.use_theme_material_defaults {
             return self.background;
         }

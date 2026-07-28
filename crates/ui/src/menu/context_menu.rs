@@ -1,14 +1,17 @@
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
-    AnimationExt as _, AnyElement, App, Context, Corner, DismissEvent, Element, ElementId, Entity,
-    Focusable, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement,
-    IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, StyleRefinement,
+    AnyElement, App, Context, Corner, DismissEvent, Element, ElementId, Entity, Focusable,
+    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement, IntoElement,
+    MouseButton, MouseDownEvent, ParentElement, Pixels, Point, SharedString, StyleRefinement,
     Styled, Subscription, Window, anchored, deferred, div, prelude::FluentBuilder, px,
 };
 
 use crate::{
-    ActiveTheme, animation::fast_invoke_animation, global_state::GlobalState, menu::PopupMenu,
+    ActiveTheme,
+    animation::{FlyoutSlide, PresenceOptions, flyout_motion, flyout_presence},
+    global_state::GlobalState,
+    menu::PopupMenu,
 };
 
 /// A extension trait for adding a context menu to an element.
@@ -167,16 +170,42 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                 };
                 let menu_view = state.shared_state.borrow().menu_view.clone();
                 let mut menu_element = None;
-                if open {
+                let reduced_motion = GlobalState::global(cx).reduced_motion();
+                let motion = cx.theme().motion.clone();
+                let presence = flyout_presence(
+                    SharedString::from(format!("context-menu-presence-{:?}", this.id)),
+                    open,
+                    PresenceOptions::default(),
+                    window,
+                    cx,
+                );
+
+                if presence.should_render() {
                     let has_menu_item = menu_view
                         .as_ref()
                         .map(|menu| !menu.read(cx).is_empty())
                         .unwrap_or(false);
 
                     if has_menu_item {
-                        let motion = &cx.theme().motion;
-                        let reduced_motion = GlobalState::global(cx).reduced_motion();
-                        let anim = fast_invoke_animation(motion, reduced_motion);
+                        let positioned_menu = anchored()
+                            .position(position)
+                            .snap_to_window_with_margin(px(8.))
+                            .anchor(anchor)
+                            .when_some(menu_view, |this, menu| {
+                                if open && !menu.focus_handle(cx).contains_focused(window, cx) {
+                                    menu.focus_handle(cx).focus(window, cx);
+                                }
+
+                                this.child(menu)
+                            });
+                        let animated_menu = flyout_motion(
+                            "context-menu",
+                            presence,
+                            FlyoutSlide::vertical(1.0),
+                            &motion,
+                            reduced_motion,
+                            positioned_menu,
+                        );
 
                         menu_element = Some(
                             deferred(
@@ -187,35 +216,7 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                         .on_scroll_wheel(|_, _, cx| {
                                             cx.stop_propagation();
                                         })
-                                        .child(
-                                            anchored()
-                                                .position(position)
-                                                .snap_to_window_with_margin(px(8.))
-                                                .anchor(anchor)
-                                                .when_some(menu_view, |this, menu| {
-                                                    // Focus the menu, so that can be handle the action.
-                                                    if !menu
-                                                        .focus_handle(cx)
-                                                        .contains_focused(window, cx)
-                                                    {
-                                                        menu.focus_handle(cx).focus(window, cx);
-                                                    }
-
-                                                    this.child(menu)
-                                                }),
-                                        )
-                                        .map(|el| {
-                                            if let Some(anim) = anim {
-                                                el.with_animation(
-                                                    "context-menu-enter",
-                                                    anim,
-                                                    |el, delta| el.opacity(delta),
-                                                )
-                                                .into_any_element()
-                                            } else {
-                                                el.into_any_element()
-                                            }
-                                        }),
+                                        .child(animated_menu),
                                 ),
                             )
                             .with_priority(1)

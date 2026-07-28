@@ -173,7 +173,8 @@ pub(crate) fn checkbox_check_icon(
             }
 
             if value_changed {
-                let duration = Duration::from_millis(u64::from(cx.theme().motion.fast_duration_ms));
+                let duration =
+                    Duration::from_millis(u64::from(cx.theme().motion.enter_duration_ms));
                 let animation = animation_with_theme_easing(
                     Animation::new(duration),
                     cx.theme().motion.fade_easing.as_ref(),

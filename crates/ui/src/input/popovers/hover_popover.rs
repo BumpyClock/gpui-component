@@ -8,7 +8,7 @@ use gpui::{
 };
 
 use crate::{
-    StyledExt,
+    FlyoutTokens, StyledExt, SurfaceContext, SurfacePreset, flyout_primary_foreground,
     input::{InputState, popovers::render_markdown},
 };
 
@@ -189,16 +189,24 @@ impl Element for Popover {
 
         let is_open = *open_state.read(cx);
 
+        let tokens = FlyoutTokens::new(cx);
         let mut popover = deferred(
-            div()
-                .id("hover-popover-content")
-                .when(!is_open, |s| s.invisible())
-                .flex_none()
-                .occlude()
-                .p_1()
-                .text_xs()
-                .popover_style(cx)
-                .shadow_md()
+            SurfacePreset::flyout()
+                .with_radius(tokens.radius)
+                .apply_material(
+                    div()
+                        .id("hover-popover-content")
+                        .when(!is_open, |s| s.invisible())
+                        .flex_none()
+                        .occlude(),
+                    cx,
+                    SurfaceContext::new(cx),
+                )
+                .text_color(flyout_primary_foreground(cx))
+                // Prose, not rows: pad to the shared row rhythm so hover docs line up
+                // with the completion menu labels they sit beside.
+                .p(tokens.item_padding_x)
+                .text_size(tokens.meta_size)
                 .max_w(max_width)
                 .max_h(max_height)
                 .overflow_y_scroll()

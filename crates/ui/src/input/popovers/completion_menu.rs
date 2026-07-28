@@ -13,7 +13,7 @@ const MAX_MENU_HEIGHT: Pixels = px(240.);
 const POPOVER_GAP: Pixels = px(4.);
 
 use crate::{
-    ActiveTheme, IndexPath, Selectable, actions, h_flex,
+    ActiveTheme, FlyoutTokens, IndexPath, Selectable, actions, h_flex,
     input::{
         self, InputState, RopeExt,
         popovers::{editor_popover, render_markdown},
@@ -101,13 +101,16 @@ impl RenderOnce for CompletionMenuItem {
             },
         )];
 
+        let tokens = FlyoutTokens::new(cx);
+
         h_flex()
             .id(self.ix)
-            .gap_2()
-            .p_1()
-            .text_xs()
+            .gap(tokens.icon_gap)
+            .py_1()
+            .px(tokens.item_padding_x)
+            .text_size(tokens.meta_size)
             .line_height(relative(1.))
-            .rounded_sm()
+            .rounded(tokens.item_radius)
             .when(item.deprecated.unwrap_or(false), |this| this.line_through())
             .hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
             .when(self.selected, |this| {
@@ -443,7 +446,7 @@ impl Render for CompletionMenu {
                         div().child(
                             editor_popover("completion-menu", cx)
                                 .w(MAX_MENU_WIDTH)
-                                .px_2()
+                                .p(FlyoutTokens::new(cx).item_padding_x)
                                 .child(render_markdown("doc", doc, window, cx)),
                         ),
                     )

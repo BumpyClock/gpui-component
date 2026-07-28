@@ -16,7 +16,7 @@ use gpui::{
 };
 
 use crate::{
-    ActiveTheme, StyledExt as _,
+    ActiveTheme, FlyoutTokens, SurfaceContext, SurfacePreset, flyout_primary_foreground,
     text::{TextView, TextViewStyle},
 };
 
@@ -69,13 +69,23 @@ pub(super) fn render_markdown(
         .selectable(true)
 }
 
+/// Container for the editor's transient surfaces (completion, code actions, mouse
+/// context menu, documentation).
+///
+/// Shares the flyout material and geometry with the rest of the library, but stays
+/// on the `meta` type step: these surfaces overlay live code, so density is
+/// functional rather than decorative.
 pub(super) fn editor_popover(id: impl Into<ElementId>, cx: &App) -> Stateful<Div> {
-    div()
-        .id(id)
-        .flex_none()
-        .occlude()
-        .popover_style(cx)
-        .shadow_md()
-        .text_xs()
-        .p_1()
+    let tokens = FlyoutTokens::new(cx);
+
+    SurfacePreset::flyout()
+        .with_radius(tokens.radius)
+        .apply_material(
+            div().id(id).flex_none().occlude(),
+            cx,
+            SurfaceContext::new(cx),
+        )
+        .text_color(flyout_primary_foreground(cx))
+        .text_size(tokens.meta_size)
+        .p(tokens.inset)
 }

@@ -1,12 +1,17 @@
 use gpui::{
     AnyElement, App, Bounds, Context, ElementId, InteractiveElement as _, IntoElement,
-    ParentElement, Pixels, Render, RenderOnce, StatefulInteractiveElement, StyleRefinement, Styled,
-    Task, Window, div, prelude::FluentBuilder as _,
+    ParentElement, Pixels, Render, RenderOnce, SharedString, StatefulInteractiveElement,
+    StyleRefinement, Styled, Task, Window, div, prelude::FluentBuilder as _,
 };
 use std::rc::Rc;
 use std::time::Duration;
 
-use crate::{Anchor, ElementExt, StyledExt as _, popover::Popover};
+use crate::{
+    ActiveTheme as _, Anchor, ElementExt, StyledExt as _,
+    animation::{FlyoutSlide, PresenceOptions, flyout_motion, flyout_presence},
+    global_state::GlobalState,
+    popover::Popover,
+};
 
 /// A hover card element that displays content when hovering over a trigger element.
 ///
@@ -293,9 +298,30 @@ impl RenderOnce for HoverCard {
                 }),
         );
 
-        if !open {
+        // Same presence and motion as Popover: enter spring+fade, exit fade —
+        // previously the card popped in and out with no transition at all.
+        let motion = cx.theme().motion.clone();
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let presence = flyout_presence(
+            SharedString::from(format!("hover-card-presence-{}", state.entity_id())),
+            open,
+            PresenceOptions::default(),
+            window,
+            cx,
+        );
+        if !presence.should_render() {
             return root;
         }
+
+        let vertical_direction = if matches!(
+            self.anchor,
+            Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight
+        ) {
+            -1.0
+        } else {
+            1.0
+        };
+        let slide = FlyoutSlide::vertical(vertical_direction);
 
         let popover_content =
             Popover::render_popover_content(self.anchor, self.appearance, window, cx)
@@ -307,7 +333,10 @@ impl RenderOnce for HoverCard {
                     this.child(state.update(cx, |state, cx| (content)(state, window, cx)))
                 })
                 .children(self.children)
-                .refine_style(&self.style);
+                .refine_style(&self.style)
+                .map(move |el| {
+                    flyout_motion("hover-card", presence, slide, &motion, reduced_motion, el)
+                });
 
         root.child(Popover::render_popover(
             self.anchor,

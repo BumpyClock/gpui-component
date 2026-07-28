@@ -36,8 +36,6 @@ mod state;
 mod types;
 mod view;
 
-use std::time::Duration;
-
 pub use matcher::{FuzzyMatcherWrapper, NucleoMatcher};
 pub use provider::{CommandPaletteProvider, StaticProvider};
 pub use state::{CommandPaletteEvent, CommandPaletteState};
@@ -46,17 +44,13 @@ pub use types::{
     CommandPaletteMatch, MatchedItem,
 };
 
-const REVEAL_DELAY_MS: u64 = 100;
-const REVEAL_ANIMATION_DURATION_MS: u64 = 180;
-pub(crate) const REVEAL_QUERY_DELAY: Duration =
-    Duration::from_millis(REVEAL_DELAY_MS + REVEAL_ANIMATION_DURATION_MS);
-
-pub(crate) fn reveal_delay(cx: &App) -> Duration {
-    Duration::from_millis(u64::from(cx.theme().motion.fade_duration_ms))
+pub(crate) fn reveal_delay(cx: &App) -> std::time::Duration {
+    std::time::Duration::from_millis(u64::from(cx.theme().motion.fade_duration_ms))
 }
 
-pub(crate) fn reveal_animation_duration(cx: &App) -> Duration {
-    Duration::from_millis(u64::from(cx.theme().motion.fast_duration_ms))
+pub(crate) fn reveal_query_delay(cx: &App) -> std::time::Duration {
+    reveal_delay(cx)
+        + std::time::Duration::from_millis(u64::from(cx.theme().motion.enter_duration_ms))
 }
 
 use gpui::{App, AppContext as _, Entity, KeyBinding, ParentElement as _, Styled, Window, actions};
@@ -162,6 +156,9 @@ impl CommandPalette {
                 .overlay_closable(true)
                 .keyboard(true)
                 .animate(false)
+                // No dialog-chrome animation, but keep the dialog mounted
+                // through the exit window so the palette can animate out.
+                .defer_close(true)
                 .appearance(false)
                 .close_button(false)
                 .p_0()

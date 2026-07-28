@@ -14,6 +14,8 @@ pub struct GlobalState {
     blur_enabled_stack: Vec<bool>,
     /// Stack for reduced_motion context values.
     reduced_motion_stack: Vec<bool>,
+    /// Stack for layer_closing context values (see [`crate::ClosingScope`]).
+    layer_closing_stack: Vec<bool>,
     /// Stack for floating inset values.
     floating_inset_stack: Vec<Pixels>,
 }
@@ -24,6 +26,7 @@ impl GlobalState {
             text_view_state_stack: Vec::new(),
             blur_enabled_stack: vec![true],    // Default to enabled
             reduced_motion_stack: vec![false], // Default to not reduced
+            layer_closing_stack: vec![false],  // Default to not closing
             floating_inset_stack: vec![px(4.0)],
         }
     }
@@ -88,6 +91,23 @@ impl GlobalState {
     pub fn set_reduced_motion(&mut self, reduced: bool) {
         if let Some(first) = self.reduced_motion_stack.first_mut() {
             *first = reduced;
+        }
+    }
+
+    /// Returns whether the enclosing root layer (dialog, sheet) is closing.
+    pub fn layer_closing(&self) -> bool {
+        self.layer_closing_stack.last().copied().unwrap_or(false)
+    }
+
+    /// Push a layer_closing value onto the context stack.
+    pub(crate) fn push_layer_closing(&mut self, closing: bool) {
+        self.layer_closing_stack.push(closing);
+    }
+
+    /// Pop a layer_closing value from the context stack.
+    pub(crate) fn pop_layer_closing(&mut self) {
+        if self.layer_closing_stack.len() > 1 {
+            self.layer_closing_stack.pop();
         }
     }
 

@@ -1,23 +1,23 @@
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::actions::{SelectLeft, SelectRight};
-use crate::animation::{
-    PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
-    spring_preset_animation, spring_preset_duration_ms,
-};
+use crate::animation::{FlyoutSlide, PresenceOptions, flyout_motion, flyout_presence};
 use crate::global_state::GlobalState;
 use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::ScrollableElement;
-use crate::{ActiveTheme, ElementExt, Icon, IconName, Sizable as _, SurfaceContext};
+use crate::{
+    ActiveTheme, ElementExt, FlyoutTokens, Icon, IconName, Sizable as _, SurfaceContext,
+    flyout_disabled_foreground, flyout_primary_foreground, flyout_secondary_foreground,
+    flyout_selected_secondary_foreground,
+};
 use crate::{Side, Size, SurfacePreset, h_flex, kbd::Kbd, v_flex};
 use gpui::{
-    Action, AnimationExt as _, AnyElement, App, AppContext, Bounds, Context, Corner, DismissEvent,
-    Edges, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    KeyBinding, ParentElement, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, WeakEntity, Window, anchored, div, prelude::FluentBuilder,
-    px, rems,
+    Action, AnyElement, App, AppContext, Bounds, Context, Corner, DismissEvent, Edges, Entity,
+    EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
+    ParentElement, Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled,
+    WeakEntity, Window, anchored, div, prelude::FluentBuilder, px,
 };
-use gpui::{ClickEvent, Half, MouseDownEvent, OwnedMenuItem, Point, Subscription};
-use std::{rc::Rc, time::Duration};
+use gpui::{ClickEvent, MouseDownEvent, OwnedMenuItem, Point, Subscription};
+use std::rc::Rc;
 
 const CONTEXT: &str = "PopupMenu";
 
@@ -250,6 +250,16 @@ impl PopupMenuItem {
     #[inline]
     fn is_separator(&self) -> bool {
         matches!(self, PopupMenuItem::Separator)
+    }
+
+    #[inline]
+    fn is_disabled(&self) -> bool {
+        matches!(
+            self,
+            PopupMenuItem::Item { disabled: true, .. }
+                | PopupMenuItem::ElementItem { disabled: true, .. }
+                | PopupMenuItem::Submenu { disabled: true, .. }
+        )
     }
 
     fn has_left_icon(&self, check_side: Side) -> bool {
@@ -980,10 +990,19 @@ impl PopupMenu {
     fn render_key_binding(
         &self,
         action: Option<&dyn Action>,
+        selected: bool,
+        disabled: bool,
         window: &mut Window,
-        _: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> Option<Kbd> {
         let action = action?;
+        let color = if selected && !disabled {
+            flyout_selected_secondary_foreground(cx)
+        } else if disabled {
+            flyout_disabled_foreground(cx)
+        } else {
+            flyout_secondary_foreground(cx)
+        };
 
         match self
             .action_context
@@ -998,6 +1017,7 @@ impl PopupMenu {
             this.p_0()
                 .flex_nowrap()
                 .border_0()
+                .text_color(color)
                 .bg(gpui::transparent_white())
         })
     }
@@ -1006,8 +1026,10 @@ impl PopupMenu {
         has_icon: bool,
         checked: bool,
         icon: Option<Icon>,
+        selected: bool,
+        disabled: bool,
         _: &mut Window,
-        _: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
         if !has_icon {
             return None;
@@ -1021,18 +1043,34 @@ impl PopupMenu {
             Icon::empty()
         };
 
-        Some(icon.xsmall())
+        let color = if selected && !disabled {
+            cx.theme().primary_foreground
+        } else if checked && !disabled {
+            cx.theme().primary
+        } else if disabled {
+            flyout_disabled_foreground(cx)
+        } else {
+            flyout_secondary_foreground(cx)
+        };
+
+        Some(
+            h_flex()
+                .w_4()
+                .justify_center()
+                .child(icon.xsmall().text_color(color)),
+        )
     }
 
     #[inline]
-    fn max_width(&self) -> Pixels {
-        self.max_width.unwrap_or(px(500.))
+    fn max_width(&self, cx: &App) -> Pixels {
+        self.max_width
+            .unwrap_or_else(|| FlyoutTokens::sized(self.size, cx).max_width)
     }
 
     /// Calculate the anchor corner and left offset for child submenu
-    fn update_submenu_menu_anchor(&mut self, window: &Window) {
+    fn update_submenu_menu_anchor(&mut self, window: &Window, cx: &App) {
         let bounds = self.bounds;
-        let max_width = self.max_width();
+        let max_width = self.max_width(cx);
         let (anchor, left) = if max_width + bounds.origin.x > window.bounds().size.width {
             (Corner::TopRight, -px(16.))
         } else {
@@ -1057,30 +1095,38 @@ impl PopupMenu {
     ) -> MenuItemElement {
         let has_left_icon = options.has_left_icon;
         let is_left_check = options.check_side.is_left() && item.is_checked();
+        let selected = self.selected_index == Some(ix);
+        let disabled = item.is_disabled();
         let right_check_icon = if options.check_side.is_right() && item.is_checked() {
-            Some(Icon::new(IconName::Check).xsmall())
+            Some(
+                Icon::new(IconName::Check)
+                    .xsmall()
+                    .text_color(if selected && !disabled {
+                        cx.theme().primary_foreground
+                    } else if disabled {
+                        flyout_disabled_foreground(cx)
+                    } else {
+                        cx.theme().primary
+                    }),
+            )
         } else {
             None
         };
 
-        let selected = self.selected_index == Some(ix);
+        /// Margin kept between a submenu and the window edge when it snaps.
         const EDGE_PADDING: Pixels = px(4.);
-        const INNER_PADDING: Pixels = px(8.);
 
+        let tokens = options.tokens;
         let is_submenu = matches!(item, PopupMenuItem::Submenu { .. });
         let group_name = format!("{}:item-{}", cx.entity().entity_id(), ix);
-
-        let (item_height, radius) = match self.size {
-            Size::Small => (px(20.), options.radius.half()),
-            _ => (px(26.), options.radius),
-        };
+        let item_height = tokens.item_height;
 
         let this = MenuItemElement::new(ix, &group_name)
             .relative()
-            .text_sm()
+            .text_size(tokens.label_size)
             .py_0()
-            .px(INNER_PADDING)
-            .rounded(radius)
+            .px(tokens.item_padding_x)
+            .rounded(tokens.item_radius)
             .items_center()
             .selected(selected)
             .on_hover(cx.listener(move |this, hovered, _, cx| {
@@ -1095,22 +1141,42 @@ impl PopupMenu {
             }));
 
         match item {
+            // The rule spans the full row box so it shares one alignment line with
+            // the row hover/selection background instead of introducing a second.
             PopupMenuItem::Separator => this
                 .h_auto()
                 .p_0()
-                .my_0p5()
-                .mx_neg_1()
-                .border_b(px(2.))
+                .my(tokens.separator_margin)
+                .mx_0()
+                .border_b(px(1.))
                 .border_color(cx.theme().border)
                 .disabled(true),
-            PopupMenuItem::Label(label) => this.disabled(true).cursor_default().child(
-                h_flex()
-                    .cursor_default()
-                    .items_center()
-                    .gap_x_1()
-                    .children(Self::render_icon(has_left_icon, false, None, window, cx))
-                    .child(div().flex_1().child(label.clone())),
-            ),
+            PopupMenuItem::Label(label) => this
+                .h(tokens.section_header_height)
+                .text_size(tokens.meta_size)
+                .font_weight(tokens.section_weight)
+                .disabled(true)
+                .cursor_default()
+                .child(
+                    h_flex()
+                        .cursor_default()
+                        // `disabled(true)` above only makes the header inert; its text
+                        // stays on the secondary step so it separates from genuinely
+                        // disabled rows one step further down.
+                        .text_color(flyout_secondary_foreground(cx))
+                        .items_center()
+                        .gap(tokens.icon_gap)
+                        .children(Self::render_icon(
+                            has_left_icon,
+                            false,
+                            None,
+                            false,
+                            true,
+                            window,
+                            cx,
+                        ))
+                        .child(div().flex_1().child(label.clone())),
+                ),
             PopupMenuItem::ElementItem {
                 render,
                 icon,
@@ -1128,16 +1194,18 @@ impl PopupMenu {
                         .flex_1()
                         .min_h(item_height)
                         .items_center()
-                        .gap_x_1()
+                        .gap(tokens.icon_gap)
                         .children(Self::render_icon(
                             has_left_icon,
                             is_left_check,
                             icon.clone(),
+                            selected,
+                            *disabled,
                             window,
                             cx,
                         ))
                         .child((render)(window, cx))
-                        .children(right_check_icon.map(|icon| icon.ml_3())),
+                        .children(right_check_icon.map(|icon| icon.ml(tokens.accessory_gap))),
                 ),
             PopupMenuItem::Item {
                 icon,
@@ -1148,7 +1216,15 @@ impl PopupMenu {
                 ..
             } => {
                 let show_link_icon = *is_link && self.external_link_icon;
-                let key = self.render_key_binding(action.as_deref(), window, cx);
+                let key =
+                    self.render_key_binding(action.as_deref(), selected, *disabled, window, cx);
+                let accessory_color = if selected && !disabled {
+                    flyout_selected_secondary_foreground(cx)
+                } else if *disabled {
+                    flyout_disabled_foreground(cx)
+                } else {
+                    flyout_secondary_foreground(cx)
+                };
 
                 this.when(!disabled, |this| {
                     this.on_click(
@@ -1157,18 +1233,20 @@ impl PopupMenu {
                 })
                 .disabled(*disabled)
                 .h(item_height)
-                .gap_x_1()
+                .gap(tokens.icon_gap)
                 .children(Self::render_icon(
                     has_left_icon,
                     is_left_check,
                     icon.clone(),
+                    selected,
+                    *disabled,
                     window,
                     cx,
                 ))
                 .child(
                     h_flex()
                         .w_full()
-                        .gap_3()
+                        .gap(tokens.accessory_gap)
                         .items_center()
                         .justify_between()
                         .when(!show_link_icon, |this| this.child(label.clone()))
@@ -1178,12 +1256,12 @@ impl PopupMenu {
                                 h_flex()
                                     .w_full()
                                     .justify_between()
-                                    .gap_1p5()
+                                    .gap(tokens.icon_gap)
                                     .child(label.clone())
                                     .child(
                                         Icon::new(IconName::ExternalLink)
                                             .xsmall()
-                                            .text_color(cx.theme().muted_foreground),
+                                            .text_color(accessory_color),
                                     ),
                             )
                         })
@@ -1198,30 +1276,17 @@ impl PopupMenu {
             } => {
                 let reduced_motion = GlobalState::global(cx).reduced_motion();
                 let motion = cx.theme().motion.clone();
-                let open_duration_ms = if reduced_motion {
-                    motion.fast_duration_ms
-                } else {
-                    spring_preset_duration_ms(&motion, SpringPreset::Medium)
-                        .max(motion.fast_duration_ms)
-                };
-                let submenu_presence = keyed_presence(
+                let submenu_presence = flyout_presence(
                     SharedString::from(format!(
                         "popup-menu-submenu-presence-{}-{}",
                         cx.entity().entity_id(),
                         ix
                     )),
                     selected,
-                    !reduced_motion,
-                    Duration::from_millis(u64::from(open_duration_ms)),
-                    Duration::from_millis(u64::from(motion.fade_duration_ms)),
                     PresenceOptions::default(),
                     window,
                     cx,
                 );
-                let submenu_open_opacity_anim = point_to_point_animation(&motion, reduced_motion);
-                let submenu_open_transform_anim =
-                    spring_preset_animation(&motion, reduced_motion, SpringPreset::Medium);
-                let submenu_close_anim = point_to_point_animation(&motion, reduced_motion);
 
                 this.selected(selected)
                     .disabled(*disabled)
@@ -1231,26 +1296,32 @@ impl PopupMenu {
                             .min_h(item_height)
                             .size_full()
                             .items_center()
-                            .gap_x_1()
+                            .gap(tokens.icon_gap)
                             .children(Self::render_icon(
                                 has_left_icon,
                                 false,
                                 icon.clone(),
+                                selected,
+                                *disabled,
                                 window,
                                 cx,
                             ))
                             .child(
                                 h_flex()
                                     .flex_1()
-                                    .gap_2()
+                                    .gap(tokens.accessory_gap)
                                     .items_center()
                                     .justify_between()
                                     .child(label.clone())
-                                    .child(
-                                        Icon::new(IconName::ChevronRight)
-                                            .xsmall()
-                                            .text_color(cx.theme().muted_foreground),
-                                    ),
+                                    .child(Icon::new(IconName::ChevronRight).xsmall().text_color(
+                                        if selected && !disabled {
+                                            flyout_selected_secondary_foreground(cx)
+                                        } else if *disabled {
+                                            flyout_disabled_foreground(cx)
+                                        } else {
+                                            flyout_secondary_foreground(cx)
+                                        },
+                                    )),
                             ),
                     )
                     .when(submenu_presence.should_render(), |this| {
@@ -1264,92 +1335,34 @@ impl PopupMenu {
                                 } else {
                                     1.0
                                 };
-                            let submenu = anchored()
-                                .anchor(anchor)
-                                .child(
-                                    div()
-                                        .id("submenu")
-                                        .occlude()
-                                        .when(is_bottom_pos, |this| this.bottom_0())
-                                        .when(!is_bottom_pos, |this| this.top_neg_1())
-                                        .left(left)
-                                        .child(menu.clone()),
-                                )
-                                .snap_to_window_with_margin(Edges::all(EDGE_PADDING));
+                            let submenu_inner = div()
+                                .id("submenu")
+                                .occlude()
+                                .when(is_bottom_pos, |this| this.bottom_0())
+                                .when(!is_bottom_pos, |this| this.top_neg_1())
+                                .left(left)
+                                .child(menu.clone());
 
-                            if submenu_presence.transition_active() {
-                                if matches!(submenu_presence.phase, PresencePhase::Entering) {
-                                    let transformed =
-                                        if let Some(anim) = submenu_open_transform_anim {
-                                            div()
-                                                .child(submenu)
-                                                .with_animation(
-                                                    SharedString::from(format!(
-                                                        "popup-submenu-open-transform-{}",
-                                                        ix
-                                                    )),
-                                                    anim,
-                                                    move |el, delta| {
-                                                        el.translate_x(px(direction
-                                                            * 6.0
-                                                            * (1.0 - delta)))
-                                                    },
-                                                )
-                                                .into_any_element()
-                                        } else {
-                                            div().child(submenu).into_any_element()
-                                        };
-                                    if let Some(anim) = submenu_open_opacity_anim {
-                                        div()
-                                            .child(transformed)
-                                            .with_animation(
-                                                SharedString::from(format!(
-                                                    "popup-submenu-open-opacity-{}",
-                                                    ix
-                                                )),
-                                                anim,
-                                                move |el, delta| {
-                                                    el.opacity(
-                                                        submenu_presence
-                                                            .progress(delta)
-                                                            .clamp(0.0, 1.0),
-                                                    )
-                                                },
-                                            )
-                                            .into_any_element()
-                                    } else {
-                                        div()
-                                            .child(transformed)
-                                            .opacity(submenu_presence.progress(1.0))
-                                            .into_any_element()
-                                    }
-                                } else {
-                                    if let Some(anim) = submenu_close_anim {
-                                        div()
-                                            .child(submenu)
-                                            .with_animation(
-                                                SharedString::from(format!(
-                                                    "popup-submenu-close-motion-{}",
-                                                    ix
-                                                )),
-                                                anim,
-                                                move |el, delta| {
-                                                    let progress = submenu_presence
-                                                        .progress(delta)
-                                                        .clamp(0.0, 1.0);
-                                                    el.opacity(progress).translate_x(px(direction
-                                                        * 6.0
-                                                        * (1.0 - progress)))
-                                                },
-                                            )
-                                            .into_any_element()
-                                    } else {
-                                        submenu.into_any_element()
-                                    }
-                                }
-                            } else {
-                                submenu.into_any_element()
-                            }
+                            // The motion wraps the *content inside* `anchored`:
+                            // wrappers outside it have no visual effect, because
+                            // anchored repositions its children after layout.
+                            let animated_inner = flyout_motion(
+                                SharedString::from(format!("popup-submenu-{}", ix)),
+                                submenu_presence,
+                                FlyoutSlide::horizontal(direction),
+                                &motion,
+                                reduced_motion,
+                                submenu_inner,
+                            );
+
+                            gpui::deferred(
+                                anchored()
+                                    .anchor(anchor)
+                                    .child(animated_inner)
+                                    .snap_to_window_with_margin(Edges::all(EDGE_PADDING)),
+                            )
+                            .with_priority(2)
+                            .into_any_element()
                         })
                     })
             }
@@ -1369,13 +1382,14 @@ impl Focusable for PopupMenu {
 struct RenderOptions {
     has_left_icon: bool,
     check_side: Side,
-    radius: Pixels,
+    tokens: FlyoutTokens,
 }
 
 impl Render for PopupMenu {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.update_submenu_menu_anchor(window);
+        self.update_submenu_menu_anchor(window, cx);
 
+        let tokens = FlyoutTokens::sized(self.size, cx);
         let view = cx.entity();
         let items_count = self.menu_items.len();
 
@@ -1389,16 +1403,14 @@ impl Render for PopupMenu {
             .iter()
             .any(|item| item.has_left_icon(self.check_side));
 
-        let max_width = self.max_width();
+        let max_width = self.max_width(cx);
         let options = RenderOptions {
             has_left_icon,
             check_side: self.check_side,
-            radius: cx.theme().radius.min(px(8.)),
+            tokens,
         };
 
-        let surface_ctx = SurfaceContext {
-            blur_enabled: GlobalState::global(cx).blur_enabled(),
-        };
+        let surface_ctx = SurfaceContext::new(cx);
         let surface_width = if self.bounds.size.width > px(0.) {
             self.bounds.size.width
         } else {
@@ -1421,15 +1433,15 @@ impl Render for PopupMenu {
             .on_action(cx.listener(Self::confirm))
             .on_action(cx.listener(Self::dismiss))
             .on_mouse_down_out(cx.listener(Self::on_mouse_down_out))
-            .text_color(cx.theme().popover_foreground)
+            .text_color(flyout_primary_foreground(cx))
             .relative()
             .occlude()
             .child(
                 v_flex()
                     .id("items")
-                    .p_1()
-                    .gap_y_0p5()
-                    .min_w(rems(8.))
+                    .p(tokens.inset)
+                    .gap(tokens.item_gap)
+                    .min_w(tokens.min_width)
                     .when_some(self.min_width, |this, min_width| this.min_w(min_width))
                     .max_w(max_width)
                     .when(self.scrollable, |this| {
@@ -1453,7 +1465,7 @@ impl Render for PopupMenu {
             });
 
         SurfacePreset::flyout()
-            .with_radius(cx.theme().radius)
+            .with_radius(tokens.radius)
             .wrap_with_bounds(
                 content,
                 surface_width,

@@ -2,6 +2,7 @@ use gpui::{App, SharedString};
 use std::ops::Deref;
 
 mod anchored;
+mod closing_scope;
 mod element_ext;
 mod event;
 mod floating_sidebar;
@@ -81,6 +82,7 @@ pub mod tree;
 
 pub use crate::Disableable;
 pub(crate) use anchored::*;
+pub use closing_scope::{ClosingScope, is_layer_closing};
 pub use element_ext::ElementExt;
 pub use event::InteractiveElementExt;
 pub use floating_sidebar::*;

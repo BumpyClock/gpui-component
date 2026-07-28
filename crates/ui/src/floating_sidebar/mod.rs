@@ -1,6 +1,8 @@
 //! FloatingSidebar combines SidebarShell and Sidebar with internal resize handling.
 
+use std::cell::Cell;
 use std::rc::Rc;
+use std::time::Duration;
 
 use gpui::{
     App, Element, ElementId, Hsla, IntoElement, MouseMoveEvent, MouseUpEvent, ParentElement,
@@ -8,7 +10,9 @@ use gpui::{
 };
 
 use crate::{
-    ElevationToken, Side, StyledExt,
+    ActiveTheme, ElevationToken, Side, StyledExt,
+    animation::{PresenceOptions, keyed_presence, theme_animation},
+    global_state::GlobalState,
     sidebar::{COLLAPSED_WIDTH, DEFAULT_WIDTH, Sidebar, SidebarItem},
     sidebar_shell::SidebarShell,
 };
@@ -16,32 +20,83 @@ use crate::{
 /// Default values for floating sidebar configuration.
 const DEFAULT_MIN_WIDTH: Pixels = px(200.0);
 const DEFAULT_MAX_WIDTH: Pixels = px(400.0);
-const DEFAULT_RESIZER_WIDTH: Pixels = px(6.0);
+const DEFAULT_RESIZER_WIDTH: Pixels = px(8.0);
 const DEFAULT_INSET: Pixels = px(8.0);
 
 #[derive(Clone)]
 struct FloatingSidebarState {
     expanded_width: Pixels,
+    visual_width: Rc<Cell<Pixels>>,
+    transition_from: Pixels,
+    transition_duration_ms: u16,
+    transition_generation: u64,
+    last_collapsed: bool,
     resizing: bool,
     drag_origin_x: Pixels,
     drag_origin_width: Pixels,
 }
 
 impl FloatingSidebarState {
-    fn new(width: Pixels) -> Self {
+    fn new(width: Pixels, collapsed: bool) -> Self {
+        let visual_width = if collapsed { COLLAPSED_WIDTH } else { width };
         Self {
             expanded_width: width,
+            visual_width: Rc::new(Cell::new(visual_width)),
+            transition_from: visual_width,
+            transition_duration_ms: 0,
+            transition_generation: 0,
+            last_collapsed: collapsed,
             resizing: false,
             drag_origin_x: px(0.0),
             drag_origin_width: width,
         }
     }
+
+    fn begin_width_transition(
+        &mut self,
+        collapsed: bool,
+        target_width: Pixels,
+        expanded_width: Pixels,
+        base_duration_ms: u16,
+    ) {
+        if self.last_collapsed == collapsed {
+            return;
+        }
+
+        self.last_collapsed = collapsed;
+        self.transition_from = self.visual_width.get();
+        self.transition_duration_ms = scaled_width_transition_duration_ms(
+            self.transition_from,
+            target_width,
+            expanded_width,
+            base_duration_ms,
+        );
+        self.transition_generation += 1;
+    }
+}
+
+fn scaled_width_transition_duration_ms(
+    from: Pixels,
+    target: Pixels,
+    expanded_width: Pixels,
+    base_duration_ms: u16,
+) -> u16 {
+    let full_distance = (expanded_width - COLLAPSED_WIDTH).as_f32().abs();
+    if full_distance <= f32::EPSILON {
+        return 1;
+    }
+
+    let remaining_distance = (target - from).as_f32().abs().min(full_distance);
+    ((f32::from(base_duration_ms) * remaining_distance / full_distance).round() as u16).max(1)
 }
 
 /// A floating sidebar that composes SidebarShell and Sidebar with internal resize handling.
 ///
 /// By default, the sidebar uses the theme's panel elevation. Explicit elevation overrides may
 /// require a larger inset near window edges to avoid native-window clipping.
+///
+/// Collapse and expand transitions use the theme's point-to-point motion and become immediate
+/// when reduced motion is enabled.
 #[derive(IntoElement)]
 pub struct FloatingSidebar<E: SidebarItem + 'static> {
     id: ElementId,
@@ -256,7 +311,7 @@ impl<E: SidebarItem> RenderOnce for FloatingSidebar<E> {
         let initial_width = width.max(min_width).min(max_width);
         let state_key = SharedString::from(format!("{}-floating-sidebar-state", id));
         let state = window.use_keyed_state(state_key, cx, |_, _| {
-            FloatingSidebarState::new(initial_width)
+            FloatingSidebarState::new(initial_width, collapsed)
         });
 
         let expanded_width = {
@@ -265,18 +320,62 @@ impl<E: SidebarItem> RenderOnce for FloatingSidebar<E> {
             if clamped_width != current_width {
                 state.update(cx, |state, cx| {
                     state.expanded_width = clamped_width;
+                    if !state.last_collapsed {
+                        state.visual_width.set(clamped_width);
+                    }
                     cx.notify();
                 });
             }
             clamped_width
         };
 
-        let shell_width = if collapsed {
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let motion = cx.theme().motion.clone();
+        let width_spring_duration_ms = motion.enter_duration_ms;
+        let target_width = if collapsed {
             COLLAPSED_WIDTH
         } else {
             expanded_width
         };
-        let resizer_width = if collapsed { px(0.0) } else { resizer_width };
+        let base_duration_ms = if collapsed {
+            width_spring_duration_ms.max(motion.exit_duration_ms)
+        } else {
+            width_spring_duration_ms.max(motion.enter_duration_ms)
+        };
+        state.update(cx, |state, _| {
+            state.begin_width_transition(collapsed, target_width, expanded_width, base_duration_ms);
+        });
+        let (from_width, width_duration_ms, transition_generation, visual_width) = {
+            let state = state.read(cx);
+            (
+                state.transition_from,
+                state.transition_duration_ms,
+                state.transition_generation,
+                state.visual_width.clone(),
+            )
+        };
+        let width_presence = keyed_presence(
+            SharedString::from(format!("{}-floating-sidebar-width", id)),
+            !collapsed,
+            !reduced_motion,
+            Duration::from_millis(u64::from(width_duration_ms.max(1))),
+            Duration::from_millis(u64::from(width_duration_ms.max(1))),
+            PresenceOptions::default(),
+            window,
+            cx,
+        );
+        let transition_active = !reduced_motion && width_presence.transition_active();
+        if !transition_active {
+            visual_width.set(target_width);
+        }
+        let visual_collapsed = collapsed && !transition_active;
+        let resizer_width = if collapsed || transition_active {
+            px(0.0)
+        } else {
+            resizer_width
+        };
+        let resizer_hover_bg =
+            resizer_hover_bg.unwrap_or_else(|| cx.theme().sidebar_primary.opacity(0.18));
 
         let end_resize = {
             let state = state.clone();
@@ -306,6 +405,7 @@ impl<E: SidebarItem> RenderOnce for FloatingSidebar<E> {
                 let width = width.max(min_width).min(max_width);
                 state.update(cx, |state, cx| {
                     state.expanded_width = width;
+                    state.visual_width.set(width);
                     state.drag_origin_width = width;
                     state.drag_origin_x = x;
                     state.resizing = true;
@@ -324,9 +424,9 @@ impl<E: SidebarItem> RenderOnce for FloatingSidebar<E> {
         };
 
         let mut shell = if side.is_left() {
-            SidebarShell::left(shell_width)
+            SidebarShell::left(target_width)
         } else {
-            SidebarShell::right(shell_width)
+            SidebarShell::right(target_width)
         };
 
         shell = shell
@@ -339,12 +439,25 @@ impl<E: SidebarItem> RenderOnce for FloatingSidebar<E> {
                 end_resize(window, cx);
             });
 
+        if transition_active {
+            if let Some(animation) =
+                theme_animation(width_duration_ms, &motion.standard_easing, reduced_motion)
+            {
+                shell = shell.animate_width_from(
+                    from_width,
+                    SharedString::from(format!(
+                        "{}-floating-sidebar-width-{}",
+                        id, transition_generation
+                    )),
+                    animation,
+                    visual_width,
+                );
+            }
+        }
         if let Some(elevation) = elevation {
             shell = shell.elevation(elevation);
         }
-        if let Some(color) = resizer_hover_bg {
-            shell = shell.resizer_hover_bg(color);
-        }
+        shell = shell.resizer_hover_bg(resizer_hover_bg);
         if let Some(inset) = inset {
             shell = shell.inset(inset);
         }
@@ -356,7 +469,7 @@ impl<E: SidebarItem> RenderOnce for FloatingSidebar<E> {
             .child(
                 sidebar
                     .side(side)
-                    .collapsed(collapsed)
+                    .collapsed(visual_collapsed)
                     .width(expanded_width)
                     .animate_width(false)
                     .bg(gpui::transparent_black())
@@ -460,6 +573,7 @@ impl Element for FloatingSidebarResizeTracker {
                 }
                 state.update(cx, |state, cx| {
                     state.expanded_width = next_width;
+                    state.visual_width.set(next_width);
                     cx.notify();
                 });
             }
@@ -493,6 +607,7 @@ mod tests {
         assert_eq!(default_sidebar.width, DEFAULT_WIDTH);
         assert_eq!(default_sidebar.inset, Some(DEFAULT_INSET));
         assert_eq!(default_sidebar.resizer_width, DEFAULT_RESIZER_WIDTH);
+        assert_eq!(default_sidebar.blur_enabled, None);
 
         let sidebar = FloatingSidebar::<SidebarMenu>::new("floating-sidebar")
             .side(Side::Right)
@@ -547,5 +662,22 @@ mod tests {
             .max_width(px(420.0))
             .width(px(100.0));
         assert_eq!(clamped_width.width, px(220.0));
+    }
+
+    #[test]
+    fn test_width_transition_reversal_starts_from_current_visual_width() {
+        let mut state = FloatingSidebarState::new(px(260.0), false);
+
+        state.visual_width.set(px(172.0));
+        state.begin_width_transition(true, COLLAPSED_WIDTH, px(260.0), 300);
+        assert_eq!(state.transition_from, px(172.0));
+        assert_eq!(state.transition_generation, 1);
+        assert!(state.transition_duration_ms < 300);
+
+        state.visual_width.set(px(116.0));
+        state.begin_width_transition(false, px(260.0), px(260.0), 300);
+        assert_eq!(state.transition_from, px(116.0));
+        assert_eq!(state.transition_generation, 2);
+        assert!(state.transition_duration_ms < 300);
     }
 }

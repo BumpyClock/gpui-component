@@ -1,8 +1,11 @@
-use crate::{ActiveTheme, Disableable, StyledExt, h_flex};
+use crate::{
+    ActiveTheme, Disableable, StyledExt, animation::spring_animation, global_state::GlobalState,
+    h_flex,
+};
 use gpui::{
-    AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement, MouseButton,
-    ParentElement, RenderOnce, SharedString, StatefulInteractiveElement as _, StyleRefinement,
-    Styled, Window, prelude::FluentBuilder as _,
+    AnimationExt as _, AnyElement, App, ClickEvent, ElementId, InteractiveElement, IntoElement,
+    MouseButton, ParentElement, RenderOnce, SharedString, StatefulInteractiveElement as _,
+    StyleRefinement, Styled, Window, prelude::FluentBuilder as _, px,
 };
 use smallvec::SmallVec;
 
@@ -83,7 +86,27 @@ impl ParentElement for MenuItemElement {
 }
 
 impl RenderOnce for MenuItemElement {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let selected_state = window.use_keyed_state(
+            ElementId::Name(SharedString::from(format!("{}:selected", self.group_name))),
+            cx,
+            |_, _| self.selected,
+        );
+        let became_selected = {
+            let was_selected = *selected_state.read(cx);
+            if was_selected != self.selected {
+                selected_state.update(cx, |selected, _| *selected = self.selected);
+            }
+            !self.disabled && self.selected && !was_selected
+        };
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let selection_animation = became_selected
+            .then(|| spring_animation(&cx.theme().motion, reduced_motion))
+            .flatten();
+        let selected = self.selected;
+        let selection_animation_id =
+            SharedString::from(format!("{}:selection-feedback", self.group_name));
+
         h_flex()
             .id(self.id)
             .group(&self.group_name)
@@ -101,12 +124,16 @@ impl RenderOnce for MenuItemElement {
             })
             .when(!self.disabled, |this| {
                 this.group_hover(self.group_name, |this| {
-                    this.bg(cx.theme().accent)
-                        .text_color(cx.theme().accent_foreground)
+                    if selected {
+                        this.bg(cx.theme().primary)
+                            .text_color(cx.theme().primary_foreground)
+                    } else {
+                        this.bg(cx.theme().list_hover)
+                    }
                 })
                 .when(self.selected, |this| {
-                    this.bg(cx.theme().accent)
-                        .text_color(cx.theme().accent_foreground)
+                    this.bg(cx.theme().primary)
+                        .text_color(cx.theme().primary_foreground)
                 })
                 .when_some(self.on_click, |this, on_click| {
                     this.on_mouse_down(MouseButton::Left, move |_, _, cx| {
@@ -116,8 +143,18 @@ impl RenderOnce for MenuItemElement {
                 })
             })
             .when(self.disabled, |this| {
-                this.text_color(cx.theme().muted_foreground)
+                this.text_color(crate::flyout_disabled_foreground(cx))
             })
             .children(self.children)
+            .map(|this| {
+                if let Some(animation) = selection_animation {
+                    this.with_animation(selection_animation_id, animation, |this, delta| {
+                        this.translate_x(px(1.5 * (delta - 1.0)))
+                    })
+                    .into_any_element()
+                } else {
+                    this.into_any_element()
+                }
+            })
     }
 }

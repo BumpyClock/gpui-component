@@ -12,7 +12,7 @@ const MAX_MENU_WIDTH: Pixels = px(320.);
 const MAX_MENU_HEIGHT: Pixels = px(480.);
 
 use crate::{
-    ActiveTheme, IndexPath, Selectable, actions, h_flex,
+    ActiveTheme, FlyoutTokens, IndexPath, Selectable, actions, h_flex,
     input::{self, InputState, popovers::editor_popover},
     list::{List, ListDelegate, ListEvent, ListState},
 };
@@ -78,16 +78,18 @@ impl ParentElement for MenuItem {
 impl RenderOnce for MenuItem {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let item = self.item;
+        let tokens = FlyoutTokens::new(cx);
 
         let highlights = vec![];
 
         h_flex()
             .id(self.ix)
-            .gap_2()
-            .p_1()
-            .text_xs()
+            .gap(tokens.icon_gap)
+            .py_1()
+            .px(tokens.item_padding_x)
+            .text_size(tokens.meta_size)
             .line_height(relative(1.))
-            .rounded_sm()
+            .rounded(tokens.item_radius)
             .hover(|this| this.bg(cx.theme().accent.opacity(0.8)))
             .when(self.selected, |this| {
                 this.bg(cx.theme().accent)
