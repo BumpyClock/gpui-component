@@ -474,7 +474,7 @@ impl SurfacePreset {
         }
     }
 
-    fn resolve_background(&self, cx: &App) -> SurfaceBackground {
+    pub(crate) fn resolve_background(&self, cx: &App) -> SurfaceBackground {
         if !self.use_theme_material_defaults {
             return self.background;
         }

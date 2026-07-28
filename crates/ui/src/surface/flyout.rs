@@ -17,7 +17,11 @@
 
 use gpui::{App, FontWeight, Hsla, Pixels, px};
 
-use crate::{ActiveTheme, Size};
+use super::SurfacePreset;
+use crate::{
+    ActiveTheme, Size,
+    theme::contrast::{MIN_TEXT_CONTRAST, contrast_adjusted},
+};
 
 /// Padding between the flyout edge and its rows.
 const INSET: Pixels = px(4.);
@@ -131,16 +135,36 @@ impl FlyoutTokens {
     }
 }
 
-/// Secondary text color inside a flyout: shortcuts, subtitles, categories,
-/// section headers and inactive accessory icons.
+/// The composited color of the flyout material, over [`Theme::background`].
 ///
-/// Flyout materials sit *above* the window background, so this reads against the
-/// flyout surface rather than [`Theme::background`]. Always pair it with
-/// [`flyout_primary_foreground`] for the label so the two-step hierarchy is
-/// consistent across every flyout.
-#[inline]
+/// Text inside a flyout reads against *this*, not against the window background,
+/// which is what makes [`flyout_secondary_foreground`] a distinct role rather
+/// than an alias for [`Theme::muted_foreground`].
+pub fn flyout_material_color(cx: &App) -> Hsla {
+    SurfacePreset::flyout().resolve_background(cx).resolve(cx)
+}
+
+/// Secondary text color inside a flyout: shortcuts, subtitles, categories,
+/// section headers, disabled rows and inactive accessory icons.
+///
+/// Flyout materials sit *above* the window background — in dark mode they are
+/// noticeably lighter than it — so [`Theme::muted_foreground`], which themes tune
+/// against the window background, loses roughly a stop of contrast here. This
+/// role keeps that token wherever it is already readable and lightens (or, on a
+/// light material, darkens) it by the minimum needed to hold WCAG AA otherwise.
+/// The correction is a pure function of the theme, so custom themes get it too,
+/// and it is scoped to flyouts: cards and other raised surfaces that share
+/// `muted_foreground` are untouched.
+///
+/// Always pair it with [`flyout_primary_foreground`] for the label so the
+/// two-step hierarchy is consistent across every flyout.
 pub fn flyout_secondary_foreground(cx: &App) -> Hsla {
-    cx.theme().muted_foreground
+    contrast_adjusted(
+        cx.theme().muted_foreground,
+        flyout_material_color(cx),
+        cx.theme().background,
+        MIN_TEXT_CONTRAST,
+    )
 }
 
 /// Primary text color inside a flyout: row labels and prose body.

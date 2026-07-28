@@ -6,9 +6,12 @@ use std::{
 
 use gpui::Hsla;
 
-use super::{Colorize as _, ThemeColor, ThemeConfig, ThemeMaterial, ThemeSet, try_parse_color};
+use super::{
+    Colorize as _, ThemeColor, ThemeConfig, ThemeMaterial, ThemeSet,
+    contrast::{MIN_TEXT_CONTRAST, contrast_adjusted, contrast_ratio},
+    try_parse_color,
+};
 
-const MIN_TEXT_CONTRAST: f32 = 4.5;
 const MIN_CHART_CONTRAST: f32 = 3.;
 const MIN_CHART_COLOR_DISTANCE: f32 = 0.05;
 const MIN_INTERACTION_STATE_DISTANCE: f32 = 0.02;
@@ -95,20 +98,6 @@ fn linear_srgb(channel: f32) -> f32 {
     } else {
         ((channel + 0.055) / 1.055).powf(2.4)
     }
-}
-
-fn relative_luminance(color: [f32; 4]) -> f32 {
-    0.2126 * linear_srgb(color[0]) + 0.7152 * linear_srgb(color[1]) + 0.0722 * linear_srgb(color[2])
-}
-
-fn contrast_ratio(foreground: Hsla, surface: Hsla, background: Hsla) -> f32 {
-    let background = hsla_to_rgba(background);
-    let surface = composite(hsla_to_rgba(surface), background);
-    let foreground = composite(hsla_to_rgba(foreground), surface);
-    let foreground_luminance = relative_luminance(foreground);
-    let surface_luminance = relative_luminance(surface);
-    (foreground_luminance.max(surface_luminance) + 0.05)
-        / (foreground_luminance.min(surface_luminance) + 0.05)
 }
 
 fn oklab(color: Hsla, background: Hsla) -> [f32; 3] {
@@ -221,6 +210,23 @@ fn bundled_themes_meet_text_contrast_floor() {
     );
 }
 
+/// The flyout material composited over `background`, as
+/// [`crate::flyout_material_color`] resolves it at runtime.
+fn flyout_material(config: &ThemeConfig) -> Hsla {
+    let mut material = ThemeMaterial::default();
+    material.apply_config(config.material.as_ref(), &ThemeMaterial::default());
+
+    let (acrylic, opacity) = if config.mode.is_dark() {
+        (material.acrylic_default_dark, material.flyout_dark_opacity)
+    } else {
+        (
+            material.acrylic_default_light,
+            material.flyout_light_opacity,
+        )
+    };
+    acrylic.opacity(opacity)
+}
+
 /// Flyout materials (popover, menu, select popup, command palette, editor popovers)
 /// sit *above* the window background and are lighter than it in dark mode, so text
 /// on a flyout has less contrast than the same text on `background`. This checks the
@@ -228,37 +234,30 @@ fn bundled_themes_meet_text_contrast_floor() {
 /// against `background`, which is what [`bundled_themes_meet_text_contrast_floor`]
 /// covers.
 ///
-/// Currently failing, deliberately: `popover.foreground` passes everywhere, but
-/// `muted.foreground` lands between 3.27:1 and 4.48:1 on the flyout material in
-/// *every* bundled dark theme (Default Dark: 3.74:1) against a 4.5:1 floor. That is
-/// a theme-layer problem — the same token is also used on cards and other raised
-/// surfaces — so fixing it means either lightening `muted.foreground` across the 22
-/// dark themes or introducing a distinct raised-surface secondary role. Both are
-/// larger than a flyout layout pass, so the check is recorded here rather than
-/// silently dropped. Run with `cargo test -- --ignored` to see the current numbers.
+/// `popover.foreground` is used as-is; the secondary role is
+/// [`crate::flyout_secondary_foreground`], which contrast-corrects
+/// `muted.foreground` for this surface. Raw `muted.foreground` is sub-AA on the
+/// flyout material in every bundled dark theme (3.27:1 to 4.48:1, Default Dark
+/// 3.74:1) — see [`bundled_theme_flyout_secondary_needs_correction_in_dark_mode`].
 #[test]
-#[ignore = "known failure: muted.foreground is sub-AA on flyout materials in all bundled dark themes"]
 fn bundled_themes_meet_flyout_text_contrast_floor() {
     let mut failures = Vec::new();
 
     for (path, config) in bundled_theme_configs() {
         let colors = resolve_colors(&config);
-        let mut material = ThemeMaterial::default();
-        material.apply_config(config.material.as_ref(), &ThemeMaterial::default());
-
-        let (acrylic, opacity) = if config.mode.is_dark() {
-            (material.acrylic_default_dark, material.flyout_dark_opacity)
-        } else {
-            (
-                material.acrylic_default_light,
-                material.flyout_light_opacity,
-            )
-        };
-        let flyout = acrylic.opacity(opacity);
+        let flyout = flyout_material(&config);
 
         for (name, foreground) in [
             ("flyout label", colors.popover_foreground),
-            ("flyout secondary", colors.muted_foreground),
+            (
+                "flyout secondary",
+                contrast_adjusted(
+                    colors.muted_foreground,
+                    flyout,
+                    colors.background,
+                    MIN_TEXT_CONTRAST,
+                ),
+            ),
         ] {
             let ratio = contrast_ratio(foreground, flyout, colors.background);
             if !ratio.is_finite() || ratio < MIN_TEXT_CONTRAST {
@@ -275,6 +274,63 @@ fn bundled_themes_meet_flyout_text_contrast_floor() {
         failures.is_empty(),
         "bundled theme flyout contrast failures:\n{}",
         failures.join("\n")
+    );
+}
+
+/// Pins *why* [`crate::flyout_secondary_foreground`] corrects rather than aliasing
+/// `muted.foreground`: on dark materials the aliased token is routinely sub-AA, and
+/// the correction both fixes those and leaves already-readable themes untouched.
+///
+/// Note it is not every dark theme — Catppuccin Frappe, for one, already clears the
+/// floor on its own flyout material and is returned unchanged.
+#[test]
+fn bundled_theme_flyout_secondary_corrects_only_where_needed() {
+    let mut dark_needing_correction = 0;
+
+    for (path, config) in bundled_theme_configs() {
+        let colors = resolve_colors(&config);
+        let flyout = flyout_material(&config);
+        let corrected = contrast_adjusted(
+            colors.muted_foreground,
+            flyout,
+            colors.background,
+            MIN_TEXT_CONTRAST,
+        );
+
+        if corrected == colors.muted_foreground {
+            // Left alone only when it already passes.
+            assert!(
+                contrast_ratio(colors.muted_foreground, flyout, colors.background)
+                    >= MIN_TEXT_CONTRAST,
+                "{} / {}: sub-AA secondary was left uncorrected",
+                path.display(),
+                config.name
+            );
+            continue;
+        }
+
+        // Corrections move away from the material: lighter on dark, darker on light.
+        if config.mode.is_dark() {
+            assert!(
+                corrected.l > colors.muted_foreground.l,
+                "{} / {}: correction should lighten on a dark material",
+                path.display(),
+                config.name
+            );
+            dark_needing_correction += 1;
+        } else {
+            assert!(
+                corrected.l < colors.muted_foreground.l,
+                "{} / {}: correction should darken on a light material",
+                path.display(),
+                config.name
+            );
+        }
+    }
+
+    assert!(
+        dark_needing_correction > 0,
+        "no dark theme needed a correction, so the role is an alias and can be removed"
     );
 }
 

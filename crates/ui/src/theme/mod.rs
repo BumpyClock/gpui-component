@@ -12,6 +12,7 @@ use std::{
 };
 
 mod color;
+pub(crate) mod contrast;
 mod elevation;
 mod fluent_tokens;
 mod registry;
