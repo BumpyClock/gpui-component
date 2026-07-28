@@ -7,7 +7,10 @@ use crate::animation::{
 use crate::global_state::GlobalState;
 use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::ScrollableElement;
-use crate::{ActiveTheme, ElementExt, Icon, IconName, Sizable as _, SurfaceContext};
+use crate::{
+    ActiveTheme, ElementExt, Icon, IconName, NoiseIntensity, Sizable as _, StyledExt,
+    SurfaceContext,
+};
 use crate::{Side, Size, SurfacePreset, h_flex, kbd::Kbd, v_flex};
 use gpui::{
     Action, AnimationExt as _, AnyElement, App, AppContext, Bounds, Context, Corner, DismissEvent,
@@ -250,6 +253,16 @@ impl PopupMenuItem {
     #[inline]
     fn is_separator(&self) -> bool {
         matches!(self, PopupMenuItem::Separator)
+    }
+
+    #[inline]
+    fn is_disabled(&self) -> bool {
+        matches!(
+            self,
+            PopupMenuItem::Item { disabled: true, .. }
+                | PopupMenuItem::ElementItem { disabled: true, .. }
+                | PopupMenuItem::Submenu { disabled: true, .. }
+        )
     }
 
     fn has_left_icon(&self, check_side: Side) -> bool {
@@ -980,10 +993,17 @@ impl PopupMenu {
     fn render_key_binding(
         &self,
         action: Option<&dyn Action>,
+        selected: bool,
+        disabled: bool,
         window: &mut Window,
-        _: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> Option<Kbd> {
         let action = action?;
+        let color = if selected && !disabled {
+            cx.theme().primary_foreground.opacity(0.8)
+        } else {
+            cx.theme().muted_foreground
+        };
 
         match self
             .action_context
@@ -998,6 +1018,7 @@ impl PopupMenu {
             this.p_0()
                 .flex_nowrap()
                 .border_0()
+                .text_color(color)
                 .bg(gpui::transparent_white())
         })
     }
@@ -1006,8 +1027,10 @@ impl PopupMenu {
         has_icon: bool,
         checked: bool,
         icon: Option<Icon>,
+        selected: bool,
+        disabled: bool,
         _: &mut Window,
-        _: &mut Context<Self>,
+        cx: &mut Context<Self>,
     ) -> Option<impl IntoElement> {
         if !has_icon {
             return None;
@@ -1021,7 +1044,20 @@ impl PopupMenu {
             Icon::empty()
         };
 
-        Some(icon.xsmall())
+        let color = if selected && !disabled {
+            cx.theme().primary_foreground
+        } else if checked && !disabled {
+            cx.theme().primary
+        } else {
+            cx.theme().muted_foreground
+        };
+
+        Some(
+            h_flex()
+                .w_4()
+                .justify_center()
+                .child(icon.xsmall().text_color(color)),
+        )
     }
 
     #[inline]
@@ -1057,13 +1093,24 @@ impl PopupMenu {
     ) -> MenuItemElement {
         let has_left_icon = options.has_left_icon;
         let is_left_check = options.check_side.is_left() && item.is_checked();
+        let selected = self.selected_index == Some(ix);
+        let disabled = item.is_disabled();
         let right_check_icon = if options.check_side.is_right() && item.is_checked() {
-            Some(Icon::new(IconName::Check).xsmall())
+            Some(
+                Icon::new(IconName::Check)
+                    .xsmall()
+                    .text_color(if selected && !disabled {
+                        cx.theme().primary_foreground
+                    } else if disabled {
+                        cx.theme().muted_foreground
+                    } else {
+                        cx.theme().primary
+                    }),
+            )
         } else {
             None
         };
 
-        let selected = self.selected_index == Some(ix);
         const EDGE_PADDING: Pixels = px(4.);
         const INNER_PADDING: Pixels = px(8.);
 
@@ -1071,8 +1118,8 @@ impl PopupMenu {
         let group_name = format!("{}:item-{}", cx.entity().entity_id(), ix);
 
         let (item_height, radius) = match self.size {
-            Size::Small => (px(20.), options.radius.half()),
-            _ => (px(26.), options.radius),
+            Size::Small => (px(24.), options.radius.half()),
+            _ => (px(28.), options.radius),
         };
 
         let this = MenuItemElement::new(ix, &group_name)
@@ -1098,19 +1145,33 @@ impl PopupMenu {
             PopupMenuItem::Separator => this
                 .h_auto()
                 .p_0()
-                .my_0p5()
-                .mx_neg_1()
-                .border_b(px(2.))
+                .my_1()
+                .mx_1()
+                .border_b(px(1.))
                 .border_color(cx.theme().border)
                 .disabled(true),
-            PopupMenuItem::Label(label) => this.disabled(true).cursor_default().child(
-                h_flex()
-                    .cursor_default()
-                    .items_center()
-                    .gap_x_1()
-                    .children(Self::render_icon(has_left_icon, false, None, window, cx))
-                    .child(div().flex_1().child(label.clone())),
-            ),
+            PopupMenuItem::Label(label) => this
+                .h(px(20.))
+                .text_xs()
+                .font_medium()
+                .disabled(true)
+                .cursor_default()
+                .child(
+                    h_flex()
+                        .cursor_default()
+                        .items_center()
+                        .gap_x_1()
+                        .children(Self::render_icon(
+                            has_left_icon,
+                            false,
+                            None,
+                            false,
+                            true,
+                            window,
+                            cx,
+                        ))
+                        .child(div().flex_1().child(label.clone())),
+                ),
             PopupMenuItem::ElementItem {
                 render,
                 icon,
@@ -1133,6 +1194,8 @@ impl PopupMenu {
                             has_left_icon,
                             is_left_check,
                             icon.clone(),
+                            selected,
+                            *disabled,
                             window,
                             cx,
                         ))
@@ -1148,7 +1211,13 @@ impl PopupMenu {
                 ..
             } => {
                 let show_link_icon = *is_link && self.external_link_icon;
-                let key = self.render_key_binding(action.as_deref(), window, cx);
+                let key =
+                    self.render_key_binding(action.as_deref(), selected, *disabled, window, cx);
+                let accessory_color = if selected && !disabled {
+                    cx.theme().primary_foreground.opacity(0.8)
+                } else {
+                    cx.theme().muted_foreground
+                };
 
                 this.when(!disabled, |this| {
                     this.on_click(
@@ -1162,6 +1231,8 @@ impl PopupMenu {
                     has_left_icon,
                     is_left_check,
                     icon.clone(),
+                    selected,
+                    *disabled,
                     window,
                     cx,
                 ))
@@ -1183,7 +1254,7 @@ impl PopupMenu {
                                     .child(
                                         Icon::new(IconName::ExternalLink)
                                             .xsmall()
-                                            .text_color(cx.theme().muted_foreground),
+                                            .text_color(accessory_color),
                                     ),
                             )
                         })
@@ -1236,6 +1307,8 @@ impl PopupMenu {
                                 has_left_icon,
                                 false,
                                 icon.clone(),
+                                selected,
+                                *disabled,
                                 window,
                                 cx,
                             ))
@@ -1246,11 +1319,13 @@ impl PopupMenu {
                                     .items_center()
                                     .justify_between()
                                     .child(label.clone())
-                                    .child(
-                                        Icon::new(IconName::ChevronRight)
-                                            .xsmall()
-                                            .text_color(cx.theme().muted_foreground),
-                                    ),
+                                    .child(Icon::new(IconName::ChevronRight).xsmall().text_color(
+                                        if selected && !disabled {
+                                            cx.theme().primary_foreground.opacity(0.8)
+                                        } else {
+                                            cx.theme().muted_foreground
+                                        },
+                                    )),
                             ),
                     )
                     .when(submenu_presence.should_render(), |this| {
@@ -1393,7 +1468,7 @@ impl Render for PopupMenu {
         let options = RenderOptions {
             has_left_icon,
             check_side: self.check_side,
-            radius: cx.theme().radius.min(px(8.)),
+            radius: px(4.),
         };
 
         let surface_ctx = SurfaceContext {
@@ -1452,16 +1527,20 @@ impl Render for PopupMenu {
                 this.vertical_scrollbar(&self.scroll_handle)
             });
 
-        SurfacePreset::flyout()
-            .with_radius(cx.theme().radius)
-            .wrap_with_bounds(
-                content,
-                surface_width,
-                surface_height,
-                window,
-                cx,
-                surface_ctx,
-            )
+        let mut surface = SurfacePreset::flyout()
+            .with_blur_radius(None)
+            .with_noise(NoiseIntensity::None)
+            .with_radius(px(6.));
+        surface.background.light_opacity = 1.0;
+        surface.background.dark_opacity = 1.0;
+        surface.wrap_with_bounds(
+            content,
+            surface_width,
+            surface_height,
+            window,
+            cx,
+            surface_ctx,
+        )
     }
 }
 

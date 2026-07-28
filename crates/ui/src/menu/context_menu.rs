@@ -1,14 +1,21 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
 use gpui::{
     AnimationExt as _, AnyElement, App, Context, Corner, DismissEvent, Element, ElementId, Entity,
     Focusable, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement,
-    IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, StyleRefinement,
-    Styled, Subscription, Window, anchored, deferred, div, prelude::FluentBuilder, px,
+    IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, SharedString,
+    StyleRefinement, Styled, Subscription, Window, anchored, deferred, div, prelude::FluentBuilder,
+    px,
 };
 
 use crate::{
-    ActiveTheme, animation::fast_invoke_animation, global_state::GlobalState, menu::PopupMenu,
+    ActiveTheme,
+    animation::{
+        PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
+        spring_preset_animation, spring_preset_duration_ms,
+    },
+    global_state::GlobalState,
+    menu::PopupMenu,
 };
 
 /// A extension trait for adding a context menu to an element.
@@ -167,16 +174,102 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                 };
                 let menu_view = state.shared_state.borrow().menu_view.clone();
                 let mut menu_element = None;
-                if open {
+                let reduced_motion = GlobalState::global(cx).reduced_motion();
+                let motion = cx.theme().motion.clone();
+                let open_duration_ms = if reduced_motion {
+                    motion.fast_duration_ms
+                } else {
+                    spring_preset_duration_ms(&motion, SpringPreset::Mild)
+                        .max(motion.fast_duration_ms)
+                };
+                let presence = keyed_presence(
+                    SharedString::from(format!("context-menu-presence-{:?}", this.id)),
+                    open,
+                    !reduced_motion,
+                    Duration::from_millis(u64::from(open_duration_ms)),
+                    Duration::from_millis(u64::from(motion.fast_duration_ms)),
+                    PresenceOptions::default(),
+                    window,
+                    cx,
+                );
+
+                if presence.should_render() {
                     let has_menu_item = menu_view
                         .as_ref()
                         .map(|menu| !menu.read(cx).is_empty())
                         .unwrap_or(false);
 
                     if has_menu_item {
-                        let motion = &cx.theme().motion;
-                        let reduced_motion = GlobalState::global(cx).reduced_motion();
-                        let anim = fast_invoke_animation(motion, reduced_motion);
+                        let open_opacity_animation =
+                            point_to_point_animation(&motion, reduced_motion);
+                        let open_transform_animation =
+                            spring_preset_animation(&motion, reduced_motion, SpringPreset::Mild);
+                        let close_animation = point_to_point_animation(&motion, reduced_motion);
+                        let positioned_menu = anchored()
+                            .position(position)
+                            .snap_to_window_with_margin(px(8.))
+                            .anchor(anchor)
+                            .when_some(menu_view, |this, menu| {
+                                if open && !menu.focus_handle(cx).contains_focused(window, cx) {
+                                    menu.focus_handle(cx).focus(window, cx);
+                                }
+
+                                this.child(menu)
+                            });
+                        let animated_menu = if presence.transition_active() {
+                            if matches!(presence.phase, PresencePhase::Entering) {
+                                let transformed = if let Some(animation) = open_transform_animation
+                                {
+                                    div()
+                                        .child(positioned_menu)
+                                        .with_animation(
+                                            "context-menu-enter-transform",
+                                            animation,
+                                            |menu, delta| menu.translate_y(px(4.0 * (1.0 - delta))),
+                                        )
+                                        .into_any_element()
+                                } else {
+                                    div().child(positioned_menu).into_any_element()
+                                };
+
+                                if let Some(animation) = open_opacity_animation {
+                                    div()
+                                        .child(transformed)
+                                        .with_animation(
+                                            "context-menu-enter-opacity",
+                                            animation,
+                                            move |menu, delta| {
+                                                menu.opacity(
+                                                    presence.progress(delta).clamp(0.0, 1.0),
+                                                )
+                                            },
+                                        )
+                                        .into_any_element()
+                                } else {
+                                    div()
+                                        .child(transformed)
+                                        .opacity(presence.progress(1.0))
+                                        .into_any_element()
+                                }
+                            } else if let Some(animation) = close_animation {
+                                div()
+                                    .child(positioned_menu)
+                                    .with_animation(
+                                        "context-menu-exit",
+                                        animation,
+                                        move |menu, delta| {
+                                            let progress = presence.progress(delta).clamp(0.0, 1.0);
+                                            menu.opacity(progress)
+                                                .translate_y(px(2.0 * (1.0 - progress)))
+                                        },
+                                    )
+                                    .into_any_element()
+                            } else {
+                                div().child(positioned_menu).into_any_element()
+                            }
+                        } else {
+                            div().child(positioned_menu).into_any_element()
+                        };
 
                         menu_element = Some(
                             deferred(
@@ -187,35 +280,7 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                                         .on_scroll_wheel(|_, _, cx| {
                                             cx.stop_propagation();
                                         })
-                                        .child(
-                                            anchored()
-                                                .position(position)
-                                                .snap_to_window_with_margin(px(8.))
-                                                .anchor(anchor)
-                                                .when_some(menu_view, |this, menu| {
-                                                    // Focus the menu, so that can be handle the action.
-                                                    if !menu
-                                                        .focus_handle(cx)
-                                                        .contains_focused(window, cx)
-                                                    {
-                                                        menu.focus_handle(cx).focus(window, cx);
-                                                    }
-
-                                                    this.child(menu)
-                                                }),
-                                        )
-                                        .map(|el| {
-                                            if let Some(anim) = anim {
-                                                el.with_animation(
-                                                    "context-menu-enter",
-                                                    anim,
-                                                    |el, delta| el.opacity(delta),
-                                                )
-                                                .into_any_element()
-                                            } else {
-                                                el.into_any_element()
-                                            }
-                                        }),
+                                        .child(animated_menu),
                                 ),
                             )
                             .with_priority(1)

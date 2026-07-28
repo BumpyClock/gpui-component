@@ -8,6 +8,15 @@ summary: "Context menus and popup menus with support for icons, shortcuts, subme
 
 The Menu component provides both context menus (right-click menus) and popup menus with comprehensive features including icons, keyboard shortcuts, submenus, separators, checkable items, and custom elements. Built with accessibility and keyboard navigation in mind.
 
+## Visual treatment
+
+- Popup surfaces use an opaque popover color, a 1 px theme border, a restrained flyout shadow, and a 6 px radius.
+- Default rows are 28 px high with 8 px horizontal padding. Compact application-menu rows remain 24 px high.
+- Icons, labels, checks, shortcuts, and submenu chevrons share fixed columns so mixed item types stay aligned.
+- Hover uses the neutral list-hover token. Keyboard and pointer selection use the theme primary color with its paired foreground color.
+- Section labels use smaller medium-weight text; separators use a single 1 px rule with 4 px vertical spacing.
+- Disabled items keep the muted foreground token while retaining row alignment.
+
 ## Import
 
 ```rust
@@ -450,8 +459,10 @@ Button::new("settings")
 ## Motion
 
 - Root popup menu surface is static to avoid open-time flicker on app-menu and large scrollable menus.
-- Nested submenu: open/close uses keyed presence state and side-aware horizontal slide + opacity.
-- Reduced motion: popup and submenu transitions are disabled and visibility updates are immediate.
+- New row selection gets a 1.5 px spring translation while its selected color appears immediately.
+- Nested submenu open uses a side-aware spring translation plus monotonic opacity. Close uses a short point-to-point translation and monotonic opacity.
+- Context menu open uses a 4 px spring translation plus monotonic opacity; close uses a 2 px point-to-point translation plus monotonic opacity.
+- Reduced motion disables selection, context-menu, and submenu transitions; visibility updates are immediate.
 - Dropdown menu cache reset: menu entity disposal is delayed to match dismiss timing (or immediate under reduced motion) to avoid flicker.
 
 ## Keyboard Shortcuts

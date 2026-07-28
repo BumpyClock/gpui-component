@@ -69,32 +69,32 @@ impl MenuStory {
     fn new(_: &mut Window, _: &mut Context<Self>) -> Self {
         Self {
             check_side: None,
-            message: "".to_string(),
+            message: "Open a menu and choose an action.".to_string(),
         }
     }
 
     fn on_copy(&mut self, _: &Copy, _: &mut Window, cx: &mut Context<Self>) {
-        self.message = "You have clicked copy".to_string();
+        self.message = "Copied selection".to_string();
         cx.notify()
     }
 
     fn on_cut(&mut self, _: &Cut, _: &mut Window, cx: &mut Context<Self>) {
-        self.message = "You have clicked cut".to_string();
+        self.message = "Cut selection".to_string();
         cx.notify()
     }
 
     fn on_paste(&mut self, _: &Paste, _: &mut Window, cx: &mut Context<Self>) {
-        self.message = "You have clicked paste".to_string();
+        self.message = "Pasted from clipboard".to_string();
         cx.notify()
     }
 
     fn on_search_all(&mut self, _: &SearchAll, _: &mut Window, cx: &mut Context<Self>) {
-        self.message = "You have clicked search all".to_string();
+        self.message = "Opened workspace search".to_string();
         cx.notify()
     }
 
     fn on_action_info(&mut self, info: &Info, _: &mut Window, cx: &mut Context<Self>) {
-        self.message = format!("You have clicked info: {}", info.0);
+        self.message = format!("Opened recent project {}", info.0 + 1);
         cx.notify()
     }
 
@@ -107,7 +107,14 @@ impl MenuStory {
             Some(Side::Left)
         };
 
-        self.message = format!("You have used check at side: {:?}", self.check_side);
+        self.message = format!(
+            "Check alignment: {}",
+            match self.check_side {
+                Some(Side::Left) => "left",
+                Some(Side::Right) => "right",
+                _ => "hidden",
+            }
+        );
         cx.notify()
     }
 }
@@ -129,246 +136,211 @@ impl Render for MenuStory {
             .min_h(px(400.))
             .gap_6()
             .child(
-                section("Popup Menu")
-                    .child(
-                        Button::new("popup-menu-1")
-                            .outline()
-                            .label("Edit")
-                            .dropdown_menu(move |this, window, cx| {
-                                this.link("About", "https://github.com/longbridge/gpui-component")
-                                    .check_side(check_side.unwrap_or(Side::Left))
-                                    .separator()
-                                    .item(PopupMenuItem::new("Handle Click").on_click(
-                                        window.listener_for(&view, |this, _, _, cx| {
-                                            this.message =
-                                                "You have clicked Handle Click".to_string();
-                                            cx.notify();
-                                        }),
-                                    ))
-                                    .separator()
-                                    .menu("Copy", Box::new(Copy))
-                                    .menu("Cut", Box::new(Cut))
-                                    .menu("Paste", Box::new(Paste))
-                                    .separator()
-                                    .menu_with_check(
-                                        format!("Check Side {:?}", check_side),
-                                        check_side.is_some(),
-                                        Box::new(ToggleCheck),
-                                    )
-                                    .separator()
-                                    .menu_with_icon("Search", IconName::Search, Box::new(SearchAll))
-                                    .separator()
-                                    .item(
-                                        PopupMenuItem::element(|_, cx| {
-                                            v_flex().child("Custom Element").child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(cx.theme().muted_foreground)
-                                                    .child("This is sub-title"),
-                                            )
-                                        })
-                                        .on_click(
-                                            window.listener_for(&view, |this, _, _, cx| {
-                                                this.message = "You have clicked on custom element"
-                                                    .to_string();
-                                                cx.notify();
-                                            }),
-                                        ),
-                                    )
-                                    .menu_element_with_check(
-                                        check_side.is_some(),
-                                        Box::new(ToggleCheck),
-                                        |_, cx| {
-                                            h_flex().gap_1().child("Custom Element").child(
-                                                div()
-                                                    .text_xs()
-                                                    .text_color(cx.theme().muted_foreground)
-                                                    .child("checked"),
-                                            )
-                                        },
-                                    )
-                                    .menu_element_with_icon(
-                                        IconName::Info,
-                                        Box::new(Info(0)),
-                                        |_, cx| {
-                                            h_flex().gap_1().child("Custom").child(
-                                                div()
-                                                    .text_sm()
-                                                    .text_color(cx.theme().muted_foreground)
-                                                    .child("element"),
-                                            )
-                                        },
-                                    )
-                                    .separator()
-                                    .menu_with_disabled("Disabled Item", Box::new(Info(0)), true)
-                                    .separator()
-                                    .submenu("Links", window, cx, |menu, _, _| {
-                                        menu.link_with_icon(
-                                            "GPUI Component",
-                                            IconName::GitHub,
-                                            "https://github.com/longbridge/gpui-component",
-                                        )
-                                        .separator()
-                                        .link("GPUI", "https://gpui.rs")
-                                        .link("Zed", "https://zed.dev")
-                                    })
-                                    .separator()
-                                    .submenu("Other Links", window, cx, |menu, _, _| {
-                                        menu.link("Crates", "https://crates.io")
-                                            .link("Rust Docs", "https://docs.rs")
-                                    })
-                            }),
-                    )
-                    .child(self.message.clone()),
-            )
-            .child(
-                section("Context Menu")
+                section("Menu states")
                     .v_flex()
                     .gap_4()
                     .child(
-                        v_flex()
-                            .w_full()
-                            .p_4()
-                            .items_center()
-                            .justify_center()
-                            .min_h_20()
-                            .rounded_lg()
-                            .border_2()
-                            .border_dashed()
-                            .border_color(cx.theme().border)
-                            .child("Right click to open ContextMenu")
-                            .context_menu({
-                                move |this, window, cx| {
-                                    this.check_side(check_side.unwrap_or(Side::Left))
-                                        .external_link_icon(false)
-                                        .link(
-                                            "About",
-                                            "https://github.com/longbridge/gpui-component",
-                                        )
-                                        .separator()
-                                        .menu("Cut", Box::new(Cut))
-                                        .menu("Copy", Box::new(Copy))
-                                        .menu("Paste", Box::new(Paste))
-                                        .separator()
-                                        .label("This is a label")
-                                        .menu_with_check(
-                                            format!("Check Side {:?}", check_side),
-                                            check_side.is_some(),
-                                            Box::new(ToggleCheck),
-                                        )
-                                        .separator()
-                                        .submenu("Settings", window, cx, move |menu, _, _| {
-                                            menu.menu("Info 0", Box::new(Info(0)))
-                                                .separator()
-                                                .menu("Item 1", Box::new(Info(1)))
-                                                .menu("Item 2", Box::new(Info(2)))
-                                        })
-                                        .separator()
-                                        .menu("Search All", Box::new(SearchAll))
-                                        .separator()
-                                }
-                            })
+                        h_flex()
+                            .gap_2()
+                            .flex_wrap()
                             .child(
-                                div()
-                                    .text_sm()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child(
-                                        "You can right click anywhere in \
-                                         this area to open the context menu.",
-                                    ),
+                                Button::new("menu-states")
+                                    .outline()
+                                    .label("Open menu")
+                                    .dropdown_menu(move |this, window, cx| {
+                                        this.check_side(check_side.unwrap_or(Side::Left))
+                                            .label("Edit")
+                                            .menu_with_icon(
+                                                "Find in workspace",
+                                                IconName::Search,
+                                                Box::new(SearchAll),
+                                            )
+                                            .menu("Copy", Box::new(Copy))
+                                            .menu("Cut", Box::new(Cut))
+                                            .menu_with_disabled("Paste", Box::new(Paste), true)
+                                            .separator()
+                                            .label("View")
+                                            .menu_with_check(
+                                                "Cycle check alignment",
+                                                check_side.is_some(),
+                                                Box::new(ToggleCheck),
+                                            )
+                                            .menu_with_icon_and_disabled(
+                                                "Reveal minimap",
+                                                IconName::Eye,
+                                                Box::new(Info(0)),
+                                                true,
+                                            )
+                                            .separator()
+                                            .item(
+                                                PopupMenuItem::element(|_, cx| {
+                                                    v_flex().child("Inspect selection").child(
+                                                        div()
+                                                            .text_xs()
+                                                            .text_color(cx.theme().muted_foreground)
+                                                            .child("Open details panel"),
+                                                    )
+                                                })
+                                                .on_click(window.listener_for(
+                                                    &view,
+                                                    |this, _, _, cx| {
+                                                        this.message =
+                                                            "Opened selection details".to_string();
+                                                        cx.notify();
+                                                    },
+                                                )),
+                                            )
+                                            .separator()
+                                            .submenu_with_icon(
+                                                Some(IconName::FolderOpen.into()),
+                                                "Open recent",
+                                                window,
+                                                cx,
+                                                |menu, _, _| {
+                                                    menu.menu("gpui-component", Box::new(Info(0)))
+                                                        .menu("Atlas editor", Box::new(Info(1)))
+                                                        .menu(
+                                                            "Window shell demo",
+                                                            Box::new(Info(2)),
+                                                        )
+                                                },
+                                            )
+                                            .separator()
+                                            .link_with_icon(
+                                                "Component docs",
+                                                IconName::ExternalLink,
+                                                "https://bumpyclock.github.io/gpui-component/",
+                                            )
+                                    }),
+                            )
+                            .child(
+                                Button::new("menu-right-checks")
+                                    .outline()
+                                    .label("Right-side checks")
+                                    .dropdown_menu(|this, _, _| {
+                                        this.check_side(Side::Right)
+                                            .label("Panels")
+                                            .menu_with_check(
+                                                "Project navigator",
+                                                true,
+                                                Box::new(Info(0)),
+                                            )
+                                            .menu_with_check(
+                                                "Debug console",
+                                                false,
+                                                Box::new(Info(1)),
+                                            )
+                                            .menu_with_disabled("Timeline", Box::new(Info(2)), true)
+                                    }),
                             ),
                     )
                     .child(
-                        div()
-                            .id("other")
-                            .flex()
-                            .w_full()
-                            .p_4()
+                        h_flex()
+                            .gap_2()
                             .items_center()
-                            .justify_center()
-                            .min_h_20()
-                            .rounded_lg()
-                            .border_2()
-                            .border_dashed()
+                            .p_3()
+                            .rounded_md()
+                            .border_1()
                             .border_color(cx.theme().border)
-                            .child("Here is another area with context menu.")
-                            .context_menu({
-                                move |this, _, _| {
-                                    this.link(
-                                        "About",
-                                        "https://github.com/longbridge/gpui-component",
-                                    )
-                                    .separator()
-                                    .menu("Item 1", Box::new(Info(1)))
-                                }
-                            }),
-                    )
-                    .child(
-                        div()
-                            .id("other1")
-                            .flex()
-                            .w_full()
-                            .p_4()
-                            .items_center()
-                            .justify_center()
-                            .min_h_20()
-                            .rounded_lg()
-                            .border_2()
-                            .border_dashed()
-                            .border_color(cx.theme().border)
-                            .child("ContextMenu area 1")
-                            .context_menu({
-                                move |this, _, _| {
-                                    this.link(
-                                        "About",
-                                        "https://github.com/longbridge/gpui-component",
-                                    )
-                                    .separator()
-                                    .menu("Item 1", Box::new(Info(1)))
-                                }
-                            }),
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .font_medium()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Last action"),
+                            )
+                            .child(self.message.clone()),
                     ),
             )
             .child(
-                section("Menu with scrollbar")
+                section("Context menu").v_flex().gap_4().child(
+                    v_flex()
+                        .w_full()
+                        .p_4()
+                        .items_center()
+                        .justify_center()
+                        .min_h_20()
+                        .rounded_md()
+                        .border_1()
+                        .border_dashed()
+                        .border_color(cx.theme().border)
+                        .child("Right-click to open")
+                        .context_menu({
+                            move |this, window, cx| {
+                                this.check_side(check_side.unwrap_or(Side::Left))
+                                    .label("Selection")
+                                    .menu("Cut", Box::new(Cut))
+                                    .menu("Copy", Box::new(Copy))
+                                    .menu("Paste", Box::new(Paste))
+                                    .separator()
+                                    .submenu("Refactor", window, cx, move |menu, _, _| {
+                                        menu.menu("Extract method", Box::new(Info(0)))
+                                            .menu("Rename symbol", Box::new(Info(1)))
+                                            .menu_with_disabled(
+                                                "Move to module",
+                                                Box::new(Info(2)),
+                                                true,
+                                            )
+                                    })
+                                    .separator()
+                                    .menu_with_icon(
+                                        "Find references",
+                                        IconName::Search,
+                                        Box::new(SearchAll),
+                                    )
+                            }
+                        })
+                        .child(
+                            div()
+                                .text_sm()
+                                .text_color(cx.theme().muted_foreground)
+                                .child("Reopen repeatedly to compare enter and exit motion."),
+                        ),
+                ),
+            )
+            .child(
+                section("Scrollable menu")
                     .child(
                         Button::new("dropdown-menu-scrollable-1")
                             .outline()
-                            .label("Scrollable Menu (100 items)")
+                            .label("100 items")
                             .dropdown_menu_with_anchor(Corner::TopRight, move |this, _, _| {
                                 let mut this = this
                                     .scrollable(true)
                                     .max_h(px(300.))
-                                    .label(format!("Total {} items", 100));
+                                    .label("100 workspace files");
                                 for i in 0..100 {
                                     if i > 0 && i % 5 == 0 {
                                         this = this.separator();
                                     }
 
                                     this = this.menu(
-                                        SharedString::from(format!("Item {}", i)),
+                                        SharedString::from(format!(
+                                            "workspace-file-{:02}.rs",
+                                            i + 1
+                                        )),
                                         Box::new(Info(i)),
                                     )
                                 }
-                                this.min_w(px(100.))
+                                this.min_w(px(200.))
                             }),
                     )
                     .child(
                         Button::new("dropdown-menu-scrollable-2")
                             .outline()
-                            .label("Scrollable Menu (5 items)")
+                            .label("5 items")
                             .dropdown_menu_with_anchor(Corner::TopRight, move |this, _, _| {
                                 let mut this = this
                                     .scrollable(true)
                                     .max_h(px(300.))
-                                    .label(format!("Total {} items", 100));
+                                    .label("5 recent files");
                                 for i in 0..5 {
                                     this = this.menu(
-                                        SharedString::from(format!("Item {}", i)),
+                                        SharedString::from(format!("recent-file-{}.rs", i + 1)),
                                         Box::new(Info(i)),
                                     )
                                 }
-                                this.min_w(px(100.))
+                                this.min_w(px(180.))
                             }),
                     ),
             )
