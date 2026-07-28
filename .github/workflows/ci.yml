@@ -137,6 +137,12 @@ jobs:
         if: ${{ matrix.run_on == 'windows-latest' }}
         shell: pwsh
         run: |
+          # This step expects the run to fail, so cargo writes "process didn't
+          # exit successfully" to stderr. Actions runs pwsh with
+          # $ErrorActionPreference='Stop', where a native command's stderr under
+          # 2>&1 raises a terminating NativeCommandError — killing the script
+          # before the checks below ever run.
+          $ErrorActionPreference = 'Continue'
           $output = cargo run -p app_shell -- --fail-start 2>&1 | Out-String
           $exitCode = $LASTEXITCODE
           Write-Output $output
