@@ -635,19 +635,8 @@ impl Render for CommandPaletteView {
                 px(0.0)
             };
 
-        // While the host dialog defers unmount for our exit animation, render
-        // the opaque (blur-off) material: the renderer cannot yet fade a
-        // backdrop-blur subtree through a wrapper opacity — the blur layer
-        // ignores it — so the exit fades the opaque fallback instead. Remove
-        // when blur honors element opacity in gpui.
         let closing = is_layer_closing(cx);
-        let surface_ctx = if closing {
-            SurfaceContext {
-                blur_enabled: false,
-            }
-        } else {
-            SurfaceContext::new(cx)
-        };
+        let surface_ctx = SurfaceContext::new(cx);
 
         let content = v_flex()
             .key_context(CONTEXT)
