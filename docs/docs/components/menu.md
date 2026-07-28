@@ -10,8 +10,8 @@ The Menu component provides both context menus (right-click menus) and popup men
 
 ## Visual treatment
 
-- Popup surfaces use an opaque popover color, a 1 px theme border, a restrained flyout shadow, and a 6 px radius.
-- Default rows are 28 px high with 8 px horizontal padding. Compact application-menu rows remain 24 px high.
+- Popup surfaces use the theme's translucent Acrylic flyout material: backdrop blur, subtle noise, a 1 px stroke, restrained elevation, and a 6 px radius. When backdrop blur is unavailable or disabled, the material falls back to an opaque background.
+- Default rows are 30 px high with 8 px horizontal padding. Compact application-menu rows remain 26 px high. The shell uses 6 px padding and 4 px row spacing for clearer grouping.
 - Icons, labels, checks, shortcuts, and submenu chevrons share fixed columns so mixed item types stay aligned.
 - Hover uses the neutral list-hover token. Keyboard and pointer selection use the theme primary color with its paired foreground color.
 - Section labels use smaller medium-weight text; separators use a single 1 px rule with 4 px vertical spacing.

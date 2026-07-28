@@ -136,7 +136,6 @@ impl FloatingSidebarStory {
             .collapsed(self.collapsed)
             .width(STORY_SIDEBAR_WIDTH)
             .inset(inset)
-            .blur_enabled(false)
             .elevation(self.elevation)
             .header_with(move |collapsed, _, cx| {
                 SidebarHeader::new()

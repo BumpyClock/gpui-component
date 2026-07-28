@@ -38,8 +38,7 @@ pub(crate) fn theme_elevation_defaults() -> ThemeElevation {
         shell_level: 36,
         inactive_window_level: 64,
         active_window_level: 128,
-        // Preserve current gpui-component surface shadow behavior
-        surface_flyout_shadow: ThemeShadowToken::Sm,
+        surface_flyout_shadow: ThemeShadowToken::Md,
         surface_panel_shadow: ThemeShadowToken::Lg,
         surface_card_shadow: ThemeShadowToken::Sm,
     }
@@ -47,17 +46,16 @@ pub(crate) fn theme_elevation_defaults() -> ThemeElevation {
 
 pub(crate) fn theme_material_defaults() -> ThemeMaterial {
     ThemeMaterial {
-        // Preserve existing surface behavior when no config is supplied
-        flyout_blur_radius: px(60.0),
-        panel_blur_radius: px(120.0),
-        flyout_light_opacity: 0.60,
-        flyout_dark_opacity: 0.70,
-        panel_light_opacity: 0.85,
+        flyout_blur_radius: px(24.0),
+        panel_blur_radius: px(48.0),
+        flyout_light_opacity: 0.86,
+        flyout_dark_opacity: 0.88,
+        panel_light_opacity: 0.88,
         panel_dark_opacity: 0.90,
         card_light_opacity: 0.70,
         card_dark_opacity: 0.05,
-        subtle_stroke_light_opacity: 0.5,
-        subtle_stroke_dark_opacity: 0.5,
+        subtle_stroke_light_opacity: 0.10,
+        subtle_stroke_dark_opacity: 0.14,
 
         // Fluent layering + material palette tokens
         smoke_light: fluent_color("#0000004D"),

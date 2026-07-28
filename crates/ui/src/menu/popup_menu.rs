@@ -7,10 +7,7 @@ use crate::animation::{
 use crate::global_state::GlobalState;
 use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::ScrollableElement;
-use crate::{
-    ActiveTheme, ElementExt, Icon, IconName, NoiseIntensity, Sizable as _, StyledExt,
-    SurfaceContext,
-};
+use crate::{ActiveTheme, ElementExt, Icon, IconName, Sizable as _, StyledExt, SurfaceContext};
 use crate::{Side, Size, SurfacePreset, h_flex, kbd::Kbd, v_flex};
 use gpui::{
     Action, AnimationExt as _, AnyElement, App, AppContext, Bounds, Context, Corner, DismissEvent,
@@ -1118,8 +1115,8 @@ impl PopupMenu {
         let group_name = format!("{}:item-{}", cx.entity().entity_id(), ix);
 
         let (item_height, radius) = match self.size {
-            Size::Small => (px(24.), options.radius.half()),
-            _ => (px(28.), options.radius),
+            Size::Small => (px(26.), options.radius.half()),
+            _ => (px(30.), options.radius),
         };
 
         let this = MenuItemElement::new(ix, &group_name)
@@ -1151,7 +1148,7 @@ impl PopupMenu {
                 .border_color(cx.theme().border)
                 .disabled(true),
             PopupMenuItem::Label(label) => this
-                .h(px(20.))
+                .h(px(22.))
                 .text_xs()
                 .font_medium()
                 .disabled(true)
@@ -1471,9 +1468,7 @@ impl Render for PopupMenu {
             radius: px(4.),
         };
 
-        let surface_ctx = SurfaceContext {
-            blur_enabled: GlobalState::global(cx).blur_enabled(),
-        };
+        let surface_ctx = SurfaceContext::new(cx);
         let surface_width = if self.bounds.size.width > px(0.) {
             self.bounds.size.width
         } else {
@@ -1502,8 +1497,8 @@ impl Render for PopupMenu {
             .child(
                 v_flex()
                     .id("items")
-                    .p_1()
-                    .gap_y_0p5()
+                    .p_1p5()
+                    .gap_y_1()
                     .min_w(rems(8.))
                     .when_some(self.min_width, |this, min_width| this.min_w(min_width))
                     .max_w(max_width)
@@ -1527,20 +1522,16 @@ impl Render for PopupMenu {
                 this.vertical_scrollbar(&self.scroll_handle)
             });
 
-        let mut surface = SurfacePreset::flyout()
-            .with_blur_radius(None)
-            .with_noise(NoiseIntensity::None)
-            .with_radius(px(6.));
-        surface.background.light_opacity = 1.0;
-        surface.background.dark_opacity = 1.0;
-        surface.wrap_with_bounds(
-            content,
-            surface_width,
-            surface_height,
-            window,
-            cx,
-            surface_ctx,
-        )
+        SurfacePreset::flyout()
+            .with_radius(px(6.))
+            .wrap_with_bounds(
+                content,
+                surface_width,
+                surface_height,
+                window,
+                cx,
+                surface_ctx,
+            )
     }
 }
 

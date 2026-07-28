@@ -135,7 +135,7 @@ impl<E: SidebarItem> FloatingSidebar<E> {
             resizer_hover_bg: None,
             inset: Some(DEFAULT_INSET),
             top_inset: px(0.0),
-            blur_enabled: Some(false),
+            blur_enabled: None,
             elevation: None,
             on_resize_end: None,
         }
@@ -215,9 +215,7 @@ impl<E: SidebarItem> FloatingSidebar<E> {
         self
     }
 
-    /// Set whether blur effects are enabled for the panel surface.
-    ///
-    /// Default is `false`.
+    /// Explicitly set whether blur effects are enabled for the glass surface.
     pub fn blur_enabled(mut self, enabled: bool) -> Self {
         self.blur_enabled = Some(enabled);
         self
@@ -478,7 +476,8 @@ impl<E: SidebarItem> RenderOnce for FloatingSidebar<E> {
                     .collapsed(visual_collapsed)
                     .width(expanded_width)
                     .animate_width(false)
-                    .refine_style(&style),
+                    .refine_style(&style)
+                    .bg(gpui::transparent_black()),
             )
             .child(resize_tracker)
     }
@@ -612,7 +611,7 @@ mod tests {
         assert_eq!(default_sidebar.width, DEFAULT_WIDTH);
         assert_eq!(default_sidebar.inset, Some(DEFAULT_INSET));
         assert_eq!(default_sidebar.resizer_width, DEFAULT_RESIZER_WIDTH);
-        assert_eq!(default_sidebar.blur_enabled, Some(false));
+        assert_eq!(default_sidebar.blur_enabled, None);
 
         let sidebar = FloatingSidebar::<SidebarMenu>::new("floating-sidebar")
             .side(Side::Right)

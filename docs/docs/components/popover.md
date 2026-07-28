@@ -8,6 +8,8 @@ summary: "A floating overlay that displays rich content relative to a trigger el
 
 Popover component for displaying floating content that appears when interacting with a trigger element. Supports multiple positioning options, custom content, different trigger methods, and automatic dismissal behaviors. Perfect for tooltips, menus, forms, and other contextual information.
 
+Default popovers use the theme's translucent Acrylic flyout material: backdrop blur, theme opacity, a subtle stroke, and flyout elevation. When backdrop blur is unavailable or disabled, the material falls back to an opaque background. Content receives 12 px padding by default.
+
 ## Import
 
 ```rust

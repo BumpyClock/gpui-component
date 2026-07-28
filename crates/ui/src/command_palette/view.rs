@@ -11,7 +11,7 @@ use crate::input::{Input, InputEvent, InputState};
 use crate::kbd::Kbd;
 use crate::spinner::Spinner;
 use crate::{
-    ActiveTheme, Icon, IconName, NoiseIntensity, Sizable, Size, SurfaceContext, SurfacePreset,
+    ActiveTheme, Icon, IconName, Sizable, Size, SurfaceContext, SurfacePreset,
     VirtualListScrollHandle, WindowExt as _, h_flex, v_flex, v_virtual_list,
 };
 use gpui::{
@@ -26,11 +26,11 @@ use std::sync::Arc;
 const CONTEXT: &str = "CommandPalette";
 
 // Height constants for layout calculations
-const HEADER_HEIGHT: f32 = 52.0;
-const FOOTER_HEIGHT: f32 = 36.0;
-const SECTION_HEADER_HEIGHT: f32 = 28.0;
-const EMPTY_STATE_HEIGHT: f32 = 112.0;
-const LIST_PADDING: f32 = 8.0;
+const HEADER_HEIGHT: f32 = 56.0;
+const FOOTER_HEIGHT: f32 = 40.0;
+const SECTION_HEADER_HEIGHT: f32 = 30.0;
+const EMPTY_STATE_HEIGHT: f32 = 120.0;
+const LIST_PADDING: f32 = 12.0;
 
 /// A render row for the command palette list.
 #[derive(Clone)]
@@ -97,7 +97,7 @@ impl CommandPaletteView {
             input_state,
             focus_handle,
             scroll_handle: VirtualListScrollHandle::new(),
-            item_height: px(44.),
+            item_height: px(46.),
             did_focus: false,
             list_revealed: false,
             _reveal_task: None,
@@ -218,6 +218,7 @@ impl CommandPaletteView {
         let match_info = item.match_info.clone();
         let disabled = item_data.disabled;
         let show_inline_category = show_category && !item_data.category.is_empty();
+        let secondary_foreground = cx.theme().foreground.opacity(0.68);
 
         let shortcut_element = item_data
             .shortcut
@@ -226,6 +227,9 @@ impl CommandPaletteView {
             .map(|keystroke| {
                 Kbd::new(keystroke)
                     .outline()
+                    .when(!selected && !disabled, |this| {
+                        this.text_color(secondary_foreground)
+                    })
                     .when(selected && !disabled, |this| {
                         this.bg(cx.theme().list_active)
                             .border_color(cx.theme().list_active_border)
@@ -273,7 +277,7 @@ impl CommandPaletteView {
                         .text_color(if selected && !disabled {
                             cx.theme().foreground
                         } else {
-                            cx.theme().muted_foreground
+                            secondary_foreground
                         }),
                 )
             })
@@ -317,7 +321,7 @@ impl CommandPaletteView {
                                     .text_color(if selected && !disabled {
                                         cx.theme().foreground.opacity(0.72)
                                     } else {
-                                        cx.theme().muted_foreground
+                                        secondary_foreground
                                     })
                                     .truncate()
                                     .child(item_data.category.clone()),
@@ -337,7 +341,7 @@ impl CommandPaletteView {
             .px_3()
             .text_xs()
             .font_weight(gpui::FontWeight::SEMIBOLD)
-            .text_color(cx.theme().muted_foreground)
+            .text_color(cx.theme().foreground.opacity(0.64))
             .child(title)
     }
 
@@ -397,7 +401,7 @@ impl CommandPaletteView {
             .border_color(cx.theme().border)
             .justify_between()
             .text_xs()
-            .text_color(cx.theme().muted_foreground)
+            .text_color(cx.theme().foreground.opacity(0.64))
             .child(
                 h_flex()
                     .gap_4()
@@ -427,7 +431,7 @@ impl CommandPaletteView {
                     h_flex()
                         .gap_2()
                         .items_center()
-                        .text_color(cx.theme().muted_foreground)
+                        .text_color(cx.theme().foreground.opacity(0.64))
                         .when(reduced_motion, |this| {
                             this.child(Icon::new(IconName::LoaderCircle).size_4())
                         })
@@ -436,7 +440,7 @@ impl CommandPaletteView {
                                 Spinner::new()
                                     .icon(IconName::LoaderCircle)
                                     .with_size(Size::Small)
-                                    .color(cx.theme().muted_foreground),
+                                    .color(cx.theme().foreground.opacity(0.64)),
                             )
                         })
                         .child(status),
@@ -610,9 +614,7 @@ impl Render for CommandPaletteView {
                 px(0.0)
             };
 
-        let surface_ctx = SurfaceContext {
-            blur_enabled: GlobalState::global(cx).blur_enabled(),
-        };
+        let surface_ctx = SurfaceContext::new(cx);
 
         let content = v_flex()
             .key_context(CONTEXT)
@@ -749,14 +751,8 @@ impl Render for CommandPaletteView {
                 })
             });
 
-        let mut surface = SurfacePreset::flyout()
-            .with_blur_radius(None)
-            .with_noise(NoiseIntensity::None)
-            .with_radius(cx.theme().radius_lg);
-        surface.background.light_opacity = 1.0;
-        surface.background.dark_opacity = 1.0;
-
-        surface
+        SurfacePreset::flyout()
+            .with_radius(cx.theme().radius_lg)
             .wrap_with_bounds(
                 content,
                 px(config.width),

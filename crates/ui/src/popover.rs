@@ -7,7 +7,7 @@ use gpui::{
 use std::rc::Rc;
 
 use crate::{
-    ActiveTheme, Anchor, ElementExt, ElevationToken, Selectable, StyledExt as _, ThemeShadowToken,
+    ActiveTheme, Anchor, ElementExt, Selectable, StyledExt as _, SurfaceContext, SurfacePreset,
     actions::Cancel,
     anchored,
     animation::{
@@ -328,24 +328,11 @@ impl Popover {
             .occlude()
             .tab_group()
             .when(appearance, |this| {
-                let elevation = match cx.theme().elevation.surface_flyout_shadow {
-                    ThemeShadowToken::None => ElevationToken::None,
-                    ThemeShadowToken::Xs => ElevationToken::Xs,
-                    ThemeShadowToken::Sm => ElevationToken::Sm,
-                    ThemeShadowToken::Md => ElevationToken::Md,
-                    ThemeShadowToken::Lg => ElevationToken::Lg,
-                    ThemeShadowToken::Xl => ElevationToken::Xl,
-                };
-
-                elevation.apply(
-                    this.bg(cx.theme().popover)
-                        .text_color(cx.theme().popover_foreground)
-                        .border_1()
-                        .border_color(cx.theme().border)
-                        .rounded(cx.theme().radius)
-                        .p_2(),
-                    cx,
-                )
+                SurfacePreset::flyout()
+                    .with_radius(cx.theme().radius)
+                    .apply_material(this, cx, SurfaceContext::new(cx))
+                    .text_color(cx.theme().popover_foreground)
+                    .p_3()
             })
             .map(|this| match anchor {
                 Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight => this.top_1(),

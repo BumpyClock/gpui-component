@@ -18,7 +18,7 @@ use gpui::{
     StyledImage, Window, div, img, px,
 };
 
-use crate::{ActiveTheme, StyledExt, ThemeShadowToken};
+use crate::{ActiveTheme, StyledExt, ThemeShadowToken, global_state::GlobalState};
 
 const GLASS_NOISE_ASSET_PATH: &str = "surface/NoiseAsset_256.png";
 const GLASS_NOISE_TILE_SIZE_BASE: f32 = 128.0;
@@ -28,6 +28,15 @@ const GLASS_NOISE_TILE_SIZE_BASE: f32 = 128.0;
 pub struct SurfaceContext {
     /// Whether blur effects are enabled (controlled by app settings).
     pub blur_enabled: bool,
+}
+
+impl SurfaceContext {
+    /// Builds a context from the app's current blur setting.
+    pub(crate) fn new(cx: &App) -> Self {
+        Self {
+            blur_enabled: GlobalState::global(cx).blur_enabled(),
+        }
+    }
 }
 
 /// Semantic categorization of surface types.
@@ -91,6 +100,8 @@ impl ElevationToken {
 pub enum SurfaceColorSource {
     #[default]
     Popover,
+    Acrylic,
+    Mica,
     White,
     Sidebar,
     Background,
@@ -119,6 +130,20 @@ impl SurfaceBackground {
     pub fn resolve(&self, cx: &App) -> Hsla {
         let base = match self.color_source {
             SurfaceColorSource::Popover => cx.theme().popover,
+            SurfaceColorSource::Acrylic => {
+                if cx.theme().mode.is_dark() {
+                    cx.theme().material.acrylic_default_dark
+                } else {
+                    cx.theme().material.acrylic_default_light
+                }
+            }
+            SurfaceColorSource::Mica => {
+                if cx.theme().mode.is_dark() {
+                    cx.theme().material.mica_base_dark
+                } else {
+                    cx.theme().material.mica_base_light
+                }
+            }
             SurfaceColorSource::White => gpui::white(),
             SurfaceColorSource::Sidebar => cx.theme().sidebar,
             SurfaceColorSource::Background => cx.theme().background,
@@ -174,7 +199,7 @@ impl StrokeSpec {
             cx.theme().material.subtle_stroke_light_opacity
         };
         match self.color {
-            StrokeColor::Subtle => cx.theme().border.opacity(subtle_stroke_opacity),
+            StrokeColor::Subtle => cx.theme().foreground.opacity(subtle_stroke_opacity),
             StrokeColor::Default => cx.theme().border,
             StrokeColor::Strong => cx.theme().border,
             StrokeColor::SubtleWithOpacity(opacity) => cx.theme().border.opacity(opacity),
@@ -229,22 +254,22 @@ impl SurfacePreset {
 
     /// Creates a flyout surface preset for menus and dropdowns.
     ///
-    /// - 60px blur radius
+    /// - 24px blur radius
     /// - Subtle noise
-    /// - Popover background at 0.60/0.70 opacity
-    /// - Small elevation with subtle stroke
+    /// - Acrylic background at 0.86/0.88 opacity
+    /// - Medium elevation with subtle stroke
     /// - 12px border radius
     pub fn flyout() -> Self {
         Self {
             kind: SurfaceKind::Flyout,
-            blur_radius: Some(px(60.0)),
+            blur_radius: Some(px(24.0)),
             noise_intensity: NoiseIntensity::Subtle,
             background: SurfaceBackground {
-                color_source: SurfaceColorSource::Popover,
-                light_opacity: 0.60,
-                dark_opacity: 0.70,
+                color_source: SurfaceColorSource::Acrylic,
+                light_opacity: 0.86,
+                dark_opacity: 0.88,
             },
-            elevation: ElevationToken::Sm,
+            elevation: ElevationToken::Md,
             stroke: Some(StrokeSpec::subtle()),
             transparency_factor: 1.0,
             radius: Some(px(12.0)),
@@ -255,19 +280,19 @@ impl SurfacePreset {
 
     /// Creates a panel surface preset for sidebars and navigation.
     ///
-    /// - 120px blur radius
-    /// - Heavy noise
-    /// - Sidebar background at 0.85/0.90 opacity
+    /// - 48px blur radius
+    /// - Subtle noise
+    /// - Mica background at 0.88/0.90 opacity
     /// - Large elevation with subtle stroke
     /// - 16px border radius
     pub fn panel() -> Self {
         Self {
             kind: SurfaceKind::Panel,
-            blur_radius: Some(px(120.0)),
-            noise_intensity: NoiseIntensity::Heavy,
+            blur_radius: Some(px(48.0)),
+            noise_intensity: NoiseIntensity::Subtle,
             background: SurfaceBackground {
-                color_source: SurfaceColorSource::Sidebar,
-                light_opacity: 0.85,
+                color_source: SurfaceColorSource::Mica,
+                light_opacity: 0.88,
                 dark_opacity: 0.90,
             },
             elevation: ElevationToken::Lg,
@@ -344,33 +369,34 @@ impl SurfacePreset {
         self
     }
 
-    /// Wraps content in a surface container with all configured effects.
+    /// Applies the surface material (radius, background, backdrop blur, stroke, elevation)
+    /// directly to an element.
     ///
-    /// This method creates a complete surface element with:
-    /// - One rounded clip shared by the background, backdrop blur, noise, and content
-    /// - Border/stroke styling using the same rounded geometry
-    /// - Elevation shadows painted outside the rounded clip
-    /// - Noise overlay (if blur is enabled)
-    pub fn wrap_with_bounds(
-        &self,
-        content: impl IntoElement,
-        width: Pixels,
-        height: Pixels,
-        window: &Window,
-        cx: &App,
-        ctx: SurfaceContext,
-    ) -> Div {
+    /// Use this when the element already owns its layout and only needs the material, e.g.
+    /// a popover body. Use [`Self::wrap_with_bounds`] instead when the surface should also
+    /// render the noise overlay, which requires known bounds.
+    pub(crate) fn apply_material<E>(&self, mut surface: E, cx: &App, ctx: SurfaceContext) -> E
+    where
+        E: Styled + StyledExt,
+    {
         let radius = self.radius.unwrap_or(cx.theme().radius);
-        let scale_factor = window.scale_factor();
         let blur_radius = self.resolve_blur_radius(cx);
-        let background = self.resolve_background(cx);
+        let mut background = self.resolve_background(cx);
         let elevation = self.resolve_elevation(cx);
+        let uses_opaque_fallback = !ctx.blur_enabled && blur_radius.is_some();
 
-        let bg_color = background.resolve(cx).opacity(self.transparency_factor);
-        let noise_opacity = self.noise_intensity.opacity();
-        let should_render_noise = ctx.blur_enabled && noise_opacity > 0.0;
+        if uses_opaque_fallback {
+            background.light_opacity = 1.0;
+            background.dark_opacity = 1.0;
+        }
 
-        let mut surface = div().relative().rounded(radius).overflow_hidden();
+        let transparency_factor = if uses_opaque_fallback {
+            1.0
+        } else {
+            self.transparency_factor
+        };
+        let bg_color = background.resolve(cx).opacity(transparency_factor);
+        surface = surface.rounded(radius);
 
         if bg_color.a > 0.0 {
             surface = surface.bg(bg_color);
@@ -388,7 +414,30 @@ impl SurfacePreset {
                 .border_color(stroke.resolve_color(cx));
         }
 
-        surface = elevation.apply(surface, cx);
+        elevation.apply(surface, cx)
+    }
+
+    /// Wraps content in a surface container with all configured effects.
+    ///
+    /// This method creates a complete surface element with:
+    /// - One rounded clip shared by the background, backdrop blur, noise, and content
+    /// - Border/stroke styling using the same rounded geometry
+    /// - Elevation shadows painted outside the rounded clip
+    /// - Noise overlay (if blur is enabled)
+    pub fn wrap_with_bounds(
+        &self,
+        content: impl IntoElement,
+        width: Pixels,
+        height: Pixels,
+        window: &Window,
+        cx: &App,
+        ctx: SurfaceContext,
+    ) -> Div {
+        let scale_factor = window.scale_factor();
+        let noise_opacity = self.noise_intensity.opacity();
+        let should_render_noise = ctx.blur_enabled && noise_opacity > 0.0;
+
+        let mut surface = self.apply_material(div().relative().overflow_hidden(), cx, ctx);
 
         if should_render_noise {
             surface = surface.child(render_noise_overlay_unclipped(
