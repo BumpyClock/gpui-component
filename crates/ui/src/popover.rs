@@ -1,8 +1,8 @@
 use gpui::{
-    AnimationExt as _, AnyElement, App, Bounds, Context, Deferred, DismissEvent, Div, ElementId,
-    EventEmitter, FocusHandle, Focusable, Half, InteractiveElement as _, IntoElement, KeyBinding,
-    MouseButton, ParentElement, Pixels, Point, Render, RenderOnce, SharedString, Stateful,
-    StyleRefinement, Styled, Subscription, Window, deferred, div, prelude::FluentBuilder as _, px,
+    AnyElement, App, Bounds, Context, Deferred, DismissEvent, Div, ElementId, EventEmitter,
+    FocusHandle, Focusable, Half, InteractiveElement as _, IntoElement, KeyBinding, MouseButton,
+    ParentElement, Pixels, Point, Render, RenderOnce, SharedString, Stateful, StyleRefinement,
+    Styled, Subscription, Window, deferred, div, prelude::FluentBuilder as _, px,
 };
 use std::rc::Rc;
 
@@ -11,10 +11,7 @@ use crate::{
     SurfacePreset,
     actions::Cancel,
     anchored,
-    animation::{
-        self, PresenceOptions, PresencePhase, exit_animation, keyed_presence, spring_animation,
-        standard_animation,
-    },
+    animation::{FlyoutSlide, PresenceOptions, flyout_motion, flyout_presence},
     flyout_primary_foreground,
     global_state::GlobalState,
     v_flex,
@@ -402,14 +399,9 @@ impl RenderOnce for Popover {
 
         let motion = cx.theme().motion.clone();
         let reduced_motion = GlobalState::global(cx).reduced_motion();
-        // The presence windows are the same tokens the animations run on, so an
-        // exit always plays to completion before its element unmounts.
-        let presence = keyed_presence(
+        let presence = flyout_presence(
             SharedString::from(format!("popover-presence-{}", popover_id)),
             open,
-            !reduced_motion,
-            animation::enter_duration(&motion),
-            animation::exit_duration(&motion),
             PresenceOptions {
                 animate_on_mount: true,
             },
@@ -420,9 +412,6 @@ impl RenderOnce for Popover {
             return el;
         }
 
-        let open_fade_anim = standard_animation(&motion, reduced_motion);
-        let open_transform_anim = spring_animation(&motion, reduced_motion);
-        let close_anim = exit_animation(&motion, reduced_motion);
         let vertical_direction = if matches!(
             self.anchor,
             Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight
@@ -431,6 +420,7 @@ impl RenderOnce for Popover {
         } else {
             1.0
         };
+        let slide = FlyoutSlide::vertical(vertical_direction).exit_distance(4.0);
 
         let popover_content =
             Self::render_popover_content(self.anchor, self.appearance, window, cx)
@@ -454,62 +444,7 @@ impl RenderOnce for Popover {
                 })
                 .refine_style(&self.style)
                 .map(move |el| {
-                    if !presence.transition_active() {
-                        el.opacity(presence.progress(1.0))
-                            .translate_y(px(0.0))
-                            .into_any_element()
-                    } else if matches!(presence.phase, PresencePhase::Entering) {
-                        let translated = if let Some(anim) = open_transform_anim {
-                            div()
-                                .child(el)
-                                .with_animation(
-                                    SharedString::from("popover-open-transform"),
-                                    anim,
-                                    move |el, delta| {
-                                        el.translate_y(px(4.0 * (1.0 - delta) * vertical_direction))
-                                    },
-                                )
-                                .into_any_element()
-                        } else {
-                            el.into_any_element()
-                        };
-                        if let Some(anim) = open_fade_anim {
-                            div()
-                                .child(translated)
-                                .with_animation(
-                                    SharedString::from("popover-open-fade"),
-                                    anim,
-                                    move |el, delta| {
-                                        let opacity = presence.progress(delta).clamp(0.0, 1.0);
-                                        el.opacity(opacity)
-                                    },
-                                )
-                                .into_any_element()
-                        } else {
-                            div()
-                                .child(translated)
-                                .opacity(presence.progress(1.0))
-                                .into_any_element()
-                        }
-                    } else {
-                        if let Some(anim) = close_anim {
-                            el.with_animation(
-                                SharedString::from(format!(
-                                    "popover-close-motion-{}",
-                                    u8::from(matches!(presence.phase, PresencePhase::Entering))
-                                )),
-                                anim,
-                                move |el, delta| {
-                                    let progress = presence.progress(delta).clamp(0.0, 1.0);
-                                    let offset = px(4.0 * (1.0 - progress) * vertical_direction);
-                                    el.opacity(progress).translate_y(offset)
-                                },
-                            )
-                            .into_any_element()
-                        } else {
-                            el.into_any_element()
-                        }
-                    }
+                    flyout_motion("popover", presence, slide, &motion, reduced_motion, el)
                 });
 
         el.child(Self::render_popover(

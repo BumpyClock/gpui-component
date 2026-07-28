@@ -1,19 +1,15 @@
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
-    AnimationExt as _, AnyElement, App, Context, Corner, DismissEvent, Element, ElementId, Entity,
-    Focusable, GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement,
-    IntoElement, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, SharedString,
-    StyleRefinement, Styled, Subscription, Window, anchored, deferred, div, prelude::FluentBuilder,
-    px,
+    AnyElement, App, Context, Corner, DismissEvent, Element, ElementId, Entity, Focusable,
+    GlobalElementId, Hitbox, HitboxBehavior, InspectorElementId, InteractiveElement, IntoElement,
+    MouseButton, MouseDownEvent, ParentElement, Pixels, Point, SharedString, StyleRefinement,
+    Styled, Subscription, Window, anchored, deferred, div, prelude::FluentBuilder, px,
 };
 
 use crate::{
     ActiveTheme,
-    animation::{
-        self, PresenceOptions, PresencePhase, exit_animation, keyed_presence, spring_animation,
-        standard_animation,
-    },
+    animation::{FlyoutSlide, PresenceOptions, flyout_motion, flyout_presence},
     global_state::GlobalState,
     menu::PopupMenu,
 };
@@ -176,12 +172,9 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                 let mut menu_element = None;
                 let reduced_motion = GlobalState::global(cx).reduced_motion();
                 let motion = cx.theme().motion.clone();
-                let presence = keyed_presence(
+                let presence = flyout_presence(
                     SharedString::from(format!("context-menu-presence-{:?}", this.id)),
                     open,
-                    !reduced_motion,
-                    animation::enter_duration(&motion),
-                    animation::exit_duration(&motion),
                     PresenceOptions::default(),
                     window,
                     cx,
@@ -194,9 +187,6 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                         .unwrap_or(false);
 
                     if has_menu_item {
-                        let open_opacity_animation = standard_animation(&motion, reduced_motion);
-                        let open_transform_animation = spring_animation(&motion, reduced_motion);
-                        let close_animation = exit_animation(&motion, reduced_motion);
                         let positioned_menu = anchored()
                             .position(position)
                             .snap_to_window_with_margin(px(8.))
@@ -208,60 +198,14 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
 
                                 this.child(menu)
                             });
-                        let animated_menu = if presence.transition_active() {
-                            if matches!(presence.phase, PresencePhase::Entering) {
-                                let transformed = if let Some(animation) = open_transform_animation
-                                {
-                                    div()
-                                        .child(positioned_menu)
-                                        .with_animation(
-                                            "context-menu-enter-transform",
-                                            animation,
-                                            |menu, delta| menu.translate_y(px(4.0 * (1.0 - delta))),
-                                        )
-                                        .into_any_element()
-                                } else {
-                                    div().child(positioned_menu).into_any_element()
-                                };
-
-                                if let Some(animation) = open_opacity_animation {
-                                    div()
-                                        .child(transformed)
-                                        .with_animation(
-                                            "context-menu-enter-opacity",
-                                            animation,
-                                            move |menu, delta| {
-                                                menu.opacity(
-                                                    presence.progress(delta).clamp(0.0, 1.0),
-                                                )
-                                            },
-                                        )
-                                        .into_any_element()
-                                } else {
-                                    div()
-                                        .child(transformed)
-                                        .opacity(presence.progress(1.0))
-                                        .into_any_element()
-                                }
-                            } else if let Some(animation) = close_animation {
-                                div()
-                                    .child(positioned_menu)
-                                    .with_animation(
-                                        "context-menu-exit",
-                                        animation,
-                                        move |menu, delta| {
-                                            let progress = presence.progress(delta).clamp(0.0, 1.0);
-                                            menu.opacity(progress)
-                                                .translate_y(px(2.0 * (1.0 - progress)))
-                                        },
-                                    )
-                                    .into_any_element()
-                            } else {
-                                div().child(positioned_menu).into_any_element()
-                            }
-                        } else {
-                            div().child(positioned_menu).into_any_element()
-                        };
+                        let animated_menu = flyout_motion(
+                            "context-menu",
+                            presence,
+                            FlyoutSlide::vertical(1.0),
+                            &motion,
+                            reduced_motion,
+                            positioned_menu,
+                        );
 
                         menu_element = Some(
                             deferred(

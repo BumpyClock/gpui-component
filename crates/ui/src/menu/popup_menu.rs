@@ -1,9 +1,6 @@
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::actions::{SelectLeft, SelectRight};
-use crate::animation::{
-    self, PresenceOptions, PresencePhase, exit_animation, keyed_presence, spring_animation,
-    standard_animation,
-};
+use crate::animation::{FlyoutSlide, PresenceOptions, flyout_motion, flyout_presence};
 use crate::global_state::GlobalState;
 use crate::menu::menu_item::MenuItemElement;
 use crate::scroll::ScrollableElement;
@@ -14,11 +11,10 @@ use crate::{
 };
 use crate::{Side, Size, SurfacePreset, h_flex, kbd::Kbd, v_flex};
 use gpui::{
-    Action, AnimationExt as _, AnyElement, App, AppContext, Bounds, Context, Corner, DismissEvent,
-    Edges, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    KeyBinding, ParentElement, Pixels, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, WeakEntity, Window, anchored, div, prelude::FluentBuilder,
-    px,
+    Action, AnyElement, App, AppContext, Bounds, Context, Corner, DismissEvent, Edges, Entity,
+    EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
+    ParentElement, Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled,
+    WeakEntity, Window, anchored, div, prelude::FluentBuilder, px,
 };
 use gpui::{ClickEvent, MouseDownEvent, OwnedMenuItem, Point, Subscription};
 use std::rc::Rc;
@@ -1280,23 +1276,17 @@ impl PopupMenu {
             } => {
                 let reduced_motion = GlobalState::global(cx).reduced_motion();
                 let motion = cx.theme().motion.clone();
-                let submenu_presence = keyed_presence(
+                let submenu_presence = flyout_presence(
                     SharedString::from(format!(
                         "popup-menu-submenu-presence-{}-{}",
                         cx.entity().entity_id(),
                         ix
                     )),
                     selected,
-                    !reduced_motion,
-                    animation::enter_duration(&motion),
-                    animation::exit_duration(&motion),
                     PresenceOptions::default(),
                     window,
                     cx,
                 );
-                let submenu_open_opacity_anim = standard_animation(&motion, reduced_motion);
-                let submenu_open_transform_anim = spring_animation(&motion, reduced_motion);
-                let submenu_close_anim = exit_animation(&motion, reduced_motion);
 
                 this.selected(selected)
                     .disabled(*disabled)
@@ -1356,77 +1346,14 @@ impl PopupMenu {
                             // The motion wraps the *content inside* `anchored`:
                             // wrappers outside it have no visual effect, because
                             // anchored repositions its children after layout.
-                            let animated_inner = if submenu_presence.transition_active() {
-                                if matches!(submenu_presence.phase, PresencePhase::Entering) {
-                                    let transformed =
-                                        if let Some(anim) = submenu_open_transform_anim {
-                                            div()
-                                                .child(submenu_inner)
-                                                .with_animation(
-                                                    SharedString::from(format!(
-                                                        "popup-submenu-open-transform-{}",
-                                                        ix
-                                                    )),
-                                                    anim,
-                                                    move |el, delta| {
-                                                        el.translate_x(px(direction
-                                                            * 6.0
-                                                            * (1.0 - delta)))
-                                                    },
-                                                )
-                                                .into_any_element()
-                                        } else {
-                                            submenu_inner.into_any_element()
-                                        };
-                                    if let Some(anim) = submenu_open_opacity_anim {
-                                        div()
-                                            .child(transformed)
-                                            .with_animation(
-                                                SharedString::from(format!(
-                                                    "popup-submenu-open-opacity-{}",
-                                                    ix
-                                                )),
-                                                anim,
-                                                move |el, delta| {
-                                                    el.opacity(
-                                                        submenu_presence
-                                                            .progress(delta)
-                                                            .clamp(0.0, 1.0),
-                                                    )
-                                                },
-                                            )
-                                            .into_any_element()
-                                    } else {
-                                        div()
-                                            .child(transformed)
-                                            .opacity(submenu_presence.progress(1.0))
-                                            .into_any_element()
-                                    }
-                                } else if let Some(anim) = submenu_close_anim {
-                                    div()
-                                        .child(submenu_inner)
-                                        .with_animation(
-                                            SharedString::from(format!(
-                                                "popup-submenu-close-motion-{}",
-                                                ix
-                                            )),
-                                            anim,
-                                            move |el, delta| {
-                                                let progress = submenu_presence
-                                                    .progress(delta)
-                                                    .clamp(0.0, 1.0);
-                                                el.opacity(progress).translate_x(px(direction
-                                                    * 6.0
-                                                    * (1.0 - progress)))
-                                            },
-                                        )
-                                        .into_any_element()
-                                } else {
-                                    submenu_inner.into_any_element()
-                                }
-                            } else {
-                                submenu_inner.into_any_element()
-                            };
+                            let animated_inner = flyout_motion(
+                                SharedString::from(format!("popup-submenu-{}", ix)),
+                                submenu_presence,
+                                FlyoutSlide::horizontal(direction),
+                                &motion,
+                                reduced_motion,
+                                submenu_inner,
+                            );
 
                             gpui::deferred(
                                 anchored()

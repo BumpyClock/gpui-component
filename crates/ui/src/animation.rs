@@ -1,7 +1,10 @@
-use gpui::{Animation, App, SharedString, Window, spring};
+use gpui::{
+    Animation, AnimationExt as _, AnyElement, App, Axis, IntoElement, ParentElement as _,
+    SharedString, Styled as _, Window, div, px, spring,
+};
 use std::time::Duration;
 
-use crate::{ThemeMotion, global_state::GlobalState};
+use crate::{ActiveTheme as _, ThemeMotion, global_state::GlobalState};
 
 /// Returns whether motion should be reduced for the current component context.
 pub fn reduced_motion(cx: &App) -> bool {
@@ -331,6 +334,147 @@ pub fn keyed_presence(
 
     PresenceTransition {
         phase: *phase_state.read(cx),
+    }
+}
+
+/// The slide a flyout travels as it enters and exits, in logical pixels.
+///
+/// `direction` is +1.0 when the surface opens away from its trigger along the
+/// positive axis (downward / rightward) and -1.0 when flipped.
+#[derive(Clone, Copy, Debug)]
+pub struct FlyoutSlide {
+    pub axis: Axis,
+    pub direction: f32,
+    pub enter_distance: f32,
+    pub exit_distance: f32,
+}
+
+impl FlyoutSlide {
+    /// Vertical slide with the shared flyout distances (4px in, 2px out).
+    pub fn vertical(direction: f32) -> Self {
+        Self {
+            axis: Axis::Vertical,
+            direction,
+            enter_distance: 4.0,
+            exit_distance: 2.0,
+        }
+    }
+
+    /// Horizontal slide with the submenu distances (6px both ways).
+    pub fn horizontal(direction: f32) -> Self {
+        Self {
+            axis: Axis::Horizontal,
+            direction,
+            enter_distance: 6.0,
+            exit_distance: 6.0,
+        }
+    }
+
+    /// Override the exit travel distance.
+    pub fn exit_distance(mut self, distance: f32) -> Self {
+        self.exit_distance = distance;
+        self
+    }
+
+    fn offset(&self, distance: f32, progress: f32) -> gpui::Pixels {
+        px(distance * (1.0 - progress) * self.direction)
+    }
+}
+
+/// The shared presence for flyout surfaces: enter/exit windows come from the
+/// motion tokens (so an exit always outlives its animation) and reduced motion
+/// applies the final state immediately.
+pub fn flyout_presence(
+    key: SharedString,
+    open: bool,
+    options: PresenceOptions,
+    window: &mut Window,
+    cx: &mut App,
+) -> PresenceTransition {
+    let motion = cx.theme().motion.clone();
+    let reduced_motion = GlobalState::global(cx).reduced_motion();
+    keyed_presence(
+        key,
+        open,
+        !reduced_motion,
+        enter_duration(&motion),
+        exit_duration(&motion),
+        options,
+        window,
+        cx,
+    )
+}
+
+/// The one flyout open/close motion, shared by popover, context menu, submenu,
+/// select popup and hover card: enter is the spring sliding from the trigger
+/// plus a standard fade, exit is a standard fade sliding back.
+///
+/// Wrap the surface element with this at the point where its host already
+/// paints it (inside any `deferred`/`anchored` — wrappers outside `anchored`
+/// have no visual effect). `id_base` scopes the animation element ids per
+/// surface instance.
+pub fn flyout_motion(
+    id_base: impl Into<SharedString>,
+    presence: PresenceTransition,
+    slide: FlyoutSlide,
+    motion: &ThemeMotion,
+    reduced_motion: bool,
+    el: impl IntoElement,
+) -> AnyElement {
+    if !presence.transition_active() {
+        return el.into_any_element();
+    }
+
+    let id_base = id_base.into();
+    if matches!(presence.phase, PresencePhase::Entering) {
+        let transformed = if let Some(anim) = spring_animation(motion, reduced_motion) {
+            div()
+                .child(el.into_any_element())
+                .with_animation(
+                    SharedString::from(format!("{}-open-transform", id_base)),
+                    anim,
+                    move |el, delta| match slide.axis {
+                        Axis::Vertical => el.translate_y(slide.offset(slide.enter_distance, delta)),
+                        Axis::Horizontal => {
+                            el.translate_x(slide.offset(slide.enter_distance, delta))
+                        }
+                    },
+                )
+                .into_any_element()
+        } else {
+            el.into_any_element()
+        };
+        if let Some(anim) = standard_animation(motion, reduced_motion) {
+            div()
+                .child(transformed)
+                .with_animation(
+                    SharedString::from(format!("{}-open-fade", id_base)),
+                    anim,
+                    move |el, delta| el.opacity(presence.progress(delta).clamp(0.0, 1.0)),
+                )
+                .into_any_element()
+        } else {
+            transformed
+        }
+    } else if let Some(anim) = exit_animation(motion, reduced_motion) {
+        div()
+            .child(el.into_any_element())
+            .with_animation(
+                SharedString::from(format!("{}-close", id_base)),
+                anim,
+                move |el, delta| {
+                    let progress = presence.progress(delta).clamp(0.0, 1.0);
+                    let offset = slide.offset(slide.exit_distance, progress);
+                    let el = el.opacity(progress);
+                    match slide.axis {
+                        Axis::Vertical => el.translate_y(offset),
+                        Axis::Horizontal => el.translate_x(offset),
+                    }
+                },
+            )
+            .into_any_element()
+    } else {
+        el.into_any_element()
     }
 }
 

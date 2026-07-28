@@ -1,18 +1,14 @@
 use gpui::{
-    AnimationExt as _, AnyElement, App, Bounds, Context, ElementId, InteractiveElement as _,
-    IntoElement, ParentElement, Pixels, Render, RenderOnce, SharedString,
-    StatefulInteractiveElement, StyleRefinement, Styled, Task, Window, div,
-    prelude::FluentBuilder as _, px,
+    AnyElement, App, Bounds, Context, ElementId, InteractiveElement as _, IntoElement,
+    ParentElement, Pixels, Render, RenderOnce, SharedString, StatefulInteractiveElement,
+    StyleRefinement, Styled, Task, Window, div, prelude::FluentBuilder as _,
 };
 use std::rc::Rc;
 use std::time::Duration;
 
 use crate::{
     ActiveTheme as _, Anchor, ElementExt, StyledExt as _,
-    animation::{
-        self, PresenceOptions, PresencePhase, exit_animation, keyed_presence, spring_animation,
-        standard_animation,
-    },
+    animation::{FlyoutSlide, PresenceOptions, flyout_motion, flyout_presence},
     global_state::GlobalState,
     popover::Popover,
 };
@@ -306,12 +302,9 @@ impl RenderOnce for HoverCard {
         // previously the card popped in and out with no transition at all.
         let motion = cx.theme().motion.clone();
         let reduced_motion = GlobalState::global(cx).reduced_motion();
-        let presence = keyed_presence(
+        let presence = flyout_presence(
             SharedString::from(format!("hover-card-presence-{}", state.entity_id())),
             open,
-            !reduced_motion,
-            animation::enter_duration(&motion),
-            animation::exit_duration(&motion),
             PresenceOptions::default(),
             window,
             cx,
@@ -320,9 +313,6 @@ impl RenderOnce for HoverCard {
             return root;
         }
 
-        let open_fade_anim = standard_animation(&motion, reduced_motion);
-        let open_transform_anim = spring_animation(&motion, reduced_motion);
-        let close_anim = exit_animation(&motion, reduced_motion);
         let vertical_direction = if matches!(
             self.anchor,
             Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight
@@ -331,6 +321,7 @@ impl RenderOnce for HoverCard {
         } else {
             1.0
         };
+        let slide = FlyoutSlide::vertical(vertical_direction);
 
         let popover_content =
             Popover::render_popover_content(self.anchor, self.appearance, window, cx)
@@ -344,54 +335,7 @@ impl RenderOnce for HoverCard {
                 .children(self.children)
                 .refine_style(&self.style)
                 .map(move |el| {
-                    if !presence.transition_active() {
-                        el.into_any_element()
-                    } else if matches!(presence.phase, PresencePhase::Entering) {
-                        let transformed = if let Some(anim) = open_transform_anim {
-                            div()
-                                .child(el)
-                                .with_animation(
-                                    SharedString::from("hover-card-open-transform"),
-                                    anim,
-                                    move |el, delta| {
-                                        el.translate_y(px(4.0 * (1.0 - delta) * vertical_direction))
-                                    },
-                                )
-                                .into_any_element()
-                        } else {
-                            el.into_any_element()
-                        };
-                        if let Some(anim) = open_fade_anim {
-                            div()
-                                .child(transformed)
-                                .with_animation(
-                                    SharedString::from("hover-card-open-fade"),
-                                    anim,
-                                    move |el, delta| {
-                                        el.opacity(presence.progress(delta).clamp(0.0, 1.0))
-                                    },
-                                )
-                                .into_any_element()
-                        } else {
-                            transformed
-                        }
-                    } else if let Some(anim) = close_anim {
-                        div()
-                            .child(el)
-                            .with_animation(
-                                SharedString::from("hover-card-close"),
-                                anim,
-                                move |el, delta| {
-                                    let progress = presence.progress(delta).clamp(0.0, 1.0);
-                                    el.opacity(progress).translate_y(px(2.0
-                                        * (1.0 - progress)
-                                        * vertical_direction))
-                                },
-                            )
-                            .into_any_element()
-                    } else {
-                        el.into_any_element()
-                    }
+                    flyout_motion("hover-card", presence, slide, &motion, reduced_motion, el)
                 });
 
         root.child(Popover::render_popover(
