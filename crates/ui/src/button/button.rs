@@ -2,11 +2,12 @@ use std::rc::Rc;
 
 use crate::{
     ActiveTheme, Colorize as _, Disableable, FocusableExt as _, Icon, IconName, Selectable,
-    Sizable, Size, StyleSized, StyledExt, button::ButtonIcon, h_flex, tooltip::Tooltip,
+    Sizable, Size, StyleSized, StyledExt, button::ButtonIcon, h_flex, spinner::Spinner,
+    tooltip::Tooltip,
 };
 use gpui::{
     Action, AnyElement, App, ClickEvent, Corners, Div, Edges, ElementId, Hsla, InteractiveElement,
-    Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, SharedString,
+    Interactivity, IntoElement, MouseButton, ParentElement, Pixels, RenderOnce, Role, SharedString,
     Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,
     prelude::FluentBuilder as _, px, relative,
 };
@@ -425,9 +426,15 @@ impl RenderOnce for Button {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let style: ButtonVariant = self.variant;
         let clickable = self.clickable();
-        let is_disabled = self.disabled;
+        let is_disabled = self.disabled || self.loading;
         let hoverable = self.hoverable();
         let normal_style = style.normal(self.outline, cx);
+        let aria_label = self
+            .label
+            .clone()
+            .or_else(|| self.tooltip.as_ref().map(|(tooltip, _)| tooltip.clone()));
+        let has_icon = self.icon.is_some();
+        let loading_icon = self.loading_icon.clone();
         let icon_size = match self.size {
             Size::Size(v) => Size::Size(v * 0.75),
             _ => self.size,
@@ -448,6 +455,8 @@ impl RenderOnce for Button {
         };
 
         self.base
+            .role(Role::Button)
+            .when_some(aria_label, |this, label| this.aria_label(label))
             .when(!self.disabled, |this| {
                 this.track_focus(
                     &focus_handle
@@ -513,7 +522,7 @@ impl RenderOnce for Button {
                     .border_color(selected_style.border)
                     .text_color(selected_style.fg)
             })
-            .when(!self.disabled && !self.selected, |this| {
+            .when(!self.disabled && !self.loading && !self.selected, |this| {
                 this.border_color(normal_style.border)
                     .bg(normal_style.bg)
                     .when(normal_style.underline, |this| this.text_decoration_1())
@@ -577,6 +586,13 @@ impl RenderOnce for Button {
                         Size::XSmall => this.gap_1(),
                         Size::Small => this.gap_1(),
                         _ => this.gap_2(),
+                    })
+                    .when(self.loading && !has_icon, |this| {
+                        this.child(
+                            Spinner::new()
+                                .when_some(loading_icon, |this, icon| this.icon(icon))
+                                .with_size(icon_size),
+                        )
                     })
                     .when_some(self.icon, |this, icon| {
                         this.child(

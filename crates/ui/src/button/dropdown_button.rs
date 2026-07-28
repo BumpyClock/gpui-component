@@ -1,10 +1,13 @@
+use std::sync::Arc;
+
 use gpui::{
     App, Context, Corner, Corners, Edges, ElementId, InteractiveElement as _, IntoElement,
-    ParentElement, RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder,
+    ParentElement, RenderOnce, SharedString, StyleRefinement, Styled, Window, div,
+    prelude::FluentBuilder,
 };
 
 use crate::{
-    Disableable, IconName, Selectable, Sizable, Size, StyledExt as _,
+    Disableable, Icon, IconName, Selectable, Sizable, Size, StyledExt as _,
     menu::{DropdownMenu, PopupMenu},
 };
 
@@ -13,13 +16,17 @@ use super::{Button, ButtonRounded, ButtonVariant, ButtonVariants};
 #[derive(IntoElement)]
 pub struct DropdownButton {
     id: ElementId,
+    trigger_id: ElementId,
     style: StyleRefinement,
     button: Option<Button>,
+    icon: Option<Icon>,
+    tooltip: Option<SharedString>,
     menu:
         Option<Box<dyn Fn(PopupMenu, &mut Window, &mut Context<PopupMenu>) -> PopupMenu + 'static>>,
     selected: bool,
     disabled: bool,
     // The button props
+    bordered: bool,
     compact: bool,
     outline: bool,
     loading: bool,
@@ -32,13 +39,18 @@ pub struct DropdownButton {
 impl DropdownButton {
     /// Create a new DropdownButton.
     pub fn new(id: impl Into<ElementId>) -> Self {
+        let id = id.into();
         Self {
-            id: id.into(),
+            trigger_id: ElementId::NamedChild(Arc::new(id.clone()), "menu-trigger".into()),
+            id,
             style: StyleRefinement::default(),
             button: None,
+            icon: None,
+            tooltip: None,
             menu: None,
             selected: false,
             disabled: false,
+            bordered: true,
             compact: false,
             outline: false,
             loading: false,
@@ -52,6 +64,22 @@ impl DropdownButton {
     /// Set the left button of the dropdown button.
     pub fn button(mut self, button: Button) -> Self {
         self.button = Some(button);
+        self
+    }
+
+    /// Set the icon for the menu trigger.
+    ///
+    /// If no left button is set, the dropdown renders as a single icon button.
+    pub fn icon(mut self, icon: impl Into<Icon>) -> Self {
+        self.icon = Some(icon.into());
+        self
+    }
+
+    /// Set the tooltip for the menu trigger.
+    ///
+    /// Icon-only dropdowns should always provide a tooltip.
+    pub fn tooltip(mut self, tooltip: impl Into<SharedString>) -> Self {
+        self.tooltip = Some(tooltip.into());
         self
     }
 
@@ -78,6 +106,14 @@ impl DropdownButton {
     /// Set the rounded style of the button.
     pub fn rounded(mut self, rounded: impl Into<ButtonRounded>) -> Self {
         self.rounded = rounded.into();
+        self
+    }
+
+    /// Set whether the dropdown buttons have borders.
+    ///
+    /// Borderless split buttons render as two independently rounded controls.
+    pub fn bordered(mut self, bordered: bool) -> Self {
+        self.bordered = bordered;
         self
     }
 
@@ -144,62 +180,81 @@ impl Selectable for DropdownButton {
 
 impl RenderOnce for DropdownButton {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        let rounded = self.variant.is_ghost() && !self.selected;
+        let grouped = self.button.is_some() && self.menu.is_some();
+        let joined = grouped && self.bordered && !(self.variant.is_ghost() && !self.selected);
+        let button_corners = if joined {
+            Corners {
+                top_left: true,
+                top_right: false,
+                bottom_left: true,
+                bottom_right: false,
+            }
+        } else {
+            Corners::all(true)
+        };
+        let trigger_corners = if joined {
+            Corners {
+                top_left: false,
+                top_right: true,
+                bottom_left: false,
+                bottom_right: true,
+            }
+        } else {
+            Corners::all(true)
+        };
+        let button_edges = Edges::all(self.bordered);
+        let trigger_edges = if joined {
+            Edges {
+                left: false,
+                top: true,
+                right: true,
+                bottom: true,
+            }
+        } else {
+            Edges::all(self.bordered)
+        };
+        let trigger_disabled = self.disabled || (grouped && self.loading);
+        let icon = self
+            .icon
+            .unwrap_or_else(|| Icon::new(IconName::ChevronDown));
 
         div()
             .id(self.id)
             .h_flex()
+            .when(grouped && !self.bordered, |this| this.gap_1())
             .refine_style(&self.style)
             .when_some(self.button, |this, button| {
                 this.child(
                     button
                         .rounded(self.rounded)
-                        .border_corners(Corners {
-                            top_left: true,
-                            top_right: rounded,
-                            bottom_left: true,
-                            bottom_right: rounded,
-                        })
-                        .border_edges(Edges {
-                            left: true,
-                            top: true,
-                            right: true,
-                            bottom: true,
-                        })
+                        .border_corners(button_corners)
+                        .border_edges(button_edges)
                         .loading(self.loading)
                         .selected(self.selected)
-                        .disabled(self.disabled || self.loading)
+                        .disabled(self.disabled)
                         .when(self.compact, |this| this.compact())
                         .when(self.outline, |this| this.outline())
                         .with_size(self.size)
                         .with_variant(self.variant),
                 )
-                .when_some(self.menu, |this, menu| {
-                    this.child(
-                        Button::new("popup")
-                            .icon(IconName::ChevronDown)
-                            .rounded(self.rounded)
-                            .border_edges(Edges {
-                                left: rounded,
-                                top: true,
-                                right: true,
-                                bottom: true,
-                            })
-                            .border_corners(Corners {
-                                top_left: rounded,
-                                top_right: true,
-                                bottom_left: rounded,
-                                bottom_right: true,
-                            })
-                            .selected(self.selected)
-                            .disabled(self.disabled || self.loading)
-                            .when(self.compact, |this| this.compact())
-                            .when(self.outline, |this| this.outline())
-                            .with_size(self.size)
-                            .with_variant(self.variant)
-                            .dropdown_menu_with_anchor(self.anchor, menu),
-                    )
-                })
+            })
+            .when_some(self.menu, |this, menu| {
+                this.child(
+                    Button::new(self.trigger_id)
+                        .icon(icon)
+                        .rounded(self.rounded)
+                        .border_edges(trigger_edges)
+                        .border_corners(trigger_corners)
+                        .selected(self.selected)
+                        .disabled(trigger_disabled)
+                        .loading(!grouped && self.loading)
+                        .when(self.compact, |this| this.compact())
+                        .when(self.outline, |this| this.outline())
+                        .when_some(self.tooltip, |this, tooltip| this.tooltip(tooltip))
+                        .with_size(self.size)
+                        .with_variant(self.variant)
+                        .dropdown_menu_with_anchor(self.anchor, menu),
+                )
             })
     }
 }
@@ -218,6 +273,9 @@ mod tests {
             .outline()
             .large()
             .compact()
+            .bordered(false)
+            .icon(IconName::Ellipsis)
+            .tooltip("More actions")
             .loading(false)
             .disabled(false)
             .selected(false)
@@ -227,6 +285,9 @@ mod tests {
         assert!(dropdown.button.is_some());
         assert_eq!(dropdown.variant, ButtonVariant::Primary);
         assert!(dropdown.outline);
+        assert!(!dropdown.bordered);
+        assert!(dropdown.icon.is_some());
+        assert!(dropdown.tooltip.is_some());
         assert_eq!(dropdown.size, Size::Large);
         assert!(dropdown.compact);
         assert!(!dropdown.loading);

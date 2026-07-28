@@ -979,7 +979,7 @@ impl PopupMenu {
 
     fn render_key_binding(
         &self,
-        action: Option<Box<dyn Action>>,
+        action: Option<&dyn Action>,
         window: &mut Window,
         _: &mut Context<Self>,
     ) -> Option<Kbd> {
@@ -988,11 +988,11 @@ impl PopupMenu {
         match self
             .action_context
             .as_ref()
-            .and_then(|handle| Kbd::binding_for_action_in(action.as_ref(), handle, window))
+            .and_then(|handle| Kbd::binding_for_action_in(action, handle, window))
         {
             Some(kbd) => Some(kbd),
             // Fallback to App level key binding
-            None => Kbd::binding_for_action(action.as_ref(), None, window),
+            None => Kbd::binding_for_action(action, None, window),
         }
         .map(|this| {
             this.p_0()
@@ -1068,34 +1068,6 @@ impl PopupMenu {
         const INNER_PADDING: Pixels = px(8.);
 
         let is_submenu = matches!(item, PopupMenuItem::Submenu { .. });
-        let reduced_motion = GlobalState::global(cx).reduced_motion();
-        let motion = cx.theme().motion.clone();
-        let submenu_presence = is_submenu.then(|| {
-            let open_duration_ms = if reduced_motion {
-                motion.fast_duration_ms
-            } else {
-                spring_preset_duration_ms(&motion, SpringPreset::Medium)
-                    .max(motion.fast_duration_ms)
-            };
-            keyed_presence(
-                SharedString::from(format!(
-                    "popup-menu-submenu-presence-{}-{}",
-                    cx.entity().entity_id(),
-                    ix
-                )),
-                selected,
-                !reduced_motion,
-                Duration::from_millis(u64::from(open_duration_ms)),
-                Duration::from_millis(u64::from(motion.fade_duration_ms)),
-                PresenceOptions::default(),
-                window,
-                cx,
-            )
-        });
-        let submenu_open_opacity_anim = point_to_point_animation(&motion, reduced_motion);
-        let submenu_open_transform_anim =
-            spring_preset_animation(&motion, reduced_motion, SpringPreset::Medium);
-        let submenu_close_anim = point_to_point_animation(&motion, reduced_motion);
         let group_name = format!("{}:item-{}", cx.entity().entity_id(), ix);
 
         let (item_height, radius) = match self.size {
@@ -1176,8 +1148,7 @@ impl PopupMenu {
                 ..
             } => {
                 let show_link_icon = *is_link && self.external_link_icon;
-                let action = action.as_ref().map(|action| action.boxed_clone());
-                let key = self.render_key_binding(action, window, cx);
+                let key = self.render_key_binding(action.as_deref(), window, cx);
 
                 this.when(!disabled, |this| {
                     this.on_click(
@@ -1224,42 +1195,65 @@ impl PopupMenu {
                 label,
                 menu,
                 disabled,
-            } => this
-                .selected(selected)
-                .disabled(*disabled)
-                .items_start()
-                .child(
-                    h_flex()
-                        .min_h(item_height)
-                        .size_full()
-                        .items_center()
-                        .gap_x_1()
-                        .children(Self::render_icon(
-                            has_left_icon,
-                            false,
-                            icon.clone(),
-                            window,
-                            cx,
-                        ))
-                        .child(
-                            h_flex()
-                                .flex_1()
-                                .gap_2()
-                                .items_center()
-                                .justify_between()
-                                .child(label.clone())
-                                .child(
-                                    Icon::new(IconName::ChevronRight)
-                                        .xsmall()
-                                        .text_color(cx.theme().muted_foreground),
-                                ),
-                        ),
-                )
-                .when(
-                    submenu_presence.is_some_and(|presence| presence.should_render()),
-                    |this| {
-                        let submenu_presence =
-                            submenu_presence.expect("submenu presence must exist");
+            } => {
+                let reduced_motion = GlobalState::global(cx).reduced_motion();
+                let motion = cx.theme().motion.clone();
+                let open_duration_ms = if reduced_motion {
+                    motion.fast_duration_ms
+                } else {
+                    spring_preset_duration_ms(&motion, SpringPreset::Medium)
+                        .max(motion.fast_duration_ms)
+                };
+                let submenu_presence = keyed_presence(
+                    SharedString::from(format!(
+                        "popup-menu-submenu-presence-{}-{}",
+                        cx.entity().entity_id(),
+                        ix
+                    )),
+                    selected,
+                    !reduced_motion,
+                    Duration::from_millis(u64::from(open_duration_ms)),
+                    Duration::from_millis(u64::from(motion.fade_duration_ms)),
+                    PresenceOptions::default(),
+                    window,
+                    cx,
+                );
+                let submenu_open_opacity_anim = point_to_point_animation(&motion, reduced_motion);
+                let submenu_open_transform_anim =
+                    spring_preset_animation(&motion, reduced_motion, SpringPreset::Medium);
+                let submenu_close_anim = point_to_point_animation(&motion, reduced_motion);
+
+                this.selected(selected)
+                    .disabled(*disabled)
+                    .items_start()
+                    .child(
+                        h_flex()
+                            .min_h(item_height)
+                            .size_full()
+                            .items_center()
+                            .gap_x_1()
+                            .children(Self::render_icon(
+                                has_left_icon,
+                                false,
+                                icon.clone(),
+                                window,
+                                cx,
+                            ))
+                            .child(
+                                h_flex()
+                                    .flex_1()
+                                    .gap_2()
+                                    .items_center()
+                                    .justify_between()
+                                    .child(label.clone())
+                                    .child(
+                                        Icon::new(IconName::ChevronRight)
+                                            .xsmall()
+                                            .text_color(cx.theme().muted_foreground),
+                                    ),
+                            ),
+                    )
+                    .when(submenu_presence.should_render(), |this| {
                         this.child({
                             let (anchor, left) = self.submenu_anchor;
                             let is_bottom_pos =
@@ -1357,8 +1351,8 @@ impl PopupMenu {
                                 submenu.into_any_element()
                             }
                         })
-                    },
-                ),
+                    })
+            }
         }
     }
 }
