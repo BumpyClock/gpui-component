@@ -1,7 +1,12 @@
 use gpui::{Animation, App, SharedString, Window, spring};
 use std::time::Duration;
 
-use crate::ThemeMotion;
+use crate::{ThemeMotion, global_state::GlobalState};
+
+/// Returns whether motion should be reduced for the current component context.
+pub fn reduced_motion(cx: &App) -> bool {
+    GlobalState::global(cx).reduced_motion()
+}
 
 /// A cubic bezier function like CSS `cubic-bezier`.
 ///
