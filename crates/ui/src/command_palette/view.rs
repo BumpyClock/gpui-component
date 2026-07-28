@@ -1,22 +1,23 @@
 //! View component for the Command Palette.
 
 use super::provider::CommandPaletteProvider;
+use super::reveal_delay;
 use super::state::{CommandPaletteEvent, CommandPaletteState};
 use super::types::{CommandPaletteConfig, MatchedItem};
-use super::{reveal_animation_duration, reveal_delay};
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
-use crate::animation::spring_invoke_animation;
+use crate::animation::{fade_animation, spring_invoke_animation};
 use crate::global_state::GlobalState;
 use crate::input::{Input, InputEvent, InputState};
 use crate::kbd::Kbd;
+use crate::spinner::Spinner;
 use crate::{
-    ActiveTheme, Icon, IconName, Sizable, Size, SurfaceContext, SurfacePreset,
+    ActiveTheme, Icon, IconName, NoiseIntensity, Sizable, Size, SurfaceContext, SurfacePreset,
     VirtualListScrollHandle, WindowExt as _, h_flex, v_flex, v_virtual_list,
 };
 use gpui::{
-    Animation, AnimationExt, App, AppContext as _, Context, ElementId, Entity, FocusHandle,
-    Focusable, InteractiveElement, IntoElement, KeyBinding, ParentElement, Pixels, Render,
-    ScrollStrategy, SharedString, Size as GpuiSize, Styled, Subscription, Task, Window, div,
+    AnimationExt, App, AppContext as _, Context, ElementId, Entity, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, KeyBinding, ParentElement, Pixels, Render, ScrollStrategy,
+    SharedString, Size as GpuiSize, Styled, Subscription, Task, Window, div,
     prelude::FluentBuilder, px,
 };
 use std::rc::Rc;
@@ -28,15 +29,8 @@ const CONTEXT: &str = "CommandPalette";
 const HEADER_HEIGHT: f32 = 52.0;
 const FOOTER_HEIGHT: f32 = 36.0;
 const SECTION_HEADER_HEIGHT: f32 = 28.0;
-const EMPTY_STATE_HEIGHT: f32 = 120.0;
-
-/// Monotonic spring-like easing (critically damped) to avoid bounce oscillation.
-fn gentle_spring(delta: f32) -> f32 {
-    let t = delta.clamp(0.0, 1.0);
-    let omega = 10.0;
-    let value = 1.0 - (1.0 + omega * t) * (-omega * t).exp();
-    value.clamp(0.0, 1.0)
-}
+const EMPTY_STATE_HEIGHT: f32 = 112.0;
+const LIST_PADDING: f32 = 8.0;
 
 /// A render row for the command palette list.
 #[derive(Clone)]
@@ -103,7 +97,7 @@ impl CommandPaletteView {
             input_state,
             focus_handle,
             scroll_handle: VirtualListScrollHandle::new(),
-            item_height: px(48.),
+            item_height: px(44.),
             did_focus: false,
             list_revealed: false,
             _reveal_task: None,
@@ -173,18 +167,21 @@ impl CommandPaletteView {
     }
 
     fn on_action_cancel(&mut self, _: &Cancel, _: &mut Window, cx: &mut Context<Self>) {
+        cx.stop_propagation();
         self.state.update(cx, |state, cx| {
             state.dismiss(cx);
         });
     }
 
     fn on_action_confirm(&mut self, _: &Confirm, _: &mut Window, cx: &mut Context<Self>) {
+        cx.stop_propagation();
         self.state.update(cx, |state, cx| {
             state.confirm(cx);
         });
     }
 
     fn on_action_select_up(&mut self, _: &SelectUp, _: &mut Window, cx: &mut Context<Self>) {
+        cx.stop_propagation();
         self.state.update(cx, |state, cx| {
             state.select_prev(cx);
         });
@@ -192,6 +189,7 @@ impl CommandPaletteView {
     }
 
     fn on_action_select_down(&mut self, _: &SelectDown, _: &mut Window, cx: &mut Context<Self>) {
+        cx.stop_propagation();
         self.state.update(cx, |state, cx| {
             state.select_next(cx);
         });
@@ -224,23 +222,33 @@ impl CommandPaletteView {
         let shortcut_element = item_data
             .shortcut
             .as_ref()
-            .and_then(|s| gpui::Keystroke::parse(s).ok().map(|k| Kbd::new(k)));
+            .and_then(|s| gpui::Keystroke::parse(s).ok())
+            .map(|keystroke| {
+                Kbd::new(keystroke)
+                    .outline()
+                    .when(selected && !disabled, |this| {
+                        this.bg(cx.theme().list_active)
+                            .border_color(cx.theme().list_active_border)
+                            .text_color(cx.theme().foreground)
+                    })
+            });
         let has_shortcut = shortcut_element.is_some();
 
         h_flex()
             .id(SharedString::from(format!("cmd-item-{}", item_index)))
             .w_full()
             .h(self.item_height)
-            .px_3()
+            .px_2()
             .gap_3()
             .items_center()
             .rounded(cx.theme().radius)
             .cursor_pointer()
-            .my_1()
             .when(disabled, |this| this.opacity(0.5).cursor_not_allowed())
             .when(selected && !disabled, |this| {
                 this.bg(cx.theme().list_active)
-                    .text_color(cx.theme().accent_foreground)
+                    .border_1()
+                    .border_color(cx.theme().list_active_border)
+                    .text_color(cx.theme().foreground)
             })
             .when(!selected && !disabled, |this| {
                 this.hover(|this| this.bg(cx.theme().list_hover))
@@ -262,7 +270,11 @@ impl CommandPaletteView {
                 this.child(
                     Icon::new(icon)
                         .size_4()
-                        .text_color(cx.theme().muted_foreground),
+                        .text_color(if selected && !disabled {
+                            cx.theme().foreground
+                        } else {
+                            cx.theme().muted_foreground
+                        }),
                 )
             })
             // Title and subtitle
@@ -274,11 +286,7 @@ impl CommandPaletteView {
                         div()
                             .text_sm()
                             .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(if selected {
-                                cx.theme().accent_foreground
-                            } else {
-                                cx.theme().foreground
-                            })
+                            .text_color(cx.theme().foreground)
                             .truncate()
                             .child(self.render_highlighted_text(
                                 &item_data.title,
@@ -290,11 +298,7 @@ impl CommandPaletteView {
                         this.child(
                             div()
                                 .text_xs()
-                                .text_color(if selected {
-                                    cx.theme().accent_foreground.opacity(0.8)
-                                } else {
-                                    cx.theme().muted_foreground
-                                })
+                                .text_color(cx.theme().muted_foreground)
                                 .truncate()
                                 .child(subtitle),
                         )
@@ -303,13 +307,19 @@ impl CommandPaletteView {
             .when(show_inline_category || has_shortcut, |this| {
                 this.child(
                     h_flex()
+                        .flex_shrink_0()
                         .items_center()
                         .gap_2()
                         .when(show_inline_category, |this| {
                             this.child(
                                 div()
                                     .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
+                                    .text_color(if selected && !disabled {
+                                        cx.theme().foreground.opacity(0.72)
+                                    } else {
+                                        cx.theme().muted_foreground
+                                    })
+                                    .truncate()
                                     .child(item_data.category.clone()),
                             )
                         })
@@ -321,8 +331,10 @@ impl CommandPaletteView {
     fn render_section_header(&self, title: SharedString, cx: &App) -> impl IntoElement {
         div()
             .w_full()
+            .h(px(SECTION_HEADER_HEIGHT))
+            .flex()
+            .items_center()
             .px_3()
-            .py_1()
             .text_xs()
             .font_weight(gpui::FontWeight::SEMIBOLD)
             .text_color(cx.theme().muted_foreground)
@@ -356,7 +368,7 @@ impl CommandPaletteView {
             if start < end {
                 elements.push(
                     div()
-                        .text_color(cx.theme().accent)
+                        .text_color(cx.theme().list_active_border)
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .child(text[start..end].to_string())
                         .into_any_element(),
@@ -374,10 +386,13 @@ impl CommandPaletteView {
     }
 
     fn render_footer(&self, status_text: Option<SharedString>, cx: &App) -> impl IntoElement {
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let has_status = status_text.is_some();
+
         h_flex()
             .w_full()
+            .h(px(FOOTER_HEIGHT))
             .px_3()
-            .py_2()
             .border_t_1()
             .border_color(cx.theme().border)
             .justify_between()
@@ -385,7 +400,7 @@ impl CommandPaletteView {
             .text_color(cx.theme().muted_foreground)
             .child(
                 h_flex()
-                    .gap_3()
+                    .gap_4()
                     .child(
                         h_flex()
                             .gap_1()
@@ -395,7 +410,7 @@ impl CommandPaletteView {
                             .child(
                                 Kbd::new(gpui::Keystroke::parse("down").unwrap()).appearance(false),
                             )
-                            .child("to navigate"),
+                            .child("Navigate"),
                     )
                     .child(
                         h_flex()
@@ -404,16 +419,7 @@ impl CommandPaletteView {
                                 Kbd::new(gpui::Keystroke::parse("enter").unwrap())
                                     .appearance(false),
                             )
-                            .child("to select"),
-                    )
-                    .child(
-                        h_flex()
-                            .gap_1()
-                            .child(
-                                Kbd::new(gpui::Keystroke::parse("escape").unwrap())
-                                    .appearance(false),
-                            )
-                            .child("to close"),
+                            .child("Run"),
                     ),
             )
             .when_some(status_text, |this, status| {
@@ -422,21 +428,55 @@ impl CommandPaletteView {
                         .gap_2()
                         .items_center()
                         .text_color(cx.theme().muted_foreground)
-                        .child(Icon::new(IconName::LoaderCircle).size_4())
+                        .when(reduced_motion, |this| {
+                            this.child(Icon::new(IconName::LoaderCircle).size_4())
+                        })
+                        .when(!reduced_motion, |this| {
+                            this.child(
+                                Spinner::new()
+                                    .icon(IconName::LoaderCircle)
+                                    .with_size(Size::Small)
+                                    .color(cx.theme().muted_foreground),
+                            )
+                        })
                         .child(status),
+                )
+            })
+            .when(!has_status, |this| {
+                this.child(
+                    h_flex()
+                        .gap_1()
+                        .child(
+                            Kbd::new(gpui::Keystroke::parse("escape").unwrap()).appearance(false),
+                        )
+                        .child("Close"),
                 )
             })
     }
 
-    fn render_empty(&self, cx: &App) -> impl IntoElement {
+    fn render_empty(&self, query_empty: bool, cx: &App) -> impl IntoElement {
         v_flex()
             .size_full()
             .items_center()
-            .pt_6()
-            .gap_2()
+            .justify_center()
+            .gap_1()
             .text_color(cx.theme().muted_foreground)
-            .child(Icon::new(IconName::Search).size_8().opacity(0.5))
-            .child("No results found")
+            .child(Icon::new(IconName::Search).size_6().opacity(0.62))
+            .child(
+                div()
+                    .mt_1()
+                    .text_sm()
+                    .font_weight(gpui::FontWeight::MEDIUM)
+                    .text_color(cx.theme().foreground)
+                    .child(if query_empty {
+                        "No commands available"
+                    } else {
+                        "No commands found"
+                    }),
+            )
+            .when(!query_empty, |this| {
+                this.child(div().text_xs().child("Try a different search."))
+            })
     }
 
     fn build_rows(
@@ -522,6 +562,7 @@ impl Render for CommandPaletteView {
 
         let show_categories = config.show_categories_inline;
         let show_footer = config.show_footer;
+        let query_empty = state.query.is_empty();
         let footer_status = config
             .status_provider
             .as_ref()
@@ -529,10 +570,8 @@ impl Render for CommandPaletteView {
         let max_height = px(config.max_height);
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
-        let reveal_animation_duration = reveal_animation_duration(cx);
-        let expand_animation = (!reduced_motion)
-            .then(|| Animation::new(reveal_animation_duration).with_easing(gentle_spring));
-        let list_reveal_animation = spring_invoke_animation(&motion, reduced_motion);
+        let reveal_opacity_animation = fade_animation(&motion, reduced_motion);
+        let reveal_transform_animation = spring_invoke_animation(&motion, reduced_motion);
 
         // Focus input once after opening to avoid render jitter
         if !self.did_focus {
@@ -554,12 +593,13 @@ impl Render for CommandPaletteView {
         let list_content_height = if row_count == 0 {
             px(EMPTY_STATE_HEIGHT)
         } else {
-            rows.iter().fold(px(0.0), |sum, row| {
-                sum + match row {
-                    CommandPaletteRow::Header(_) => px(SECTION_HEADER_HEIGHT),
-                    CommandPaletteRow::Item(_) => self.item_height,
-                }
-            })
+            px(LIST_PADDING)
+                + rows.iter().fold(px(0.0), |sum, row| {
+                    sum + match row {
+                        CommandPaletteRow::Header(_) => px(SECTION_HEADER_HEIGHT),
+                        CommandPaletteRow::Item(_) => self.item_height,
+                    }
+                })
         };
         let list_height = max_height.min(list_content_height);
         let expanded_height = px(HEADER_HEIGHT)
@@ -569,7 +609,6 @@ impl Render for CommandPaletteView {
             } else {
                 px(0.0)
             };
-        let collapsed_height = px(HEADER_HEIGHT);
 
         let surface_ctx = SurfaceContext {
             blur_enabled: GlobalState::global(cx).blur_enabled(),
@@ -582,11 +621,7 @@ impl Render for CommandPaletteView {
             .on_action(cx.listener(Self::on_action_confirm))
             .on_action(cx.listener(Self::on_action_select_up))
             .on_action(cx.listener(Self::on_action_select_down))
-            .h(if self.list_revealed {
-                expanded_height
-            } else {
-                collapsed_height
-            })
+            .h(expanded_height)
             .w_full()
             .overflow_hidden()
             // Search input
@@ -614,75 +649,114 @@ impl Render for CommandPaletteView {
             // Results list
             .when(self.list_revealed, |this| {
                 this.child({
-                    let list = div()
+                    let results = v_flex()
                         .w_full()
-                        .h(list_height)
-                        .overflow_hidden()
-                        .when(row_count == 0, |this| this.child(self.render_empty(cx)))
-                        .when(row_count > 0, |this| {
-                            this.child(
-                                v_virtual_list(cx.entity(), "command-palette-list", item_sizes, {
-                                    let matched_items = matched_items.clone();
-                                    let rows = rows.clone();
-                                    move |view, visible_range, window, cx| {
-                                        visible_range
-                                            .filter_map(|ix| {
-                                                let row = rows.get(ix)?;
-                                                match row {
-                                                    CommandPaletteRow::Header(title) => Some(
-                                                        view.render_section_header(
-                                                            title.clone(),
-                                                            cx,
-                                                        )
-                                                        .into_any_element(),
-                                                    ),
-                                                    CommandPaletteRow::Item(item_index) => {
-                                                        matched_items.get(*item_index).map(|item| {
-                                                            view.render_item(
-                                                                item,
-                                                                *item_index,
-                                                                selected_index == Some(*item_index),
-                                                                show_categories,
-                                                                window,
-                                                                cx,
-                                                            )
-                                                            .into_any_element()
-                                                        })
-                                                    }
-                                                }
-                                            })
-                                            .collect()
-                                    }
+                        .child(
+                            div()
+                                .w_full()
+                                .h(list_height)
+                                .overflow_hidden()
+                                .when(row_count == 0, |this| {
+                                    this.child(self.render_empty(query_empty, cx))
                                 })
-                                .track_scroll(&self.scroll_handle)
-                                .py_1(),
-                            )
+                                .when(row_count > 0, |this| {
+                                    this.child(
+                                        v_virtual_list(
+                                            cx.entity(),
+                                            "command-palette-list",
+                                            item_sizes,
+                                            {
+                                                let matched_items = matched_items.clone();
+                                                let rows = rows.clone();
+                                                move |view, visible_range, window, cx| {
+                                                    visible_range
+                                                        .filter_map(|ix| {
+                                                            let row = rows.get(ix)?;
+                                                            match row {
+                                                                CommandPaletteRow::Header(
+                                                                    title,
+                                                                ) => Some(
+                                                                    view.render_section_header(
+                                                                        title.clone(),
+                                                                        cx,
+                                                                    )
+                                                                    .into_any_element(),
+                                                                ),
+                                                                CommandPaletteRow::Item(
+                                                                    item_index,
+                                                                ) => matched_items
+                                                                    .get(*item_index)
+                                                                    .map(|item| {
+                                                                        view.render_item(
+                                                                            item,
+                                                                            *item_index,
+                                                                            selected_index
+                                                                                == Some(
+                                                                                    *item_index,
+                                                                                ),
+                                                                            show_categories,
+                                                                            window,
+                                                                            cx,
+                                                                        )
+                                                                        .into_any_element()
+                                                                    }),
+                                                            }
+                                                        })
+                                                        .collect()
+                                                }
+                                            },
+                                        )
+                                        .track_scroll(&self.scroll_handle)
+                                        .p_1(),
+                                    )
+                                }),
+                        )
+                        .when(show_footer, |this| {
+                            this.child(self.render_footer(footer_status.clone(), cx))
                         });
 
-                    if let Some(anim) = list_reveal_animation {
-                        list.with_animation(
-                            ElementId::NamedInteger("command-palette-list-reveal".into(), 1),
-                            anim,
-                            move |el, delta| {
-                                let opacity = delta.clamp(0.0, 1.0);
-                                let transform_progress = delta.max(0.0);
-                                el.opacity(opacity)
-                                    .translate_y(px(6.0 * (1.0 - transform_progress)))
-                            },
-                        )
-                        .into_any_element()
+                    let transformed = if let Some(anim) = reveal_transform_animation {
+                        div()
+                            .child(results)
+                            .with_animation(
+                                ElementId::NamedInteger(
+                                    "command-palette-results-transform".into(),
+                                    1,
+                                ),
+                                anim,
+                                move |el, delta| el.translate_y(px(4.0 * (1.0 - delta.max(0.0)))),
+                            )
+                            .into_any_element()
                     } else {
-                        list.into_any_element()
+                        div().child(results).into_any_element()
+                    };
+
+                    if let Some(anim) = reveal_opacity_animation {
+                        div()
+                            .child(transformed)
+                            .with_animation(
+                                ElementId::NamedInteger(
+                                    "command-palette-results-opacity".into(),
+                                    1,
+                                ),
+                                anim,
+                                move |el, delta| el.opacity(delta.clamp(0.0, 1.0)),
+                            )
+                            .into_any_element()
+                    } else {
+                        transformed
                     }
                 })
-            })
-            // Footer
-            .when(show_footer && self.list_revealed, |this| {
-                this.child(self.render_footer(footer_status.clone(), cx))
             });
 
-        // Wrap in glassmorphic surface
-        let surface = SurfacePreset::flyout()
+        let mut surface = SurfacePreset::flyout()
+            .with_blur_radius(None)
+            .with_noise(NoiseIntensity::None)
+            .with_radius(cx.theme().radius_lg);
+        surface.background.light_opacity = 1.0;
+        surface.background.dark_opacity = 1.0;
+
+        surface
             .wrap_with_bounds(
                 content,
                 px(config.width),
@@ -691,31 +765,7 @@ impl Render for CommandPaletteView {
                 cx,
                 surface_ctx,
             )
-            .h(if self.list_revealed {
-                expanded_height
-            } else {
-                collapsed_height
-            })
-            .w(px(config.width));
-
-        if self.list_revealed {
-            if let Some(reveal_animation) = expand_animation {
-                surface
-                    .with_animation(
-                        ElementId::NamedInteger("command-palette-expand".into(), 1),
-                        reveal_animation,
-                        move |this, delta| {
-                            let height =
-                                collapsed_height + (expanded_height - collapsed_height) * delta;
-                            this.h(height)
-                        },
-                    )
-                    .into_any_element()
-            } else {
-                surface.into_any_element()
-            }
-        } else {
-            surface.into_any_element()
-        }
+            .h(expanded_height)
+            .w(px(config.width))
     }
 }
