@@ -10,6 +10,10 @@ A [DropdownButton] combines an optional action button with a menu trigger. In sp
 
 The component supports [Button] variants, [Sizable] sizes, borderless styling, custom trigger icons, loading, disabled, and selected states.
 
+The split control uses one outer silhouette and one 1 px seam. Its menu trigger stays
+narrower than the primary action while retaining the action's height. Ghost and
+explicitly borderless modes use a stable 4 px gap so selection never shifts layout.
+
 ## Import
 
 ```rust
@@ -112,7 +116,16 @@ DropdownButton::new("dropdown")
 ## Accessibility
 
 - Split mode exposes two focus stops: primary action, then menu trigger.
+- Each split segment gets its own visible focus ring so keyboard users can tell which action will run.
+- Loading and disabled split controls remove both segments from interaction; loading remains visible on the primary action.
 - Icon-only triggers should always include `tooltip(...)`.
+
+## Motion
+
+DropdownButton keeps its geometry stable across default, selected, loading, and
+disabled states. Menu enter and exit motion belongs to the shared [Popover] and
+[PopupMenu] layers rather than the trigger, so split controls do not stack a second
+animation on top. The shared layers honor the application's reduced-motion setting.
 
 ## Platform support
 
@@ -120,4 +133,6 @@ Bordered, borderless, split, and icon-only modes use shared GPUI primitives and 
 
 [Button]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.Button.html
 [DropdownButton]: https://docs.rs/gpui-component/latest/gpui_component/button/struct.DropdownButton.html
+[Popover]: https://docs.rs/gpui-component/latest/gpui_component/popover/struct.Popover.html
+[PopupMenu]: https://docs.rs/gpui-component/latest/gpui_component/menu/struct.PopupMenu.html
 [Sizable]: https://docs.rs/gpui-component/latest/gpui_component/trait.Sizable.html

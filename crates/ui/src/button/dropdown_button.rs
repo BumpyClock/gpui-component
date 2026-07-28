@@ -7,7 +7,7 @@ use gpui::{
 };
 
 use crate::{
-    Disableable, Icon, IconName, Selectable, Sizable, Size, StyledExt as _,
+    ActiveTheme, Disableable, Icon, IconName, Selectable, Sizable, Size, StyledExt as _,
     menu::{DropdownMenu, PopupMenu},
 };
 
@@ -179,9 +179,9 @@ impl Selectable for DropdownButton {
 }
 
 impl RenderOnce for DropdownButton {
-    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
         let grouped = self.button.is_some() && self.menu.is_some();
-        let joined = grouped && self.bordered && !(self.variant.is_ghost() && !self.selected);
+        let joined = grouped && self.bordered && !self.variant.is_ghost();
         let button_corners = if joined {
             Corners {
                 top_left: true,
@@ -214,6 +214,18 @@ impl RenderOnce for DropdownButton {
             Edges::all(self.bordered)
         };
         let trigger_disabled = self.disabled || (grouped && self.loading);
+        let trigger_focus_background = cx.theme().selection;
+        let trigger_focus_foreground = cx.theme().foreground;
+        let trigger_size = if grouped {
+            match self.size {
+                Size::XSmall => Size::XSmall,
+                Size::Small => Size::Small,
+                Size::Medium | Size::Large => Size::Medium,
+                Size::Size(size) => Size::Size(size),
+            }
+        } else {
+            self.size
+        };
         let icon = self
             .icon
             .unwrap_or_else(|| Icon::new(IconName::ChevronDown));
@@ -221,7 +233,7 @@ impl RenderOnce for DropdownButton {
         div()
             .id(self.id)
             .h_flex()
-            .when(grouped && !self.bordered, |this| this.gap_1())
+            .when(grouped && !joined, |this| this.gap_1())
             .refine_style(&self.style)
             .when_some(self.button, |this, button| {
                 this.child(
@@ -231,7 +243,7 @@ impl RenderOnce for DropdownButton {
                         .border_edges(button_edges)
                         .loading(self.loading)
                         .selected(self.selected)
-                        .disabled(self.disabled)
+                        .disabled(self.disabled || self.loading)
                         .when(self.compact, |this| this.compact())
                         .when(self.outline, |this| this.outline())
                         .with_size(self.size)
@@ -251,8 +263,19 @@ impl RenderOnce for DropdownButton {
                         .when(self.compact, |this| this.compact())
                         .when(self.outline, |this| this.outline())
                         .when_some(self.tooltip, |this, tooltip| this.tooltip(tooltip))
-                        .with_size(self.size)
+                        .with_size(trigger_size)
+                        .when(grouped, |this| match self.size {
+                            Size::XSmall => this.w_5().h_5(),
+                            Size::Small => this.w_5().h_6(),
+                            Size::Medium | Size::Large => this.w_6().h_8(),
+                            Size::Size(size) => this.size(size),
+                        })
                         .with_variant(self.variant)
+                        .focus_visible(move |this| {
+                            this.bg(trigger_focus_background)
+                                .border_color(trigger_focus_background)
+                                .text_color(trigger_focus_foreground)
+                        })
                         .dropdown_menu_with_anchor(self.anchor, menu),
                 )
             })
