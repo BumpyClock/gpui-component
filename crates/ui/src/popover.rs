@@ -7,7 +7,7 @@ use gpui::{
 use std::rc::Rc;
 
 use crate::{
-    ActiveTheme, Anchor, ElementExt, Selectable, StyledExt as _,
+    ActiveTheme, Anchor, ElementExt, ElevationToken, Selectable, StyledExt as _, ThemeShadowToken,
     actions::Cancel,
     anchored,
     animation::{
@@ -327,7 +327,26 @@ impl Popover {
             .id("content")
             .occlude()
             .tab_group()
-            .when(appearance, |this| this.popover_style(cx).p_3())
+            .when(appearance, |this| {
+                let elevation = match cx.theme().elevation.surface_flyout_shadow {
+                    ThemeShadowToken::None => ElevationToken::None,
+                    ThemeShadowToken::Xs => ElevationToken::Xs,
+                    ThemeShadowToken::Sm => ElevationToken::Sm,
+                    ThemeShadowToken::Md => ElevationToken::Md,
+                    ThemeShadowToken::Lg => ElevationToken::Lg,
+                    ThemeShadowToken::Xl => ElevationToken::Xl,
+                };
+
+                elevation.apply(
+                    this.bg(cx.theme().popover)
+                        .text_color(cx.theme().popover_foreground)
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .rounded(cx.theme().radius)
+                        .p_2(),
+                    cx,
+                )
+            })
             .map(|this| match anchor {
                 Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight => this.top_1(),
                 Anchor::BottomLeft | Anchor::BottomCenter | Anchor::BottomRight => this.bottom_1(),
@@ -395,7 +414,7 @@ impl RenderOnce for Popover {
         let open_duration_ms = if reduced_motion {
             motion.fast_duration_ms
         } else {
-            spring_preset_duration_ms(&motion, SpringPreset::Medium).max(motion.fast_duration_ms)
+            spring_preset_duration_ms(&motion, SpringPreset::Mild).max(motion.fast_duration_ms)
         };
         let presence = keyed_presence(
             SharedString::from(format!("popover-presence-{}", popover_id)),
@@ -415,7 +434,7 @@ impl RenderOnce for Popover {
 
         let open_fade_anim = point_to_point_animation(&motion, reduced_motion);
         let open_transform_anim =
-            spring_preset_animation(&motion, reduced_motion, SpringPreset::Medium);
+            spring_preset_animation(&motion, reduced_motion, SpringPreset::Mild);
         let close_anim = point_to_point_animation(&motion, reduced_motion);
         let vertical_direction = if matches!(
             self.anchor,
@@ -460,7 +479,7 @@ impl RenderOnce for Popover {
                                     SharedString::from("popover-open-transform"),
                                     anim,
                                     move |el, delta| {
-                                        el.translate_y(px(6.0 * (1.0 - delta) * vertical_direction))
+                                        el.translate_y(px(4.0 * (1.0 - delta) * vertical_direction))
                                     },
                                 )
                                 .into_any_element()
@@ -495,7 +514,7 @@ impl RenderOnce for Popover {
                                 anim,
                                 move |el, delta| {
                                     let progress = presence.progress(delta).clamp(0.0, 1.0);
-                                    let offset = px(6.0 * (1.0 - progress) * vertical_direction);
+                                    let offset = px(4.0 * (1.0 - progress) * vertical_direction);
                                     el.opacity(progress).translate_y(offset)
                                 },
                             )

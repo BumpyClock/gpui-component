@@ -186,11 +186,13 @@ And the `Popover` has implemented the [Styled] trait, so you can use all the sty
 Popover::new("custom-popover")
     .appearance(false)
     .trigger(Button::new("custom").label("Custom Style"))
-    .bg(cx.theme().accent)
-    .text_color(cx.theme().accent_foreground)
-    .p_6()
-    .rounded_xl()
-    .shadow_2xl()
+    .bg(cx.theme().secondary)
+    .text_color(cx.theme().secondary_foreground)
+    .border_1()
+    .border_color(cx.theme().border)
+    .p_2()
+    .rounded(cx.theme().radius)
+    .shadow_sm()
     .child("Fully custom styled popover")
 ```
 
@@ -224,7 +226,7 @@ Popover::new("controlled-popover")
 
 ## Motion
 
-- Enter: popover content uses theme fast-invoke timing with opacity + small vertical translation.
+- Enter: popover content uses the theme mild spring for a restrained 4px vertical translation, while opacity remains monotonic.
 - Exit: popover content uses point-to-point timing for a monotonic dismiss (no bounce overshoot).
 - Reduced motion: transitions are disabled and state changes render immediately.
 - Anchor-aware offset: top anchors drift downward on enter; bottom anchors drift upward.

@@ -236,16 +236,44 @@ impl Render for PopoverStory {
             .child(
                 section("Basic Popover").child(
                     Popover::new("popover-0")
-                        .max_w(px(600.))
-                        .trigger(Button::new("btn").outline().label("Popover"))
-                        .gap_2()
+                        .trigger(Button::new("btn").outline().label("View build details"))
+                        .w(px(320.))
                         .text_sm()
-                        .w(px(400.))
-                        .child("Hello, this is a Popover.")
+                        .child(
+                            v_flex()
+                                .gap_1()
+                                .child(div().font_semibold().child("Build completed"))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Finished 2 minutes ago"),
+                                ),
+                        )
                         .child(Divider::horizontal())
                         .child(
-                            "You can put any content here, including text,\
-                            buttons, forms, and more.",
+                            v_flex()
+                                .gap_2()
+                                .child(
+                                    h_flex()
+                                        .justify_between()
+                                        .child(
+                                            div()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("Branch"),
+                                        )
+                                        .child("main"),
+                                )
+                                .child(
+                                    h_flex()
+                                        .justify_between()
+                                        .child(
+                                            div()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("Duration"),
+                                        )
+                                        .child("1m 47s"),
+                                ),
                         ),
                 ),
             )
@@ -314,27 +342,38 @@ impl Render for PopoverStory {
                     Popover::new("popover-1")
                         .trigger(Button::new("btn").outline().label("Style Popover"))
                         .appearance(false)
-                        .py_1()
-                        .px_2()
-                        .bg(cx.theme().primary)
-                        .text_color(cx.theme().primary_foreground)
-                        .max_w(px(600.))
-                        .rounded_sm()
+                        .p_2()
+                        .bg(cx.theme().secondary)
+                        .text_color(cx.theme().secondary_foreground)
+                        .border_1()
+                        .border_color(cx.theme().border)
+                        .rounded(cx.theme().radius)
                         .text_sm()
-                        .shadow_2xl()
-                        .child("A styled Popover with custom background and text color."),
+                        .shadow_sm()
+                        .child("Custom surfaces retain the same radius and restrained depth."),
                 ),
             )
             .child(
                 section("Default Open").child(
                     Popover::new("default-open-popover")
                         .default_open(true)
+                        .w(px(280.))
                         .trigger(
                             Button::new("default-open-btn")
-                                .label("Default Open")
+                                .label("Replay open motion")
                                 .outline(),
                         )
-                        .child("This popover is open by default when first rendered."),
+                        .child(
+                            v_flex()
+                                .gap_1()
+                                .child(div().font_semibold().child("Motion baseline"))
+                                .child(
+                                    div()
+                                        .text_sm()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Click the trigger twice to close and replay."),
+                                ),
+                        ),
                 ),
             )
             .child(
