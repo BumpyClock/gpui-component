@@ -1,0 +1,184 @@
+//! Centralized geometry, typography and color tokens for flyout surfaces.
+//!
+//! Every transient surface in the library — popover, hover card, popup menu,
+//! context menu, select popup, command palette, editor popovers and the collapsed
+//! sidebar submenu — shares one geometry language so they read as a family:
+//!
+//! - one container radius (`radius`, from [`Theme::radius_lg`]),
+//! - one edge inset between the container and its rows (`inset`),
+//! - a row radius that is *concentric* with the container (`item_radius = radius - inset`),
+//! - one horizontal rhythm for rows (`item_padding_x`, `icon_gap`, `accessory_gap`),
+//! - two type steps: `label` (Fluent body) for row labels, `meta` (Fluent caption)
+//!   for shortcuts, subtitles, categories and section headers.
+//!
+//! [`SurfacePreset::flyout`](super::SurfacePreset::flyout) owns the *material*
+//! (blur, noise, elevation, stroke); this module owns the *layout* on top of it.
+//! Both derive from theme tokens, so a theme override moves every flyout together.
+
+use gpui::{App, FontWeight, Hsla, Pixels, px};
+
+use crate::{ActiveTheme, Size};
+
+/// Padding between the flyout edge and its rows.
+const INSET: Pixels = px(4.);
+/// Horizontal padding inside a row.
+const ITEM_PADDING_X: Pixels = px(8.);
+/// Vertical gap between adjacent rows.
+const ITEM_GAP: Pixels = px(2.);
+/// Gap between a row's leading icon and its label.
+const ICON_GAP: Pixels = px(8.);
+/// Gap between a row's label and its trailing accessories (shortcut, chevron, check).
+const ACCESSORY_GAP: Pixels = px(12.);
+/// Height of a group label or section header row.
+const SECTION_HEADER_HEIGHT: Pixels = px(24.);
+/// Vertical margin around a separator rule.
+const SEPARATOR_MARGIN: Pixels = px(4.);
+/// Padding for prose flyouts (popover body, hover card, documentation).
+const CONTENT_PADDING: Pixels = px(12.);
+/// Minimum width of a menu-style flyout.
+const MIN_WIDTH: Pixels = px(128.);
+/// Maximum width of a menu-style flyout.
+const MAX_WIDTH: Pixels = px(500.);
+/// Smallest row radius that still reads as rounded.
+const MIN_ITEM_RADIUS: Pixels = px(2.);
+
+/// Layout and text tokens shared by every flyout surface.
+///
+/// Build with [`FlyoutTokens::new`] for the default (medium) density, or
+/// [`FlyoutTokens::sized`] to match a control's [`Size`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FlyoutTokens {
+    // -- Container geometry --
+    /// Corner radius of the flyout container.
+    pub radius: Pixels,
+    /// Padding between the container edge and its rows.
+    pub inset: Pixels,
+    /// Padding for prose content (popover body, hover card, documentation).
+    pub content_padding: Pixels,
+    /// Minimum width of a menu-style flyout.
+    pub min_width: Pixels,
+    /// Maximum width of a menu-style flyout.
+    pub max_width: Pixels,
+
+    // -- Row geometry --
+    /// Corner radius of a row, concentric with [`Self::radius`].
+    pub item_radius: Pixels,
+    /// Height of a single-line row.
+    pub item_height: Pixels,
+    /// Horizontal padding inside a row.
+    pub item_padding_x: Pixels,
+    /// Vertical gap between adjacent rows.
+    pub item_gap: Pixels,
+    /// Gap between a leading icon and its label.
+    pub icon_gap: Pixels,
+    /// Gap between a label and its trailing accessories.
+    pub accessory_gap: Pixels,
+    /// Height of a group label or section header row.
+    pub section_header_height: Pixels,
+    /// Vertical margin around a separator rule.
+    pub separator_margin: Pixels,
+
+    // -- Typography --
+    /// Font size for row labels.
+    pub label_size: Pixels,
+    /// Font size for shortcuts, subtitles, categories and section headers.
+    pub meta_size: Pixels,
+    /// Font weight for group labels and section headers.
+    pub section_weight: FontWeight,
+}
+
+impl FlyoutTokens {
+    /// Tokens at the default (medium) row density.
+    pub fn new(cx: &App) -> Self {
+        Self::sized(Size::Medium, cx)
+    }
+
+    /// Tokens matching a control [`Size`].
+    pub fn sized(size: Size, cx: &App) -> Self {
+        let theme = cx.theme();
+        let radius = theme.radius_lg;
+
+        Self {
+            radius,
+            inset: INSET,
+            content_padding: CONTENT_PADDING,
+            min_width: MIN_WIDTH,
+            max_width: MAX_WIDTH,
+
+            item_radius: (radius - INSET).max(MIN_ITEM_RADIUS),
+            item_height: Self::item_height_for(size),
+            item_padding_x: ITEM_PADDING_X,
+            item_gap: ITEM_GAP,
+            icon_gap: ICON_GAP,
+            accessory_gap: ACCESSORY_GAP,
+            section_header_height: SECTION_HEADER_HEIGHT,
+            separator_margin: SEPARATOR_MARGIN,
+
+            label_size: theme.typography.body.size,
+            meta_size: theme.typography.caption.size,
+            section_weight: FontWeight::MEDIUM,
+        }
+    }
+
+    fn item_height_for(size: Size) -> Pixels {
+        match size {
+            Size::Size(height) => height,
+            Size::XSmall => px(22.),
+            Size::Small => px(26.),
+            Size::Medium => px(30.),
+            Size::Large => px(34.),
+        }
+    }
+}
+
+/// Secondary text color inside a flyout: shortcuts, subtitles, categories,
+/// section headers and inactive accessory icons.
+///
+/// Flyout materials sit *above* the window background, so this reads against the
+/// flyout surface rather than [`Theme::background`]. Always pair it with
+/// [`flyout_primary_foreground`] for the label so the two-step hierarchy is
+/// consistent across every flyout.
+#[inline]
+pub fn flyout_secondary_foreground(cx: &App) -> Hsla {
+    cx.theme().muted_foreground
+}
+
+/// Primary text color inside a flyout: row labels and prose body.
+#[inline]
+pub fn flyout_primary_foreground(cx: &App) -> Hsla {
+    cx.theme().popover_foreground
+}
+
+/// Secondary text color on a *selected* row, where the row paints
+/// [`Theme::primary`] behind its content.
+#[inline]
+pub fn flyout_selected_secondary_foreground(cx: &App) -> Hsla {
+    cx.theme().primary_foreground.opacity(0.8)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn item_height_follows_size() {
+        assert_eq!(FlyoutTokens::item_height_for(Size::XSmall), px(22.));
+        assert_eq!(FlyoutTokens::item_height_for(Size::Small), px(26.));
+        assert_eq!(FlyoutTokens::item_height_for(Size::Medium), px(30.));
+        assert_eq!(FlyoutTokens::item_height_for(Size::Large), px(34.));
+        assert_eq!(FlyoutTokens::item_height_for(Size::Size(px(41.))), px(41.));
+    }
+
+    #[test]
+    fn row_radius_stays_concentric_with_the_container() {
+        // The rounded row must be inset from the rounded container by exactly the
+        // edge padding, otherwise the two curves visibly disagree at the corners.
+        for radius in [px(4.), px(6.), px(8.), px(12.)] {
+            let item_radius = (radius - INSET).max(MIN_ITEM_RADIUS);
+            assert!(item_radius >= MIN_ITEM_RADIUS);
+            if radius - INSET >= MIN_ITEM_RADIUS {
+                assert_eq!(item_radius + INSET, radius);
+            }
+        }
+    }
+}

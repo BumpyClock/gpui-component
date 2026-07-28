@@ -260,7 +260,7 @@ impl ThemeElevation {
 }
 
 impl ThemeMaterial {
-    fn apply_config(
+    pub(crate) fn apply_config(
         &mut self,
         config: Option<&ThemeMaterialConfig>,
         default_theme: &ThemeMaterial,

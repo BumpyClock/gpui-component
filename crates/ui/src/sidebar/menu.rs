@@ -1,11 +1,13 @@
 use crate::{
-    ActiveTheme as _, Anchor, Collapsible, Icon, IconName, Selectable, Sizable as _, StyledExt,
+    ActiveTheme as _, Anchor, Collapsible, FlyoutTokens, Icon, IconName, Selectable, Sizable as _,
+    StyledExt, SurfaceContext, SurfacePreset,
     animation::{
         PresenceOptions, PresencePhase, PresenceTransition, SpringPreset,
         expand_collapse_durations, expand_collapse_layout_animation, keyed_presence,
         subtle_reveal_transform_animation, theme_animation,
     },
     button::{Button, ButtonVariants as _},
+    flyout_primary_foreground,
     global_state::GlobalState,
     h_flex,
     menu::{ContextMenuExt, PopupMenu, PopupMenuItem},
@@ -638,11 +640,13 @@ impl SidebarItem for SidebarMenuItem {
                 if has_suffix_controls {
                     let list_id =
                         SharedString::from(format!("{}-collapsed-submenu", collapsed_content_id));
-                    return v_flex()
-                        .id(list_id.clone())
-                        .popover_style(cx)
-                        .p_1()
-                        .gap_1()
+                    let tokens = FlyoutTokens::new(cx);
+                    return SurfacePreset::flyout()
+                        .with_radius(tokens.radius)
+                        .apply_material(v_flex().id(list_id.clone()), cx, SurfaceContext::new(cx))
+                        .text_color(flyout_primary_foreground(cx))
+                        .p(tokens.inset)
+                        .gap(tokens.item_gap)
                         .w(px(220.))
                         .children(children.clone().into_iter().enumerate().map(|(ix, item)| {
                             let item_id = SharedString::from(format!("{}-{}", list_id, ix));

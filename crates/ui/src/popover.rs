@@ -7,13 +7,15 @@ use gpui::{
 use std::rc::Rc;
 
 use crate::{
-    ActiveTheme, Anchor, ElementExt, Selectable, StyledExt as _, SurfaceContext, SurfacePreset,
+    ActiveTheme, Anchor, ElementExt, FlyoutTokens, Selectable, StyledExt as _, SurfaceContext,
+    SurfacePreset,
     actions::Cancel,
     anchored,
     animation::{
         PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
         spring_preset_animation, spring_preset_duration_ms,
     },
+    flyout_primary_foreground,
     global_state::GlobalState,
     v_flex,
 };
@@ -323,16 +325,18 @@ impl Popover {
         _: &mut Window,
         cx: &mut App,
     ) -> Stateful<Div> {
+        let tokens = FlyoutTokens::new(cx);
+
         v_flex()
             .id("content")
             .occlude()
             .tab_group()
             .when(appearance, |this| {
                 SurfacePreset::flyout()
-                    .with_radius(cx.theme().radius)
+                    .with_radius(tokens.radius)
                     .apply_material(this, cx, SurfaceContext::new(cx))
-                    .text_color(cx.theme().popover_foreground)
-                    .p_3()
+                    .text_color(flyout_primary_foreground(cx))
+                    .p(tokens.content_padding)
             })
             .map(|this| match anchor {
                 Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight => this.top_1(),

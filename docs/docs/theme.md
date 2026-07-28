@@ -19,6 +19,35 @@ cx.theme().foreground
 
 So if you want use the colors from the current theme, you should keep your component or view have [App] context.
 
+## Flyout tokens
+
+Transient surfaces — Popover, HoverCard, PopupMenu, ContextMenu, Select popup,
+CommandPalette, the editor popovers and the collapsed sidebar submenu — share one
+geometry language via `FlyoutTokens`. `SurfacePreset::flyout()` supplies the
+material (blur, noise, elevation, stroke); `FlyoutTokens` supplies the layout on
+top of it, so all flyouts stay in the same family when a theme changes.
+
+```rs
+use gpui_component::{FlyoutTokens, flyout_primary_foreground, flyout_secondary_foreground};
+
+let tokens = FlyoutTokens::new(cx);          // medium density
+let tokens = FlyoutTokens::sized(size, cx);  // match a control's `Size`
+```
+
+Key relationships:
+
+- `radius` comes from `theme.radius_lg`; rows use `item_radius = radius - inset`,
+  so a row's corner stays concentric with the container's.
+- `inset` is the padding between the container edge and its rows; a row's label
+  therefore sits at `inset + item_padding_x` from the container edge. Headers,
+  footers and search fields inside a flyout should use that same value so every
+  surface has a single left rail.
+- Two type steps only: `label_size` (Fluent body) for row labels, `meta_size`
+  (Fluent caption) for shortcuts, subtitles, categories and section headers.
+- Text roles come from `flyout_primary_foreground` / `flyout_secondary_foreground`
+  (and `flyout_selected_secondary_foreground` on a selected row) rather than
+  ad-hoc `foreground.opacity(..)` values.
+
 ## AppShell integration
 
 AppShell can initialize the registry, persist mode/name in its

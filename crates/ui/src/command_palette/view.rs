@@ -11,8 +11,9 @@ use crate::input::{Input, InputEvent, InputState};
 use crate::kbd::Kbd;
 use crate::spinner::Spinner;
 use crate::{
-    ActiveTheme, Icon, IconName, Sizable, Size, SurfaceContext, SurfacePreset,
-    VirtualListScrollHandle, WindowExt as _, h_flex, v_flex, v_virtual_list,
+    ActiveTheme, FlyoutTokens, Icon, IconName, Sizable, Size, SurfaceContext, SurfacePreset,
+    VirtualListScrollHandle, WindowExt as _, flyout_secondary_foreground, h_flex, v_flex,
+    v_virtual_list,
 };
 use gpui::{
     AnimationExt, App, AppContext as _, Context, ElementId, Entity, FocusHandle, Focusable,
@@ -25,12 +26,12 @@ use std::sync::Arc;
 
 const CONTEXT: &str = "CommandPalette";
 
-// Height constants for layout calculations
+// Height constants for layout calculations. Row geometry (section header height,
+// list padding, row radius) comes from `FlyoutTokens` so the palette stays in the
+// same geometry family as menus and select popups.
 const HEADER_HEIGHT: f32 = 56.0;
 const FOOTER_HEIGHT: f32 = 40.0;
-const SECTION_HEADER_HEIGHT: f32 = 30.0;
 const EMPTY_STATE_HEIGHT: f32 = 120.0;
-const LIST_PADDING: f32 = 12.0;
 
 /// A render row for the command palette list.
 #[derive(Clone)]
@@ -214,11 +215,12 @@ impl CommandPaletteView {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
+        let tokens = FlyoutTokens::new(cx);
         let item_data = item.item.clone();
         let match_info = item.match_info.clone();
         let disabled = item_data.disabled;
         let show_inline_category = show_category && !item_data.category.is_empty();
-        let secondary_foreground = cx.theme().foreground.opacity(0.68);
+        let secondary_foreground = flyout_secondary_foreground(cx);
 
         let shortcut_element = item_data
             .shortcut
@@ -242,10 +244,10 @@ impl CommandPaletteView {
             .id(SharedString::from(format!("cmd-item-{}", item_index)))
             .w_full()
             .h(self.item_height)
-            .px_2()
-            .gap_3()
+            .px(tokens.item_padding_x)
+            .gap(tokens.accessory_gap)
             .items_center()
-            .rounded(cx.theme().radius)
+            .rounded(tokens.item_radius)
             .cursor_pointer()
             .when(disabled, |this| this.opacity(0.5).cursor_not_allowed())
             .when(selected && !disabled, |this| {
@@ -269,57 +271,61 @@ impl CommandPaletteView {
                     }),
                 )
             })
-            // Icon
-            .when_some(item_data.icon, |this, icon| {
-                this.child(
-                    Icon::new(icon)
-                        .size_4()
-                        .text_color(if selected && !disabled {
-                            cx.theme().foreground
-                        } else {
-                            secondary_foreground
-                        }),
-                )
-            })
-            // Title and subtitle
+            // Icon + title/subtitle share the tight icon gutter, matching a menu row.
             .child(
-                v_flex()
+                h_flex()
                     .flex_1()
+                    .items_center()
                     .overflow_hidden()
+                    .gap(tokens.icon_gap)
+                    .when_some(item_data.icon, |this, icon| {
+                        this.child(Icon::new(icon).size_4().flex_shrink_0().text_color(
+                            if selected && !disabled {
+                                cx.theme().foreground
+                            } else {
+                                secondary_foreground
+                            },
+                        ))
+                    })
                     .child(
-                        div()
-                            .text_sm()
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .text_color(cx.theme().foreground)
-                            .truncate()
-                            .child(self.render_highlighted_text(
-                                &item_data.title,
-                                &match_info.title_ranges,
-                                cx,
-                            )),
-                    )
-                    .when_some(item_data.subtitle.clone(), |this, subtitle| {
-                        this.child(
-                            div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .truncate()
-                                .child(subtitle),
-                        )
-                    }),
+                        v_flex()
+                            .flex_1()
+                            .overflow_hidden()
+                            .child(
+                                div()
+                                    .text_size(tokens.label_size)
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .text_color(cx.theme().foreground)
+                                    .truncate()
+                                    .child(self.render_highlighted_text(
+                                        &item_data.title,
+                                        &match_info.title_ranges,
+                                        cx,
+                                    )),
+                            )
+                            .when_some(item_data.subtitle.clone(), |this, subtitle| {
+                                this.child(
+                                    div()
+                                        .text_size(tokens.meta_size)
+                                        .text_color(secondary_foreground)
+                                        .truncate()
+                                        .child(subtitle),
+                                )
+                            }),
+                    ),
             )
             .when(show_inline_category || has_shortcut, |this| {
                 this.child(
                     h_flex()
                         .flex_shrink_0()
                         .items_center()
-                        .gap_2()
+                        .gap(tokens.icon_gap)
                         .when(show_inline_category, |this| {
                             this.child(
                                 div()
-                                    .text_xs()
+                                    .text_size(tokens.meta_size)
                                     .text_color(if selected && !disabled {
-                                        cx.theme().foreground.opacity(0.72)
+                                        cx.theme().foreground
                                     } else {
                                         secondary_foreground
                                     })
@@ -333,15 +339,19 @@ impl CommandPaletteView {
     }
 
     fn render_section_header(&self, title: SharedString, cx: &App) -> impl IntoElement {
+        let tokens = FlyoutTokens::new(cx);
+
         div()
             .w_full()
-            .h(px(SECTION_HEADER_HEIGHT))
+            .h(tokens.section_header_height)
             .flex()
             .items_center()
-            .px_3()
-            .text_xs()
-            .font_weight(gpui::FontWeight::SEMIBOLD)
-            .text_color(cx.theme().foreground.opacity(0.64))
+            // Same left edge as a row's label, so headers and rows share one
+            // alignment line instead of stepping in and out by 4px.
+            .px(tokens.item_padding_x)
+            .text_size(tokens.meta_size)
+            .font_weight(tokens.section_weight)
+            .text_color(flyout_secondary_foreground(cx))
             .child(title)
     }
 
@@ -392,16 +402,18 @@ impl CommandPaletteView {
     fn render_footer(&self, status_text: Option<SharedString>, cx: &App) -> impl IntoElement {
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let has_status = status_text.is_some();
+        let tokens = FlyoutTokens::new(cx);
 
         h_flex()
             .w_full()
             .h(px(FOOTER_HEIGHT))
-            .px_3()
+            // Align with row labels: list inset + row padding.
+            .px(tokens.inset + tokens.item_padding_x)
             .border_t_1()
             .border_color(cx.theme().border)
             .justify_between()
-            .text_xs()
-            .text_color(cx.theme().foreground.opacity(0.64))
+            .text_size(tokens.meta_size)
+            .text_color(flyout_secondary_foreground(cx))
             .child(
                 h_flex()
                     .gap_4()
@@ -431,7 +443,7 @@ impl CommandPaletteView {
                     h_flex()
                         .gap_2()
                         .items_center()
-                        .text_color(cx.theme().foreground.opacity(0.64))
+                        .text_color(flyout_secondary_foreground(cx))
                         .when(reduced_motion, |this| {
                             this.child(Icon::new(IconName::LoaderCircle).size_4())
                         })
@@ -440,7 +452,7 @@ impl CommandPaletteView {
                                 Spinner::new()
                                     .icon(IconName::LoaderCircle)
                                     .with_size(Size::Small)
-                                    .color(cx.theme().foreground.opacity(0.64)),
+                                    .color(flyout_secondary_foreground(cx)),
                             )
                         })
                         .child(status),
@@ -459,17 +471,19 @@ impl CommandPaletteView {
     }
 
     fn render_empty(&self, query_empty: bool, cx: &App) -> impl IntoElement {
+        let tokens = FlyoutTokens::new(cx);
+
         v_flex()
             .size_full()
             .items_center()
             .justify_center()
             .gap_1()
-            .text_color(cx.theme().muted_foreground)
+            .text_color(flyout_secondary_foreground(cx))
             .child(Icon::new(IconName::Search).size_6().opacity(0.62))
             .child(
                 div()
                     .mt_1()
-                    .text_sm()
+                    .text_size(tokens.label_size)
                     .font_weight(gpui::FontWeight::MEDIUM)
                     .text_color(cx.theme().foreground)
                     .child(if query_empty {
@@ -479,7 +493,11 @@ impl CommandPaletteView {
                     }),
             )
             .when(!query_empty, |this| {
-                this.child(div().text_xs().child("Try a different search."))
+                this.child(
+                    div()
+                        .text_size(tokens.meta_size)
+                        .child("Try a different search."),
+                )
             })
     }
 
@@ -544,6 +562,7 @@ impl Focusable for CommandPaletteView {
 
 impl Render for CommandPaletteView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let tokens = FlyoutTokens::new(cx);
         let state = self.state.read(cx);
         let config = state.config.clone();
         let matched_items = state.matched_items.clone();
@@ -557,7 +576,7 @@ impl Render for CommandPaletteView {
                 .map(|row| GpuiSize {
                     width: px(0.),
                     height: match row {
-                        CommandPaletteRow::Header(_) => px(SECTION_HEADER_HEIGHT),
+                        CommandPaletteRow::Header(_) => tokens.section_header_height,
                         CommandPaletteRow::Item(_) => self.item_height,
                     },
                 })
@@ -597,10 +616,12 @@ impl Render for CommandPaletteView {
         let list_content_height = if row_count == 0 {
             px(EMPTY_STATE_HEIGHT)
         } else {
-            px(LIST_PADDING)
+            // Must match the padding actually applied to the list below, or the
+            // surface ends up taller than its content.
+            tokens.inset * 2.
                 + rows.iter().fold(px(0.0), |sum, row| {
                     sum + match row {
-                        CommandPaletteRow::Header(_) => px(SECTION_HEADER_HEIGHT),
+                        CommandPaletteRow::Header(_) => tokens.section_header_height,
                         CommandPaletteRow::Item(_) => self.item_height,
                     }
                 })
@@ -633,7 +654,6 @@ impl Render for CommandPaletteView {
                     .h(px(HEADER_HEIGHT))
                     .flex()
                     .items_center()
-                    .px_3()
                     .border_b_1()
                     .border_color(cx.theme().border)
                     .child(
@@ -642,10 +662,14 @@ impl Render for CommandPaletteView {
                             .prefix(
                                 Icon::new(IconName::Search)
                                     .size_4()
-                                    .text_color(cx.theme().muted_foreground),
+                                    .text_color(flyout_secondary_foreground(cx)),
                             )
                             .appearance(false)
-                            .cleanable(true),
+                            .cleanable(true)
+                            // The input carries its own size-derived padding. Override it
+                            // onto the row rail so the search glyph sits on the same
+                            // vertical line as the result-row icons directly below it.
+                            .px(tokens.inset + tokens.item_padding_x),
                     ),
             )
             // Results list
@@ -709,7 +733,7 @@ impl Render for CommandPaletteView {
                                             },
                                         )
                                         .track_scroll(&self.scroll_handle)
-                                        .p_1(),
+                                        .p(tokens.inset),
                                     )
                                 }),
                         )
@@ -752,7 +776,7 @@ impl Render for CommandPaletteView {
             });
 
         SurfacePreset::flyout()
-            .with_radius(cx.theme().radius_lg)
+            .with_radius(tokens.radius)
             .wrap_with_bounds(
                 content,
                 px(config.width),
