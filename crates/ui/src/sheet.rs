@@ -3,8 +3,8 @@ use std::rc::Rc;
 use gpui::{
     AnimationExt as _, AnyElement, App, ClickEvent, DefiniteLength, DismissEvent, Edges,
     EventEmitter, FocusHandle, InteractiveElement as _, IntoElement, KeyBinding, MouseButton,
-    ParentElement, Pixels, RenderOnce, StyleRefinement, Styled, Window, WindowControlArea,
-    anchored, div, point, prelude::FluentBuilder as _, px,
+    ParentElement, Pixels, RenderOnce, SharedString, StyleRefinement, Styled, Window,
+    WindowControlArea, anchored, div, point, prelude::FluentBuilder as _, px,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,7 @@ use crate::{
     ActiveTheme, FocusTrapElement as _, IconName, Placement, Sizable, StyledExt as _,
     WindowExt as _,
     actions::Cancel,
-    animation::enter_animation,
+    animation::{enter_animation, exit_animation},
     button::{Button, ButtonVariants as _},
     dialog::overlay_color,
     global_state::GlobalState,
@@ -57,6 +57,7 @@ pub struct Sheet {
     children: Vec<AnyElement>,
     overlay: bool,
     overlay_closable: bool,
+    pub(crate) closing: bool,
 }
 
 impl Sheet {
@@ -73,6 +74,7 @@ impl Sheet {
             children: Vec::new(),
             overlay: true,
             overlay_closable: true,
+            closing: false,
             on_close: Rc::new(|_, _, _| {}),
         }
     }
@@ -147,7 +149,14 @@ impl RenderOnce for Sheet {
         let top = cx.theme().sheet.margin_top;
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = &cx.theme().motion;
-        let slide_animation = enter_animation(motion, reduced_motion);
+        let closing = self.closing;
+        // While closing, the Root keeps the sheet mounted for the exit window
+        // and this reversed slide plays; the window is also the ceiling.
+        let slide_animation = if closing {
+            exit_animation(motion, reduced_motion)
+        } else {
+            enter_animation(motion, reduced_motion)
+        };
         let on_close = self.on_close.clone();
 
         let base_size = window.text_style().font_size;
@@ -281,15 +290,23 @@ impl RenderOnce for Sheet {
                             })
                             .map(move |this| match slide_animation {
                                 Some(anim) => this
-                                    .with_animation("slide", anim, move |this, delta| {
-                                        let y = px(-100.) + delta * px(100.);
-                                        this.map(|this| match placement {
-                                            Placement::Top => this.top(top + y),
-                                            Placement::Right => this.right(y),
-                                            Placement::Bottom => this.bottom(y),
-                                            Placement::Left => this.left(y),
-                                        })
-                                    })
+                                    .with_animation(
+                                        SharedString::from(format!("slide-{}", u8::from(closing))),
+                                        anim,
+                                        move |this, delta| {
+                                            // Enter slides in from the edge;
+                                            // closing runs the same path back out.
+                                            let progress =
+                                                if closing { 1.0 - delta } else { delta };
+                                            let y = px(-100.) + progress * px(100.);
+                                            this.map(|this| match placement {
+                                                Placement::Top => this.top(top + y),
+                                                Placement::Right => this.right(y),
+                                                Placement::Bottom => this.bottom(y),
+                                                Placement::Left => this.left(y),
+                                            })
+                                        },
+                                    )
                                     .into_any_element(),
                                 None => this.into_any_element(),
                             }),

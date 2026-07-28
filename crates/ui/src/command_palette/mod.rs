@@ -156,6 +156,9 @@ impl CommandPalette {
                 .overlay_closable(true)
                 .keyboard(true)
                 .animate(false)
+                // No dialog-chrome animation, but keep the dialog mounted
+                // through the exit window so the palette can animate out.
+                .defer_close(true)
                 .appearance(false)
                 .close_button(false)
                 .p_0()

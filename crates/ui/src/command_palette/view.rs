@@ -5,15 +5,15 @@ use super::reveal_delay;
 use super::state::{CommandPaletteEvent, CommandPaletteState};
 use super::types::{CommandPaletteConfig, MatchedItem};
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
-use crate::animation::{fade_animation, spring_animation, standard_animation};
+use crate::animation::{exit_animation, fade_animation, spring_animation, standard_animation};
 use crate::global_state::GlobalState;
 use crate::input::{Input, InputEvent, InputState};
 use crate::kbd::Kbd;
 use crate::spinner::Spinner;
 use crate::{
     ActiveTheme, FlyoutTokens, Icon, IconName, Sizable, Size, SurfaceContext, SurfacePreset,
-    VirtualListScrollHandle, WindowExt as _, flyout_secondary_foreground, h_flex, v_flex,
-    v_virtual_list,
+    VirtualListScrollHandle, WindowExt as _, flyout_secondary_foreground, h_flex, is_layer_closing,
+    v_flex, v_virtual_list,
 };
 use gpui::{
     AnimationExt, App, AppContext as _, Context, ElementId, Entity, FocusHandle, Focusable,
@@ -635,7 +635,19 @@ impl Render for CommandPaletteView {
                 px(0.0)
             };
 
-        let surface_ctx = SurfaceContext::new(cx);
+        // While the host dialog defers unmount for our exit animation, render
+        // the opaque (blur-off) material: the renderer cannot yet fade a
+        // backdrop-blur subtree through a wrapper opacity — the blur layer
+        // ignores it — so the exit fades the opaque fallback instead. Remove
+        // when blur honors element opacity in gpui.
+        let closing = is_layer_closing(cx);
+        let surface_ctx = if closing {
+            SurfaceContext {
+                blur_enabled: false,
+            }
+        } else {
+            SurfaceContext::new(cx)
+        };
 
         let content = v_flex()
             .key_context(CONTEXT)
@@ -788,10 +800,25 @@ impl Render for CommandPaletteView {
             .h(expanded_height)
             .w(px(config.width));
 
-        // Enter motion for the surface itself (it previously popped in while only
-        // the results animated). Mount-only: the view is created on open, so the
-        // animation plays exactly once. Exit is owned by the host that removes
-        // the view, so there is no exit animation here.
+        // Enter motion for the surface itself (it previously popped in while
+        // only the results animated). Mount-only: the view is created on open,
+        // so the animation plays exactly once. On close the host dialog defers
+        // unmount (`defer_close`) and flags the subtree via `is_layer_closing`,
+        // which is when the exit below runs.
+        if closing {
+            return if let Some(anim) = exit_animation(&motion, reduced_motion) {
+                div()
+                    .child(surface)
+                    .with_animation("command-palette-exit", anim, |el, delta| {
+                        let progress = (1.0 - delta).clamp(0.0, 1.0);
+                        el.opacity(progress).translate_y(px(4.0 * delta))
+                    })
+                    .into_any_element()
+            } else {
+                surface.into_any_element()
+            };
+        }
+
         let open_fade_anim = standard_animation(&motion, reduced_motion);
         let open_transform_anim = spring_animation(&motion, reduced_motion);
         let transformed = if let Some(anim) = open_transform_anim {

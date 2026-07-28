@@ -1,4 +1,4 @@
-use std::{rc::Rc, time::Duration};
+use std::rc::Rc;
 
 use gpui::{
     AnimationExt as _, AnyElement, App, Bounds, BoxShadow, ClickEvent, Edges, ElementId,
@@ -9,7 +9,7 @@ use gpui::{
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme as _, FocusTrapElement as _, IconName, Root, Sizable as _, StyledExt,
+    ActiveTheme as _, ClosingScope, FocusTrapElement as _, IconName, Root, Sizable as _, StyledExt,
     TITLE_BAR_HEIGHT, WindowExt as _,
     actions::{Cancel, Confirm},
     animation::{
@@ -50,16 +50,6 @@ fn dialog_shadow(delta: f32) -> Vec<BoxShadow> {
             inset: false,
         },
     ]
-}
-
-pub(crate) fn close_animation_duration(cx: &App) -> Duration {
-    let motion = &cx.theme().motion;
-    Duration::from_millis(u64::from(
-        motion
-            .enter_duration_ms
-            .max(motion.exit_duration_ms)
-            .max(motion.fade_duration_ms),
-    ))
 }
 
 type RenderButtonFn = Box<dyn FnOnce(&mut Window, &mut App) -> AnyElement>;
@@ -131,6 +121,7 @@ pub struct Dialog {
     overlay_closable: bool,
     keyboard: bool,
     animate: bool,
+    defer_close: bool,
     appearance: bool,
 
     /// This will be change when open the dialog, the focus handle is create when open the dialog.
@@ -164,6 +155,7 @@ impl Dialog {
             overlay: true,
             keyboard: true,
             animate: true,
+            defer_close: false,
             appearance: true,
             id: 0,
             layer_ix: 0,
@@ -180,6 +172,14 @@ impl Dialog {
 
     pub(crate) fn should_animate(&self, cx: &App) -> bool {
         self.animate && !GlobalState::global(cx).reduced_motion()
+    }
+
+    /// Whether closing should keep the dialog mounted for the exit window
+    /// before unmounting: true when the chrome animates, or when the opener
+    /// requested [`Dialog::defer_close`] for content-driven exits. Reduced
+    /// motion always unmounts immediately.
+    pub(crate) fn should_defer_close(&self, cx: &App) -> bool {
+        (self.animate || self.defer_close) && !GlobalState::global(cx).reduced_motion()
     }
 
     /// Sets the title of the dialog.
@@ -325,6 +325,19 @@ impl Dialog {
         self
     }
 
+    /// Keep the dialog mounted through the exit window while closing, so
+    /// content can run its own exit animation even when the dialog chrome does
+    /// not animate (`animate(false)`).
+    ///
+    /// Content learns the closing state via [`crate::is_layer_closing`]. The
+    /// window is [`crate::animation::exit_duration`] and is also the ceiling —
+    /// the dialog is torn down when it elapses whether or not the content
+    /// finished; there is no completion signal to leak.
+    pub fn defer_close(mut self, defer: bool) -> Self {
+        self.defer_close = defer;
+        self
+    }
+
     /// Set whether the dialog renders its default background, border, radius, and shadow.
     pub fn appearance(mut self, appearance: bool) -> Self {
         self.appearance = appearance;
@@ -364,6 +377,11 @@ impl RenderOnce for Dialog {
         let has_title = self.title.is_some();
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let should_animate = self.should_animate(cx);
+        // The presence runs whenever the close is deferred — including
+        // content-driven exits with a non-animating chrome — so the Exiting
+        // phase exists for the whole deferral window.
+        let presence_active = self.should_defer_close(cx);
+        let closing = self.closing;
         let target_open = !self.closing;
         let appearance = self.appearance;
 
@@ -461,19 +479,13 @@ impl RenderOnce for Dialog {
             paddings.top -= px(6.);
         }
 
-        let open_duration = Duration::from_millis(u64::from(if reduced_motion {
-            cx.theme().motion.enter_duration_ms
-        } else {
-            cx.theme()
-                .motion
-                .enter_duration_ms
-                .max(cx.theme().motion.enter_duration_ms)
-        }));
-        let close_duration = close_animation_duration(cx);
+        let open_duration = crate::animation::enter_duration(&cx.theme().motion);
+        let close_duration = crate::animation::exit_duration(&cx.theme().motion);
+
         let presence = keyed_presence(
             SharedString::from(format!("dialog-{}-presence", dialog_id)),
             target_open,
-            should_animate,
+            presence_active,
             open_duration,
             close_duration,
             PresenceOptions {
@@ -635,13 +647,19 @@ impl RenderOnce for Dialog {
                             }))
                             .child(
                                 div().flex_1().overflow_hidden().child(
-                                    // Body
-                                    v_flex()
-                                        .size_full()
-                                        .overflow_y_scrollbar()
-                                        .pl(paddings.left)
-                                        .pr(paddings.right)
-                                        .children(self.children),
+                                    // Body. ClosingScope exposes the closing
+                                    // state so content can run its own exit
+                                    // animation during the deferral window
+                                    // (see `Dialog::defer_close`).
+                                    ClosingScope::new(
+                                        closing,
+                                        v_flex()
+                                            .size_full()
+                                            .overflow_y_scrollbar()
+                                            .pl(paddings.left)
+                                            .pr(paddings.right)
+                                            .children(self.children),
+                                    ),
                                 ),
                             )
                             .when_some(self.footer, |this, footer| {
@@ -662,7 +680,16 @@ impl RenderOnce for Dialog {
                             })
                             .map(move |this| {
                                 if !should_animate || !transition_active {
-                                    let progress = presence.progress(1.0);
+                                    // A non-animating chrome stays fully present
+                                    // while a content-driven deferred close plays
+                                    // out; the content owns the exit visuals.
+                                    let progress = if !should_animate
+                                        && matches!(presence.phase, PresencePhase::Exiting)
+                                    {
+                                        1.0
+                                    } else {
+                                        presence.progress(1.0)
+                                    };
                                     this.when(appearance, |this| {
                                         this.shadow(dialog_shadow(progress))
                                     })
@@ -730,7 +757,16 @@ impl RenderOnce for Dialog {
                     )
                     .map(move |this| {
                         if !should_animate || !transition_active {
-                            this.opacity(presence.progress(1.0)).into_any_element()
+                            // Hold the layer visible through a content-driven
+                            // deferred close (see `Dialog::defer_close`).
+                            let progress = if !should_animate
+                                && matches!(presence.phase, PresencePhase::Exiting)
+                            {
+                                1.0
+                            } else {
+                                presence.progress(1.0)
+                            };
+                            this.opacity(progress).into_any_element()
                         } else {
                             let fade_animation =
                                 if matches!(presence.phase, PresencePhase::Entering) {
