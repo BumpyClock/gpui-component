@@ -9,8 +9,7 @@ use gpui::{
 use crate::{
     ActiveTheme as _, Icon, IconName, Sizable, Size,
     animation::{
-        PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
-        spring_preset_animation, spring_preset_duration_ms,
+        PresenceOptions, PresencePhase, keyed_presence, spring_animation, standard_animation,
     },
     global_state::GlobalState,
     h_flex, v_flex,
@@ -251,21 +250,15 @@ impl RenderOnce for AccordionItem {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
-        let spring_preset = SpringPreset::Mild;
-        let layout_anim = point_to_point_animation(&motion, reduced_motion);
+        let layout_anim = standard_animation(&motion, reduced_motion);
         let close_anim = layout_anim.clone();
         let open_layout_anim = layout_anim;
-        let open_transform_anim = spring_preset_animation(&motion, reduced_motion, spring_preset);
-        let chevron_open_anim = spring_preset_animation(&motion, reduced_motion, spring_preset);
-        let chevron_close_anim = spring_preset_animation(&motion, reduced_motion, spring_preset);
+        let open_transform_anim = spring_animation(&motion, reduced_motion);
+        let chevron_open_anim = spring_animation(&motion, reduced_motion);
+        let chevron_close_anim = spring_animation(&motion, reduced_motion);
         let presence_key = SharedString::from(format!("accordion-presence-{}", self.key_prefix));
-        let presence_duration_ms = if reduced_motion {
-            motion.fast_duration_ms
-        } else {
-            spring_preset_duration_ms(&motion, spring_preset).max(motion.fast_duration_ms)
-        };
-        let open_duration = Duration::from_millis(u64::from(presence_duration_ms));
-        let close_duration = Duration::from_millis(u64::from(presence_duration_ms));
+        let open_duration = Duration::from_millis(u64::from(motion.enter_duration_ms));
+        let close_duration = Duration::from_millis(u64::from(motion.exit_duration_ms));
         let presence = keyed_presence(
             presence_key,
             self.open,

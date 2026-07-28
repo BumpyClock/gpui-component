@@ -12,8 +12,8 @@ use crate::{
     actions::Cancel,
     anchored,
     animation::{
-        PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
-        spring_preset_animation, spring_preset_duration_ms,
+        self, PresenceOptions, PresencePhase, exit_animation, keyed_presence, spring_animation,
+        standard_animation,
     },
     flyout_primary_foreground,
     global_state::GlobalState,
@@ -402,17 +402,14 @@ impl RenderOnce for Popover {
 
         let motion = cx.theme().motion.clone();
         let reduced_motion = GlobalState::global(cx).reduced_motion();
-        let open_duration_ms = if reduced_motion {
-            motion.fast_duration_ms
-        } else {
-            spring_preset_duration_ms(&motion, SpringPreset::Mild).max(motion.fast_duration_ms)
-        };
+        // The presence windows are the same tokens the animations run on, so an
+        // exit always plays to completion before its element unmounts.
         let presence = keyed_presence(
             SharedString::from(format!("popover-presence-{}", popover_id)),
             open,
             !reduced_motion,
-            std::time::Duration::from_millis(u64::from(open_duration_ms)),
-            std::time::Duration::from_millis(u64::from(motion.fade_duration_ms)),
+            animation::enter_duration(&motion),
+            animation::exit_duration(&motion),
             PresenceOptions {
                 animate_on_mount: true,
             },
@@ -423,10 +420,9 @@ impl RenderOnce for Popover {
             return el;
         }
 
-        let open_fade_anim = point_to_point_animation(&motion, reduced_motion);
-        let open_transform_anim =
-            spring_preset_animation(&motion, reduced_motion, SpringPreset::Mild);
-        let close_anim = point_to_point_animation(&motion, reduced_motion);
+        let open_fade_anim = standard_animation(&motion, reduced_motion);
+        let open_transform_anim = spring_animation(&motion, reduced_motion);
+        let close_anim = exit_animation(&motion, reduced_motion);
         let vertical_direction = if matches!(
             self.anchor,
             Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight

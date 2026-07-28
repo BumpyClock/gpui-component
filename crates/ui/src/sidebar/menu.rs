@@ -2,9 +2,9 @@ use crate::{
     ActiveTheme as _, Anchor, Collapsible, FlyoutTokens, Icon, IconName, Selectable, Sizable as _,
     StyledExt, SurfaceContext, SurfacePreset,
     animation::{
-        PresenceOptions, PresencePhase, PresenceTransition, SpringPreset,
+        PresenceOptions, PresencePhase, PresenceTransition, exit_animation,
         expand_collapse_durations, expand_collapse_layout_animation, keyed_presence,
-        subtle_reveal_transform_animation, theme_animation,
+        spring_animation,
     },
     button::{Button, ButtonVariants as _},
     flyout_primary_foreground,
@@ -414,8 +414,7 @@ impl SidebarItem for SidebarMenuItem {
         let show_collapsed_submenu = is_submenu && is_collapsed;
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
-        let (open_duration, close_duration) =
-            expand_collapse_durations(&motion, reduced_motion, SpringPreset::Mild);
+        let (open_duration, close_duration) = expand_collapse_durations(&motion);
         let submenu_presence = keyed_presence(
             SharedString::from(format!("{}-submenu-presence", state_key)),
             is_open,
@@ -430,15 +429,9 @@ impl SidebarItem for SidebarMenuItem {
         let submenu_entering = matches!(submenu_presence.phase, PresencePhase::Entering);
         let submenu_layout_anim =
             expand_collapse_layout_animation(&motion, reduced_motion, submenu_entering);
-        let submenu_transform_anim =
-            subtle_reveal_transform_animation(&motion, reduced_motion, SpringPreset::Mild);
-        let chevron_open_anim =
-            subtle_reveal_transform_animation(&motion, reduced_motion, SpringPreset::Mild);
-        let chevron_close_anim = theme_animation(
-            motion.soft_dismiss_duration_ms,
-            &motion.soft_dismiss_easing,
-            reduced_motion,
-        );
+        let submenu_transform_anim = spring_animation(&motion, reduced_motion);
+        let chevron_open_anim = spring_animation(&motion, reduced_motion);
+        let chevron_close_anim = exit_animation(&motion, reduced_motion);
         let item_content_presence = keyed_presence(
             SharedString::from(format!("{}-item-content-presence", state_key)),
             !is_collapsed,
@@ -455,8 +448,7 @@ impl SidebarItem for SidebarMenuItem {
             reduced_motion,
             matches!(item_content_presence.phase, PresencePhase::Entering),
         );
-        let item_content_transform_anim =
-            subtle_reveal_transform_animation(&motion, reduced_motion, SpringPreset::Mild);
+        let item_content_transform_anim = spring_animation(&motion, reduced_motion);
 
         let item_element = h_flex()
             .size_full()

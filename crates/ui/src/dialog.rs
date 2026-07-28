@@ -13,9 +13,8 @@ use crate::{
     TITLE_BAR_HEIGHT, WindowExt as _,
     actions::{Cancel, Confirm},
     animation::{
-        PresenceOptions, PresencePhase, SpringPreset, fade_animation, fast_invoke_animation,
-        keyed_presence, point_to_point_animation, soft_dismiss_animation, spring_preset_animation,
-        spring_preset_duration_ms,
+        PresenceOptions, PresencePhase, enter_animation, exit_animation, fade_animation,
+        keyed_presence, spring_animation, standard_animation,
     },
     button::{Button, ButtonVariant, ButtonVariants as _},
     global_state::GlobalState,
@@ -57,8 +56,8 @@ pub(crate) fn close_animation_duration(cx: &App) -> Duration {
     let motion = &cx.theme().motion;
     Duration::from_millis(u64::from(
         motion
-            .fast_duration_ms
-            .max(motion.soft_dismiss_duration_ms)
+            .enter_duration_ms
+            .max(motion.exit_duration_ms)
             .max(motion.fade_duration_ms),
     ))
 }
@@ -463,10 +462,12 @@ impl RenderOnce for Dialog {
         }
 
         let open_duration = Duration::from_millis(u64::from(if reduced_motion {
-            cx.theme().motion.fast_duration_ms
+            cx.theme().motion.enter_duration_ms
         } else {
-            spring_preset_duration_ms(&cx.theme().motion, SpringPreset::Medium)
-                .max(cx.theme().motion.fast_duration_ms)
+            cx.theme()
+                .motion
+                .enter_duration_ms
+                .max(cx.theme().motion.enter_duration_ms)
         }));
         let close_duration = close_animation_duration(cx);
         let presence = keyed_presence(
@@ -484,21 +485,19 @@ impl RenderOnce for Dialog {
         let transition_active = presence.transition_active();
 
         let motion = &cx.theme().motion;
-        let open_panel_layout_animation = point_to_point_animation(motion, reduced_motion)
-            .or_else(|| fast_invoke_animation(motion, reduced_motion))
+        let open_panel_layout_animation = standard_animation(motion, reduced_motion)
+            .or_else(|| enter_animation(motion, reduced_motion))
             .unwrap_or_else(|| {
                 gpui::Animation::new(std::time::Duration::from_millis(u64::from(
-                    motion.fast_duration_ms,
+                    motion.enter_duration_ms,
                 )))
             });
-        let open_panel_transform_animation =
-            spring_preset_animation(motion, reduced_motion, SpringPreset::Medium);
-        let close_panel_animation =
-            soft_dismiss_animation(motion, reduced_motion).unwrap_or_else(|| {
-                gpui::Animation::new(std::time::Duration::from_millis(u64::from(
-                    motion.soft_dismiss_duration_ms,
-                )))
-            });
+        let open_panel_transform_animation = spring_animation(motion, reduced_motion);
+        let close_panel_animation = exit_animation(motion, reduced_motion).unwrap_or_else(|| {
+            gpui::Animation::new(std::time::Duration::from_millis(u64::from(
+                motion.exit_duration_ms,
+            )))
+        });
         let fade_in_animation = fade_animation(motion, reduced_motion).unwrap_or_else(|| {
             gpui::Animation::new(std::time::Duration::from_millis(u64::from(
                 motion.fade_duration_ms,

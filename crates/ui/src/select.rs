@@ -11,7 +11,10 @@ use crate::{
     ActiveTheme, Disableable, ElementExt as _, FlyoutTokens, Icon, IconName, IndexPath, Selectable,
     Sizable, Size, StyleSized, StyledExt, SurfaceContext, SurfacePreset,
     actions::{Cancel, Confirm, SelectDown, SelectUp},
-    animation::fast_invoke_animation,
+    animation::{
+        self, PresenceOptions, PresencePhase, exit_animation, keyed_presence, spring_animation,
+        standard_animation,
+    },
     global_state::GlobalState,
     h_flex,
     input::clear_button,
@@ -921,10 +924,41 @@ where
                         move |bounds, _, cx| state.update(cx, |r, _| r.bounds = bounds)
                     }),
             )
-            .when(self.open, |this| {
-                let motion = &cx.theme().motion;
+            .map(|this| {
+                let motion = cx.theme().motion.clone();
                 let reduced_motion = GlobalState::global(cx).reduced_motion();
-                let anim = fast_invoke_animation(motion, reduced_motion);
+                // Presence keeps the popup mounted through its exit, and its
+                // windows are the same tokens the animations run on.
+                let presence = keyed_presence(
+                    SharedString::from(format!(
+                        "select-popup-presence-{}",
+                        cx.entity().entity_id()
+                    )),
+                    self.open,
+                    !reduced_motion,
+                    animation::enter_duration(&motion),
+                    animation::exit_duration(&motion),
+                    PresenceOptions::default(),
+                    window,
+                    cx,
+                );
+                if !presence.should_render() {
+                    return this;
+                }
+
+                // Same motion as every other flyout: spring slide from the
+                // trigger with a fade in, accelerate fade back out.
+                let vertical_direction = if matches!(
+                    placement.anchor,
+                    Anchor::BottomLeft | Anchor::BottomRight | Anchor::BottomCenter
+                ) {
+                    -1.0
+                } else {
+                    1.0
+                };
+                let open_fade_anim = standard_animation(&motion, reduced_motion);
+                let open_transform_anim = spring_animation(&motion, reduced_motion);
+                let close_anim = exit_animation(&motion, reduced_motion);
 
                 this.child(
                     deferred(
@@ -959,11 +993,58 @@ where
                                     this.escape(&Cancel, window, cx);
                                 }))
                                 .map(|el| {
-                                    if let Some(anim) = anim {
-                                        el.with_animation("select-enter", anim, |el, delta| {
-                                            el.opacity(delta)
-                                        })
-                                        .into_any_element()
+                                    if !presence.transition_active() {
+                                        el.into_any_element()
+                                    } else if matches!(presence.phase, PresencePhase::Entering) {
+                                        let transformed = if let Some(anim) = open_transform_anim {
+                                            div()
+                                                .child(el)
+                                                .with_animation(
+                                                    "select-open-transform",
+                                                    anim,
+                                                    move |el, delta| {
+                                                        el.translate_y(px(4.0
+                                                            * (1.0 - delta)
+                                                            * vertical_direction))
+                                                    },
+                                                )
+                                                .into_any_element()
+                                        } else {
+                                            el.into_any_element()
+                                        };
+                                        if let Some(anim) = open_fade_anim {
+                                            div()
+                                                .child(transformed)
+                                                .with_animation(
+                                                    "select-open-fade",
+                                                    anim,
+                                                    move |el, delta| {
+                                                        el.opacity(
+                                                            presence
+                                                                .progress(delta)
+                                                                .clamp(0.0, 1.0),
+                                                        )
+                                                    },
+                                                )
+                                                .into_any_element()
+                                        } else {
+                                            transformed
+                                        }
+                                    } else if let Some(anim) = close_anim {
+                                        div()
+                                            .child(el)
+                                            .with_animation(
+                                                "select-close",
+                                                anim,
+                                                move |el, delta| {
+                                                    let progress =
+                                                        presence.progress(delta).clamp(0.0, 1.0);
+                                                    el.opacity(progress).translate_y(px(2.0
+                                                        * (1.0 - progress)
+                                                        * vertical_direction))
+                                                },
+                                            )
+                                            .into_any_element()
                                     } else {
                                         el.into_any_element()
                                     }

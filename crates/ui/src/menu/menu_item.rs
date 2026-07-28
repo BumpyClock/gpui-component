@@ -1,7 +1,5 @@
 use crate::{
-    ActiveTheme, Disableable, StyledExt,
-    animation::{SpringPreset, spring_preset_animation},
-    global_state::GlobalState,
+    ActiveTheme, Disableable, StyledExt, animation::spring_animation, global_state::GlobalState,
     h_flex,
 };
 use gpui::{
@@ -103,9 +101,7 @@ impl RenderOnce for MenuItemElement {
         };
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let selection_animation = became_selected
-            .then(|| {
-                spring_preset_animation(&cx.theme().motion, reduced_motion, SpringPreset::Mild)
-            })
+            .then(|| spring_animation(&cx.theme().motion, reduced_motion))
             .flatten();
         let selected = self.selected;
         let selection_animation_id =

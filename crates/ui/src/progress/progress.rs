@@ -122,11 +122,11 @@ impl RenderOnce for Progress {
                             }
 
                             let duration = Duration::from_millis(u64::from(
-                                cx.theme().motion.fast_duration_ms,
+                                cx.theme().motion.enter_duration_ms,
                             ));
                             let animation = animation_with_theme_easing(
                                 Animation::new(duration),
-                                cx.theme().motion.point_to_point_easing.as_ref(),
+                                cx.theme().motion.standard_easing.as_ref(),
                             );
                             cx.spawn({
                                 let state = state.clone();

@@ -7,10 +7,7 @@ use gpui::{
 
 use gpui_component::{
     ActiveTheme, ElevationToken, FloatingSidebar, Icon, IconName, Side, Sizable, StyledExt,
-    animation::{
-        PresenceOptions, SpringPreset, keyed_presence, reduced_motion, spring_preset_duration_ms,
-        theme_animation,
-    },
+    animation::{PresenceOptions, keyed_presence, reduced_motion, theme_animation},
     button::Button,
     h_flex,
     radio::RadioGroup,
@@ -93,11 +90,11 @@ impl FloatingSidebarStory {
                 .as_f32()
                 .abs()
                 .min(full_distance);
-            let spring_duration_ms = spring_preset_duration_ms(&motion, SpringPreset::Medium);
+            let spring_duration_ms = motion.enter_duration_ms;
             let base_duration_ms = if self.collapsed {
-                spring_duration_ms.max(motion.soft_dismiss_duration_ms)
+                spring_duration_ms.max(motion.exit_duration_ms)
             } else {
-                spring_duration_ms.max(motion.fast_duration_ms)
+                spring_duration_ms.max(motion.enter_duration_ms)
             };
             self.content_transition_duration_ms =
                 ((f32::from(base_duration_ms) * remaining_distance / full_distance).round() as u16)
@@ -116,7 +113,7 @@ impl FloatingSidebarStory {
         let content_transition = if content_presence.transition_active() {
             theme_animation(
                 self.content_transition_duration_ms,
-                &motion.point_to_point_easing,
+                &motion.standard_easing,
                 reduced_motion,
             )
             .map(|animation| {

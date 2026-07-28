@@ -5,7 +5,7 @@ use super::reveal_delay;
 use super::state::{CommandPaletteEvent, CommandPaletteState};
 use super::types::{CommandPaletteConfig, MatchedItem};
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
-use crate::animation::{fade_animation, spring_invoke_animation};
+use crate::animation::{fade_animation, spring_animation, standard_animation};
 use crate::global_state::GlobalState;
 use crate::input::{Input, InputEvent, InputState};
 use crate::kbd::Kbd;
@@ -594,7 +594,7 @@ impl Render for CommandPaletteView {
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
         let reveal_opacity_animation = fade_animation(&motion, reduced_motion);
-        let reveal_transform_animation = spring_invoke_animation(&motion, reduced_motion);
+        let reveal_transform_animation = spring_animation(&motion, reduced_motion);
 
         // Focus input once after opening to avoid render jitter
         if !self.did_focus {
@@ -775,7 +775,7 @@ impl Render for CommandPaletteView {
                 })
             });
 
-        SurfacePreset::flyout()
+        let surface = SurfacePreset::flyout()
             .with_radius(tokens.radius)
             .wrap_with_bounds(
                 content,
@@ -786,6 +786,33 @@ impl Render for CommandPaletteView {
                 surface_ctx,
             )
             .h(expanded_height)
-            .w(px(config.width))
+            .w(px(config.width));
+
+        // Enter motion for the surface itself (it previously popped in while only
+        // the results animated). Mount-only: the view is created on open, so the
+        // animation plays exactly once. Exit is owned by the host that removes
+        // the view, so there is no exit animation here.
+        let open_fade_anim = standard_animation(&motion, reduced_motion);
+        let open_transform_anim = spring_animation(&motion, reduced_motion);
+        let transformed = if let Some(anim) = open_transform_anim {
+            div()
+                .child(surface)
+                .with_animation("command-palette-open-transform", anim, |el, delta| {
+                    el.translate_y(px(4.0 * (1.0 - delta)))
+                })
+                .into_any_element()
+        } else {
+            surface.into_any_element()
+        };
+        if let Some(anim) = open_fade_anim {
+            div()
+                .child(transformed)
+                .with_animation("command-palette-open-fade", anim, |el, delta| {
+                    el.opacity(delta.clamp(0.0, 1.0))
+                })
+                .into_any_element()
+        } else {
+            transformed
+        }
     }
 }

@@ -50,7 +50,7 @@ pub(crate) fn reveal_delay(cx: &App) -> std::time::Duration {
 
 pub(crate) fn reveal_query_delay(cx: &App) -> std::time::Duration {
     reveal_delay(cx)
-        + std::time::Duration::from_millis(u64::from(cx.theme().motion.spring_mild_duration_ms))
+        + std::time::Duration::from_millis(u64::from(cx.theme().motion.enter_duration_ms))
 }
 
 use gpui::{App, AppContext as _, Entity, KeyBinding, ParentElement as _, Styled, Window, actions};

@@ -1,12 +1,21 @@
 use gpui::{
-    AnyElement, App, Bounds, Context, ElementId, InteractiveElement as _, IntoElement,
-    ParentElement, Pixels, Render, RenderOnce, StatefulInteractiveElement, StyleRefinement, Styled,
-    Task, Window, div, prelude::FluentBuilder as _,
+    AnimationExt as _, AnyElement, App, Bounds, Context, ElementId, InteractiveElement as _,
+    IntoElement, ParentElement, Pixels, Render, RenderOnce, SharedString,
+    StatefulInteractiveElement, StyleRefinement, Styled, Task, Window, div,
+    prelude::FluentBuilder as _, px,
 };
 use std::rc::Rc;
 use std::time::Duration;
 
-use crate::{Anchor, ElementExt, StyledExt as _, popover::Popover};
+use crate::{
+    ActiveTheme as _, Anchor, ElementExt, StyledExt as _,
+    animation::{
+        self, PresenceOptions, PresencePhase, exit_animation, keyed_presence, spring_animation,
+        standard_animation,
+    },
+    global_state::GlobalState,
+    popover::Popover,
+};
 
 /// A hover card element that displays content when hovering over a trigger element.
 ///
@@ -293,9 +302,35 @@ impl RenderOnce for HoverCard {
                 }),
         );
 
-        if !open {
+        // Same presence and motion as Popover: enter spring+fade, exit fade —
+        // previously the card popped in and out with no transition at all.
+        let motion = cx.theme().motion.clone();
+        let reduced_motion = GlobalState::global(cx).reduced_motion();
+        let presence = keyed_presence(
+            SharedString::from(format!("hover-card-presence-{}", state.entity_id())),
+            open,
+            !reduced_motion,
+            animation::enter_duration(&motion),
+            animation::exit_duration(&motion),
+            PresenceOptions::default(),
+            window,
+            cx,
+        );
+        if !presence.should_render() {
             return root;
         }
+
+        let open_fade_anim = standard_animation(&motion, reduced_motion);
+        let open_transform_anim = spring_animation(&motion, reduced_motion);
+        let close_anim = exit_animation(&motion, reduced_motion);
+        let vertical_direction = if matches!(
+            self.anchor,
+            Anchor::TopLeft | Anchor::TopCenter | Anchor::TopRight
+        ) {
+            -1.0
+        } else {
+            1.0
+        };
 
         let popover_content =
             Popover::render_popover_content(self.anchor, self.appearance, window, cx)
@@ -307,7 +342,57 @@ impl RenderOnce for HoverCard {
                     this.child(state.update(cx, |state, cx| (content)(state, window, cx)))
                 })
                 .children(self.children)
-                .refine_style(&self.style);
+                .refine_style(&self.style)
+                .map(move |el| {
+                    if !presence.transition_active() {
+                        el.into_any_element()
+                    } else if matches!(presence.phase, PresencePhase::Entering) {
+                        let transformed = if let Some(anim) = open_transform_anim {
+                            div()
+                                .child(el)
+                                .with_animation(
+                                    SharedString::from("hover-card-open-transform"),
+                                    anim,
+                                    move |el, delta| {
+                                        el.translate_y(px(4.0 * (1.0 - delta) * vertical_direction))
+                                    },
+                                )
+                                .into_any_element()
+                        } else {
+                            el.into_any_element()
+                        };
+                        if let Some(anim) = open_fade_anim {
+                            div()
+                                .child(transformed)
+                                .with_animation(
+                                    SharedString::from("hover-card-open-fade"),
+                                    anim,
+                                    move |el, delta| {
+                                        el.opacity(presence.progress(delta).clamp(0.0, 1.0))
+                                    },
+                                )
+                                .into_any_element()
+                        } else {
+                            transformed
+                        }
+                    } else if let Some(anim) = close_anim {
+                        div()
+                            .child(el)
+                            .with_animation(
+                                SharedString::from("hover-card-close"),
+                                anim,
+                                move |el, delta| {
+                                    let progress = presence.progress(delta).clamp(0.0, 1.0);
+                                    el.opacity(progress).translate_y(px(2.0
+                                        * (1.0 - progress)
+                                        * vertical_direction))
+                                },
+                            )
+                            .into_any_element()
+                    } else {
+                        el.into_any_element()
+                    }
+                });
 
         root.child(Popover::render_popover(
             self.anchor,

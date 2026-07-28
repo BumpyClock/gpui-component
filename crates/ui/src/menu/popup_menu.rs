@@ -1,8 +1,8 @@
 use crate::actions::{Cancel, Confirm, SelectDown, SelectUp};
 use crate::actions::{SelectLeft, SelectRight};
 use crate::animation::{
-    PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
-    spring_preset_animation, spring_preset_duration_ms,
+    self, PresenceOptions, PresencePhase, exit_animation, keyed_presence, spring_animation,
+    standard_animation,
 };
 use crate::global_state::GlobalState;
 use crate::menu::menu_item::MenuItemElement;
@@ -21,7 +21,7 @@ use gpui::{
     px,
 };
 use gpui::{ClickEvent, MouseDownEvent, OwnedMenuItem, Point, Subscription};
-use std::{rc::Rc, time::Duration};
+use std::rc::Rc;
 
 const CONTEXT: &str = "PopupMenu";
 
@@ -1280,12 +1280,6 @@ impl PopupMenu {
             } => {
                 let reduced_motion = GlobalState::global(cx).reduced_motion();
                 let motion = cx.theme().motion.clone();
-                let open_duration_ms = if reduced_motion {
-                    motion.fast_duration_ms
-                } else {
-                    spring_preset_duration_ms(&motion, SpringPreset::Medium)
-                        .max(motion.fast_duration_ms)
-                };
                 let submenu_presence = keyed_presence(
                     SharedString::from(format!(
                         "popup-menu-submenu-presence-{}-{}",
@@ -1294,16 +1288,15 @@ impl PopupMenu {
                     )),
                     selected,
                     !reduced_motion,
-                    Duration::from_millis(u64::from(open_duration_ms)),
-                    Duration::from_millis(u64::from(motion.fade_duration_ms)),
+                    animation::enter_duration(&motion),
+                    animation::exit_duration(&motion),
                     PresenceOptions::default(),
                     window,
                     cx,
                 );
-                let submenu_open_opacity_anim = point_to_point_animation(&motion, reduced_motion);
-                let submenu_open_transform_anim =
-                    spring_preset_animation(&motion, reduced_motion, SpringPreset::Medium);
-                let submenu_close_anim = point_to_point_animation(&motion, reduced_motion);
+                let submenu_open_opacity_anim = standard_animation(&motion, reduced_motion);
+                let submenu_open_transform_anim = spring_animation(&motion, reduced_motion);
+                let submenu_close_anim = exit_animation(&motion, reduced_motion);
 
                 this.selected(selected)
                     .disabled(*disabled)
@@ -1352,25 +1345,23 @@ impl PopupMenu {
                                 } else {
                                     1.0
                                 };
-                            let submenu = anchored()
-                                .anchor(anchor)
-                                .child(
-                                    div()
-                                        .id("submenu")
-                                        .occlude()
-                                        .when(is_bottom_pos, |this| this.bottom_0())
-                                        .when(!is_bottom_pos, |this| this.top_neg_1())
-                                        .left(left)
-                                        .child(menu.clone()),
-                                )
-                                .snap_to_window_with_margin(Edges::all(EDGE_PADDING));
+                            let submenu_inner = div()
+                                .id("submenu")
+                                .occlude()
+                                .when(is_bottom_pos, |this| this.bottom_0())
+                                .when(!is_bottom_pos, |this| this.top_neg_1())
+                                .left(left)
+                                .child(menu.clone());
 
-                            if submenu_presence.transition_active() {
+                            // The motion wraps the *content inside* `anchored`:
+                            // wrappers outside it have no visual effect, because
+                            // anchored repositions its children after layout.
+                            let animated_inner = if submenu_presence.transition_active() {
                                 if matches!(submenu_presence.phase, PresencePhase::Entering) {
                                     let transformed =
                                         if let Some(anim) = submenu_open_transform_anim {
                                             div()
-                                                .child(submenu)
+                                                .child(submenu_inner)
                                                 .with_animation(
                                                     SharedString::from(format!(
                                                         "popup-submenu-open-transform-{}",
@@ -1385,7 +1376,7 @@ impl PopupMenu {
                                                 )
                                                 .into_any_element()
                                         } else {
-                                            div().child(submenu).into_any_element()
+                                            submenu_inner.into_any_element()
                                         };
                                     if let Some(anim) = submenu_open_opacity_anim {
                                         div()
@@ -1411,33 +1402,40 @@ impl PopupMenu {
                                             .opacity(submenu_presence.progress(1.0))
                                             .into_any_element()
                                     }
+                                } else if let Some(anim) = submenu_close_anim {
+                                    div()
+                                        .child(submenu_inner)
+                                        .with_animation(
+                                            SharedString::from(format!(
+                                                "popup-submenu-close-motion-{}",
+                                                ix
+                                            )),
+                                            anim,
+                                            move |el, delta| {
+                                                let progress = submenu_presence
+                                                    .progress(delta)
+                                                    .clamp(0.0, 1.0);
+                                                el.opacity(progress).translate_x(px(direction
+                                                    * 6.0
+                                                    * (1.0 - progress)))
+                                            },
+                                        )
+                                        .into_any_element()
                                 } else {
-                                    if let Some(anim) = submenu_close_anim {
-                                        div()
-                                            .child(submenu)
-                                            .with_animation(
-                                                SharedString::from(format!(
-                                                    "popup-submenu-close-motion-{}",
-                                                    ix
-                                                )),
-                                                anim,
-                                                move |el, delta| {
-                                                    let progress = submenu_presence
-                                                        .progress(delta)
-                                                        .clamp(0.0, 1.0);
-                                                    el.opacity(progress).translate_x(px(direction
-                                                        * 6.0
-                                                        * (1.0 - progress)))
-                                                },
-                                            )
-                                            .into_any_element()
-                                    } else {
-                                        submenu.into_any_element()
-                                    }
+                                    submenu_inner.into_any_element()
                                 }
                             } else {
-                                submenu.into_any_element()
-                            }
+                                submenu_inner.into_any_element()
+                            };
+
+                            gpui::deferred(
+                                anchored()
+                                    .anchor(anchor)
+                                    .child(animated_inner)
+                                    .snap_to_window_with_margin(Edges::all(EDGE_PADDING)),
+                            )
+                            .with_priority(2)
+                            .into_any_element()
                         })
                     })
             }

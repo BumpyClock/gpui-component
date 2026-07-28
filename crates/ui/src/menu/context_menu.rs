@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
     AnimationExt as _, AnyElement, App, Context, Corner, DismissEvent, Element, ElementId, Entity,
@@ -11,8 +11,8 @@ use gpui::{
 use crate::{
     ActiveTheme,
     animation::{
-        PresenceOptions, PresencePhase, SpringPreset, keyed_presence, point_to_point_animation,
-        spring_preset_animation, spring_preset_duration_ms,
+        self, PresenceOptions, PresencePhase, exit_animation, keyed_presence, spring_animation,
+        standard_animation,
     },
     global_state::GlobalState,
     menu::PopupMenu,
@@ -176,18 +176,12 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                 let mut menu_element = None;
                 let reduced_motion = GlobalState::global(cx).reduced_motion();
                 let motion = cx.theme().motion.clone();
-                let open_duration_ms = if reduced_motion {
-                    motion.fast_duration_ms
-                } else {
-                    spring_preset_duration_ms(&motion, SpringPreset::Mild)
-                        .max(motion.fast_duration_ms)
-                };
                 let presence = keyed_presence(
                     SharedString::from(format!("context-menu-presence-{:?}", this.id)),
                     open,
                     !reduced_motion,
-                    Duration::from_millis(u64::from(open_duration_ms)),
-                    Duration::from_millis(u64::from(motion.fast_duration_ms)),
+                    animation::enter_duration(&motion),
+                    animation::exit_duration(&motion),
                     PresenceOptions::default(),
                     window,
                     cx,
@@ -200,11 +194,9 @@ impl<E: ParentElement + Styled + IntoElement + 'static> Element for ContextMenu<
                         .unwrap_or(false);
 
                     if has_menu_item {
-                        let open_opacity_animation =
-                            point_to_point_animation(&motion, reduced_motion);
-                        let open_transform_animation =
-                            spring_preset_animation(&motion, reduced_motion, SpringPreset::Mild);
-                        let close_animation = point_to_point_animation(&motion, reduced_motion);
+                        let open_opacity_animation = standard_animation(&motion, reduced_motion);
+                        let open_transform_animation = spring_animation(&motion, reduced_motion);
+                        let close_animation = exit_animation(&motion, reduced_motion);
                         let positioned_menu = anchored()
                             .position(position)
                             .snap_to_window_with_margin(px(8.))

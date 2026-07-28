@@ -40,25 +40,34 @@ pub enum ThemeShadowToken {
     Xl,
 }
 
+/// Motion tokens: four durations, one spring, five easing curves.
+///
+/// Every animated surface draws from this set so the system moves as one:
+///
+/// - `fade` (83ms) — micro state changes: tooltips, carets, tab strips.
+/// - `exit` (167ms) — every dismiss. Presence close windows and close animations
+///   share this token, so an exit can never outlive its element.
+/// - `enter` (187ms) — every reveal. Also the settle window for the spring, so a
+///   fade and its transform partner end together.
+/// - `emphasis` (667ms, overshoot) — attention accents (badges), used sparingly.
+///
+/// One spring (`spring_damping_ratio`/`spring_frequency`) drives all transform
+/// reveals; a mild/medium split existed before but measured within a few frames
+/// of each other at 60Hz and collapsed into this single token.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ThemeMotion {
-    pub fast_duration_ms: u16,
-    pub normal_duration_ms: u16,
-    pub slow_duration_ms: u16,
-    pub strong_invoke_duration_ms: u16,
-    pub soft_dismiss_duration_ms: u16,
     pub fade_duration_ms: u16,
-    pub spring_mild_duration_ms: u16,
-    pub spring_medium_duration_ms: u16,
-    pub spring_mild_damping_ratio: f32,
-    pub spring_medium_damping_ratio: f32,
-    pub spring_mild_frequency: f32,
-    pub spring_medium_frequency: f32,
-    pub fast_invoke_easing: SharedString,
-    pub strong_invoke_easing: SharedString,
-    pub fast_dismiss_easing: SharedString,
-    pub soft_dismiss_easing: SharedString,
-    pub point_to_point_easing: SharedString,
+    pub exit_duration_ms: u16,
+    pub enter_duration_ms: u16,
+    pub emphasis_duration_ms: u16,
+    pub spring_damping_ratio: f32,
+    pub spring_frequency: f32,
+    /// Fast-out curve for enters: most of the travel happens immediately.
+    pub decelerate_easing: SharedString,
+    /// Symmetric curve for point-to-point moves (switches, progress, widths).
+    pub standard_easing: SharedString,
+    /// Overshoot curve for emphasis accents.
+    pub emphasis_easing: SharedString,
     pub fade_easing: SharedString,
 }
 

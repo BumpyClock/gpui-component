@@ -11,9 +11,7 @@ use gpui::{
 
 use crate::{
     ActiveTheme, ElevationToken, Side, StyledExt,
-    animation::{
-        PresenceOptions, SpringPreset, keyed_presence, spring_preset_duration_ms, theme_animation,
-    },
+    animation::{PresenceOptions, keyed_presence, theme_animation},
     global_state::GlobalState,
     sidebar::{COLLAPSED_WIDTH, DEFAULT_WIDTH, Sidebar, SidebarItem},
     sidebar_shell::SidebarShell,
@@ -333,16 +331,16 @@ impl<E: SidebarItem> RenderOnce for FloatingSidebar<E> {
 
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
-        let width_spring_duration_ms = spring_preset_duration_ms(&motion, SpringPreset::Medium);
+        let width_spring_duration_ms = motion.enter_duration_ms;
         let target_width = if collapsed {
             COLLAPSED_WIDTH
         } else {
             expanded_width
         };
         let base_duration_ms = if collapsed {
-            width_spring_duration_ms.max(motion.soft_dismiss_duration_ms)
+            width_spring_duration_ms.max(motion.exit_duration_ms)
         } else {
-            width_spring_duration_ms.max(motion.fast_duration_ms)
+            width_spring_duration_ms.max(motion.enter_duration_ms)
         };
         state.update(cx, |state, _| {
             state.begin_width_transition(collapsed, target_width, expanded_width, base_duration_ms);
@@ -442,11 +440,9 @@ impl<E: SidebarItem> RenderOnce for FloatingSidebar<E> {
             });
 
         if transition_active {
-            if let Some(animation) = theme_animation(
-                width_duration_ms,
-                &motion.point_to_point_easing,
-                reduced_motion,
-            ) {
+            if let Some(animation) =
+                theme_animation(width_duration_ms, &motion.standard_easing, reduced_motion)
+            {
                 shell = shell.animate_width_from(
                     from_width,
                     SharedString::from(format!(

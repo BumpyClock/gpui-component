@@ -13,7 +13,7 @@ use crate::{
     ActiveTheme, FocusTrapElement as _, IconName, Placement, Sizable, StyledExt as _,
     WindowExt as _,
     actions::Cancel,
-    animation::fast_invoke_animation,
+    animation::enter_animation,
     button::{Button, ButtonVariants as _},
     dialog::overlay_color,
     global_state::GlobalState,
@@ -147,7 +147,7 @@ impl RenderOnce for Sheet {
         let top = cx.theme().sheet.margin_top;
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = &cx.theme().motion;
-        let slide_animation = fast_invoke_animation(motion, reduced_motion);
+        let slide_animation = enter_animation(motion, reduced_motion);
         let on_close = self.on_close.clone();
 
         let base_size = window.text_style().font_size;

@@ -4,25 +4,17 @@ use crate::{ThemeElevation, ThemeMaterial, ThemeMotion, ThemeShadowToken, try_pa
 
 pub(crate) fn theme_motion_defaults() -> ThemeMotion {
     ThemeMotion {
-        // Fluent animation tokens: 187 / 333 / 500 ms cadence
-        fast_duration_ms: 187,
-        normal_duration_ms: 333,
-        slow_duration_ms: 500,
-        strong_invoke_duration_ms: 667,
-        soft_dismiss_duration_ms: 167,
+        // Fluent cadence: 83 fade / 167 dismiss / 187 invoke / 667 emphasis.
         fade_duration_ms: 83,
-        // Spring presets for transform-only open motion.
-        spring_mild_duration_ms: 187,
-        spring_medium_duration_ms: 240,
-        spring_mild_damping_ratio: 0.78,
-        spring_medium_damping_ratio: 0.70,
-        spring_mild_frequency: 2.0,
-        spring_medium_frequency: 1.6,
-        fast_invoke_easing: "cubic-bezier(0, 0, 0, 1)".into(),
-        strong_invoke_easing: "cubic-bezier(0.13, 1.62, 0, 0.92)".into(),
-        fast_dismiss_easing: "cubic-bezier(0, 0, 0, 1)".into(),
-        soft_dismiss_easing: "cubic-bezier(1, 0, 1, 1)".into(),
-        point_to_point_easing: "cubic-bezier(0.55, 0.55, 0, 1)".into(),
+        exit_duration_ms: 167,
+        enter_duration_ms: 187,
+        emphasis_duration_ms: 667,
+        // One spring for transform reveals; settles within the enter window.
+        spring_damping_ratio: 0.78,
+        spring_frequency: 2.0,
+        decelerate_easing: "cubic-bezier(0, 0, 0, 1)".into(),
+        standard_easing: "cubic-bezier(0.55, 0.55, 0, 1)".into(),
+        emphasis_easing: "cubic-bezier(0.13, 1.62, 0, 0.92)".into(),
         fade_easing: "linear".into(),
     }
 }

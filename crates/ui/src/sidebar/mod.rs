@@ -1,9 +1,6 @@
 use crate::{
     ActiveTheme, Collapsible, Icon, IconName, Side, Sizable, StyledExt,
-    animation::{
-        PresenceOptions, PresencePhase, SpringPreset, keyed_presence, spring_preset_duration_ms,
-        theme_animation,
-    },
+    animation::{PresenceOptions, PresencePhase, keyed_presence, theme_animation},
     button::{Button, ButtonVariants},
     global_state::GlobalState,
     h_flex,
@@ -253,17 +250,11 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         let sidebar_id = self.id.clone();
         let expanded_width = self.width;
         let collapsed_width = COLLAPSED_WIDTH;
-        let width_spring_preset = SpringPreset::Medium;
-        let width_spring_duration_ms = spring_preset_duration_ms(&motion, width_spring_preset);
-        let open_duration_ms = if reduced_motion {
-            motion.fast_duration_ms
-        } else {
-            width_spring_duration_ms.max(motion.fast_duration_ms)
-        };
+        let open_duration_ms = motion.enter_duration_ms;
         let close_duration_ms = if reduced_motion {
-            motion.soft_dismiss_duration_ms
+            motion.exit_duration_ms
         } else {
-            width_spring_duration_ms.max(motion.soft_dismiss_duration_ms)
+            motion.enter_duration_ms.max(motion.exit_duration_ms)
         };
         let presence = keyed_presence(
             SharedString::from(format!("{}-collapsed-presence", sidebar_id)),
@@ -435,11 +426,8 @@ impl<E: SidebarItem> RenderOnce for Sidebar<E> {
         if !transition_active {
             sidebar.into_any_element()
         } else {
-            let width_anim = theme_animation(
-                width_duration_ms,
-                &motion.point_to_point_easing,
-                reduced_motion,
-            );
+            let width_anim =
+                theme_animation(width_duration_ms, &motion.standard_easing, reduced_motion);
             if let Some(width_anim) = width_anim {
                 sidebar
                     .with_animation(

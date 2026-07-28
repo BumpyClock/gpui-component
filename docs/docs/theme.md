@@ -56,6 +56,30 @@ Key relationships:
   step below the secondary, so labels, supporting text and disabled content stay
   three distinct levels in every theme.
 
+## Motion tokens
+
+`theme.motion` is four durations, one spring, and four easing curves — every
+animated surface draws from this set so the system moves as one:
+
+- `fade_duration_ms` (83) — micro state changes: tooltips, carets, tab strips.
+- `exit_duration_ms` (167) — every dismiss. Presence close windows use the same
+  token as the close animations, so an exit always plays to completion before
+  its element unmounts.
+- `enter_duration_ms` (187) — every reveal, and the settle window for the
+  spring, so a fade and its transform partner end together.
+- `emphasis_duration_ms` (667) — the overshoot accent (badges), used sparingly.
+- `spring_damping_ratio` / `spring_frequency` (0.78 / 2.0) — the one spring for
+  transform reveals.
+- Easings: `decelerate_easing` for enters, `standard_easing` for
+  point-to-point moves and exits, `emphasis_easing` for the overshoot,
+  `fade_easing` (linear).
+
+Flyouts share one motion grammar: enter = spring slide from the trigger plus a
+standard fade over `enter`; exit = standard fade over `exit`. Use
+`animation::enter_animation` / `exit_animation` / `spring_animation` /
+`standard_animation` / `fade_animation` rather than raw durations, and
+`animation::enter_duration` / `exit_duration` for presence windows.
+
 ## AppShell integration
 
 AppShell can initialize the registry, persist mode/name in its
