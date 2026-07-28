@@ -38,8 +38,8 @@
       "material": {
         "flyout_blur_radius": 60.0,
         "panel_blur_radius": 120.0,
-        "flyout_light_opacity": 0.75,
-        "flyout_dark_opacity": 0.85,
+        "flyout_light_opacity": 0.6,
+        "flyout_dark_opacity": 0.7,
         "panel_light_opacity": 0.85,
         "panel_dark_opacity": 0.9,
         "card_light_opacity": 0.7,
@@ -300,8 +300,8 @@
       "material": {
         "flyout_blur_radius": 60.0,
         "panel_blur_radius": 120.0,
-        "flyout_light_opacity": 0.75,
-        "flyout_dark_opacity": 0.85,
+        "flyout_light_opacity": 0.6,
+        "flyout_dark_opacity": 0.7,
         "panel_light_opacity": 0.85,
         "panel_dark_opacity": 0.9,
         "card_light_opacity": 0.7,

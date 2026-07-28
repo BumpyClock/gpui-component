@@ -1,4 +1,4 @@
-use crate::ActiveTheme;
+use crate::{ActiveTheme, global_state::GlobalState};
 use gpui::{
     App, BoxShadow, Corners, DefiniteLength, Div, Edges, FocusHandle, Hsla, ParentElement, Pixels,
     Refineable, StyleRefinement, Styled, Window, div, point, px,
@@ -176,12 +176,25 @@ pub trait StyledExt: Styled + Sized {
     /// Set as Popover style
     #[inline]
     fn popover_style(self, cx: &App) -> Self {
-        self.bg(cx.theme().popover)
+        let material = &cx.theme().material;
+        let opacity = if cx.theme().mode.is_dark() {
+            material.flyout_dark_opacity
+        } else {
+            material.flyout_light_opacity
+        };
+        let mut popover = self
+            .bg(cx.theme().popover.opacity(opacity))
             .text_color(cx.theme().popover_foreground)
             .border_1()
             .border_color(cx.theme().border)
             .shadow_lg()
-            .rounded(cx.theme().radius)
+            .rounded(cx.theme().radius);
+
+        if GlobalState::global(cx).blur_enabled() {
+            popover = popover.backdrop_blur(material.flyout_blur_radius);
+        }
+
+        popover
     }
 
     /// Apply Fluent caption typography (12/16 Regular).

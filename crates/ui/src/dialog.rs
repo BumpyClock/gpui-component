@@ -132,6 +132,7 @@ pub struct Dialog {
     overlay_closable: bool,
     keyboard: bool,
     animate: bool,
+    appearance: bool,
 
     /// This will be change when open the dialog, the focus handle is create when open the dialog.
     pub(crate) focus_handle: FocusHandle,
@@ -164,6 +165,7 @@ impl Dialog {
             overlay: true,
             keyboard: true,
             animate: true,
+            appearance: true,
             id: 0,
             layer_ix: 0,
             overlay_visible: false,
@@ -324,6 +326,12 @@ impl Dialog {
         self
     }
 
+    /// Set whether the dialog renders its default background, border, radius, and shadow.
+    pub fn appearance(mut self, appearance: bool) -> Self {
+        self.appearance = appearance;
+        self
+    }
+
     pub(crate) fn has_overlay(&self) -> bool {
         self.overlay
     }
@@ -358,6 +366,7 @@ impl RenderOnce for Dialog {
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let should_animate = self.should_animate(cx);
         let target_open = !self.closing;
+        let appearance = self.appearance;
 
         let render_ok: RenderButtonFn = Box::new({
             let on_ok = on_ok.clone();
@@ -542,11 +551,13 @@ impl RenderOnce for Dialog {
                             .id(layer_ix)
                             .track_focus(&self.focus_handle)
                             .focus_trap(format!("dialog-{}", layer_ix), &self.focus_handle)
-                            .bg(cx.theme().popover)
-                            .border_1()
-                            .border_color(cx.theme().border)
-                            .rounded(cx.theme().radius_lg)
-                            .min_h_24()
+                            .when(appearance, |this| {
+                                this.bg(cx.theme().popover)
+                                    .border_1()
+                                    .border_color(cx.theme().border)
+                                    .rounded(cx.theme().radius_lg)
+                                    .min_h_24()
+                            })
                             .pt(paddings.top)
                             .pb(paddings.bottom)
                             .gap(paddings.top.min(px(16.)))
@@ -653,9 +664,11 @@ impl RenderOnce for Dialog {
                             .map(move |this| {
                                 if !should_animate || !transition_active {
                                     let progress = presence.progress(1.0);
-                                    this.shadow(dialog_shadow(progress))
-                                        .opacity(progress)
-                                        .into_any_element()
+                                    this.when(appearance, |this| {
+                                        this.shadow(dialog_shadow(progress))
+                                    })
+                                    .opacity(progress)
+                                    .into_any_element()
                                 } else {
                                     let panel_layout_animation =
                                         if matches!(presence.phase, PresencePhase::Entering) {
@@ -686,8 +699,9 @@ impl RenderOnce for Dialog {
                                                 } else {
                                                     this
                                                 };
-                                                this.opacity(progress)
-                                                    .shadow(dialog_shadow(progress))
+                                                this.opacity(progress).when(appearance, |this| {
+                                                    this.shadow(dialog_shadow(progress))
+                                                })
                                             },
                                         )
                                         .into_any_element();

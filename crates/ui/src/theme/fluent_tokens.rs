@@ -50,8 +50,8 @@ pub(crate) fn theme_material_defaults() -> ThemeMaterial {
         // Preserve existing surface behavior when no config is supplied
         flyout_blur_radius: px(60.0),
         panel_blur_radius: px(120.0),
-        flyout_light_opacity: 0.75,
-        flyout_dark_opacity: 0.85,
+        flyout_light_opacity: 0.60,
+        flyout_dark_opacity: 0.70,
         panel_light_opacity: 0.85,
         panel_dark_opacity: 0.90,
         card_light_opacity: 0.70,
