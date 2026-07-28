@@ -476,8 +476,8 @@ impl<E: SidebarItem> RenderOnce for FloatingSidebar<E> {
                     .collapsed(visual_collapsed)
                     .width(expanded_width)
                     .animate_width(false)
-                    .refine_style(&style)
-                    .bg(gpui::transparent_black()),
+                    .bg(gpui::transparent_black())
+                    .refine_style(&style),
             )
             .child(resize_tracker)
     }

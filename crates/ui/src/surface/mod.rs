@@ -13,6 +13,10 @@
 //!     .wrap_with_bounds(content, width, height, window, cx, ctx);
 //! ```
 
+mod flyout;
+
+pub use flyout::*;
+
 use gpui::{
     App, Div, Hsla, ImageSource, IntoElement, ObjectFit, ParentElement, Pixels, Resource, Styled,
     StyledImage, Window, div, img, px,
@@ -199,7 +203,7 @@ impl StrokeSpec {
             cx.theme().material.subtle_stroke_light_opacity
         };
         match self.color {
-            StrokeColor::Subtle => cx.theme().foreground.opacity(subtle_stroke_opacity),
+            StrokeColor::Subtle => cx.theme().border.opacity(subtle_stroke_opacity),
             StrokeColor::Default => cx.theme().border,
             StrokeColor::Strong => cx.theme().border,
             StrokeColor::SubtleWithOpacity(opacity) => cx.theme().border.opacity(opacity),
@@ -409,9 +413,16 @@ impl SurfacePreset {
         }
 
         if let Some(ref stroke) = self.stroke {
-            surface = surface
-                .border(stroke.width)
-                .border_color(stroke.resolve_color(cx));
+            let stroke_color = if matches!(
+                self.background.color_source,
+                SurfaceColorSource::Acrylic | SurfaceColorSource::Mica
+            ) && matches!(stroke.color, StrokeColor::Subtle)
+            {
+                cx.theme().control_stroke
+            } else {
+                stroke.resolve_color(cx)
+            };
+            surface = surface.border(stroke.width).border_color(stroke_color);
         }
 
         elevation.apply(surface, cx)

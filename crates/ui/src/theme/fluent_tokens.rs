@@ -54,8 +54,8 @@ pub(crate) fn theme_material_defaults() -> ThemeMaterial {
         panel_dark_opacity: 0.90,
         card_light_opacity: 0.70,
         card_dark_opacity: 0.05,
-        subtle_stroke_light_opacity: 0.10,
-        subtle_stroke_dark_opacity: 0.14,
+        subtle_stroke_light_opacity: 0.5,
+        subtle_stroke_dark_opacity: 0.5,
 
         // Fluent layering + material palette tokens
         smoke_light: fluent_color("#0000004D"),
