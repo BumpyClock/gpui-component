@@ -255,7 +255,7 @@ impl Notification {
         let dismiss_duration = if reduced_motion {
             Duration::ZERO
         } else {
-            Duration::from_millis(u64::from(cx.theme().motion.exit_duration_ms))
+            crate::animation::exit_duration(&cx.theme().motion)
         };
 
         cx.spawn(async move |view, cx| {

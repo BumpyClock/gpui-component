@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
 use gpui::{
-    AnimationExt as _, AnyElement, App, ClickEvent, DefiniteLength, DismissEvent, Edges,
-    EventEmitter, FocusHandle, InteractiveElement as _, IntoElement, KeyBinding, MouseButton,
-    ParentElement, Pixels, RenderOnce, SharedString, StyleRefinement, Styled, Window,
+    AbsoluteLength, AnimationExt as _, AnyElement, App, ClickEvent, DefiniteLength, DismissEvent,
+    Edges, EventEmitter, FocusHandle, InteractiveElement as _, IntoElement, KeyBinding,
+    MouseButton, ParentElement, Pixels, RenderOnce, SharedString, StyleRefinement, Styled, Window,
     WindowControlArea, anchored, div, point, prelude::FluentBuilder as _, px,
 };
 use schemars::JsonSchema;
@@ -161,6 +161,17 @@ impl RenderOnce for Sheet {
 
         let base_size = window.text_style().font_size;
         let rem_size = window.rem_size();
+        // Slide the panel's full extent along its placement axis. A fixed
+        // travel shorter than the panel makes it appear part-way in and then
+        // settle, rather than entering from off-screen.
+        let travel = self.size.to_pixels(
+            AbsoluteLength::Pixels(if placement.is_horizontal() {
+                size.width
+            } else {
+                size.height
+            }),
+            rem_size,
+        );
         let mut paddings = Edges::all(px(16.));
         if let Some(pl) = self.style.padding.left {
             paddings.left = pl.to_pixels(base_size, rem_size);
@@ -298,7 +309,7 @@ impl RenderOnce for Sheet {
                                             // closing runs the same path back out.
                                             let progress =
                                                 if closing { 1.0 - delta } else { delta };
-                                            let y = px(-100.) + progress * px(100.);
+                                            let y = -travel + progress * travel;
                                             this.map(|this| match placement {
                                                 Placement::Top => this.top(top + y),
                                                 Placement::Right => this.right(y),
