@@ -163,7 +163,10 @@ const EXIT_UNMOUNT_GRACE_MS: u16 = 33;
 /// element mounted so [`exit_animation`] plays to completion. Slightly longer
 /// than the animation itself; see [`EXIT_UNMOUNT_GRACE_MS`].
 pub fn exit_duration(motion: &ThemeMotion) -> Duration {
-    Duration::from_millis(u64::from(motion.exit_duration_ms + EXIT_UNMOUNT_GRACE_MS))
+    // Widen before adding: exit_duration_ms is deserialized from theme JSON, so
+    // a value near u16::MAX would otherwise wrap to a near-zero exit window and
+    // unmount the element on its first frame.
+    Duration::from_millis(u64::from(motion.exit_duration_ms) + u64::from(EXIT_UNMOUNT_GRACE_MS))
 }
 
 /// The one spring, for transform-only reveal motion. Settles within the `enter`

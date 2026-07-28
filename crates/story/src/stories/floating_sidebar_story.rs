@@ -90,11 +90,12 @@ impl FloatingSidebarStory {
                 .as_f32()
                 .abs()
                 .min(full_distance);
-            let spring_duration_ms = motion.enter_duration_ms;
+            // max() against the enter duration made the collapse branch a no-op
+            // whenever exit is the shorter token, which is the usual case.
             let base_duration_ms = if self.collapsed {
-                spring_duration_ms.max(motion.exit_duration_ms)
+                motion.exit_duration_ms
             } else {
-                spring_duration_ms.max(motion.enter_duration_ms)
+                motion.enter_duration_ms
             };
             self.content_transition_duration_ms =
                 ((f32::from(base_duration_ms) * remaining_distance / full_distance).round() as u16)

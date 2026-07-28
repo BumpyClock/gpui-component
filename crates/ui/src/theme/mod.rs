@@ -40,7 +40,7 @@ pub enum ThemeShadowToken {
     Xl,
 }
 
-/// Motion tokens: four durations, one spring, five easing curves.
+/// Motion tokens: four durations, one spring, four easing curves.
 ///
 /// Every animated surface draws from this set so the system moves as one:
 ///

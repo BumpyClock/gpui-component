@@ -938,9 +938,13 @@ where
                     return this;
                 }
 
+                // Anchor::Top* places the menu below the trigger (see
+                // select_menu_placement), which is the same case popover.rs and
+                // hover_card.rs give -1.0 — match them so a flyout opening
+                // downward always slides the same way.
                 let vertical_direction = if matches!(
                     placement.anchor,
-                    Anchor::BottomLeft | Anchor::BottomRight | Anchor::BottomCenter
+                    Anchor::TopLeft | Anchor::TopRight | Anchor::TopCenter
                 ) {
                     -1.0
                 } else {

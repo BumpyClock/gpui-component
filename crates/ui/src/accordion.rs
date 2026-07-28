@@ -9,7 +9,8 @@ use gpui::{
 use crate::{
     ActiveTheme as _, Icon, IconName, Sizable, Size,
     animation::{
-        PresenceOptions, PresencePhase, keyed_presence, spring_animation, standard_animation,
+        PresenceOptions, PresencePhase, exit_animation, keyed_presence, spring_animation,
+        standard_animation,
     },
     global_state::GlobalState,
     h_flex, v_flex,
@@ -250,15 +251,17 @@ impl RenderOnce for AccordionItem {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
-        let layout_anim = standard_animation(&motion, reduced_motion);
-        let close_anim = layout_anim.clone();
-        let open_layout_anim = layout_anim;
+        let open_layout_anim = standard_animation(&motion, reduced_motion);
+        // Closing runs on the exit token, not the enter one. The presence below
+        // unmounts on the exit window, so an enter-length close animation would
+        // still be running when its content disappears.
+        let close_anim = exit_animation(&motion, reduced_motion);
         let open_transform_anim = spring_animation(&motion, reduced_motion);
         let chevron_open_anim = spring_animation(&motion, reduced_motion);
-        let chevron_close_anim = spring_animation(&motion, reduced_motion);
+        let chevron_close_anim = exit_animation(&motion, reduced_motion);
         let presence_key = SharedString::from(format!("accordion-presence-{}", self.key_prefix));
         let open_duration = Duration::from_millis(u64::from(motion.enter_duration_ms));
-        let close_duration = Duration::from_millis(u64::from(motion.exit_duration_ms));
+        let close_duration = crate::animation::exit_duration(&motion);
         let presence = keyed_presence(
             presence_key,
             self.open,

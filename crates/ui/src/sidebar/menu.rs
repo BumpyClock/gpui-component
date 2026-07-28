@@ -429,7 +429,13 @@ impl SidebarItem for SidebarMenuItem {
         let submenu_entering = matches!(submenu_presence.phase, PresencePhase::Entering);
         let submenu_layout_anim =
             expand_collapse_layout_animation(&motion, reduced_motion, submenu_entering);
-        let submenu_transform_anim = spring_animation(&motion, reduced_motion);
+        // Direction-aware like the chevron below: the spring is a reveal, so a
+        // collapse runs the exit token rather than springing back.
+        let submenu_transform_anim = if submenu_entering {
+            spring_animation(&motion, reduced_motion)
+        } else {
+            exit_animation(&motion, reduced_motion)
+        };
         let chevron_open_anim = spring_animation(&motion, reduced_motion);
         let chevron_close_anim = exit_animation(&motion, reduced_motion);
         let item_content_presence = keyed_presence(

@@ -250,9 +250,13 @@ impl CommandPaletteView {
             .rounded(tokens.item_radius)
             .cursor_pointer()
             .when(disabled, |this| this.opacity(0.5).cursor_not_allowed())
+            // Reserve the selected border on every row: the row height is fixed,
+            // so adding a border only when selected would shrink the content box
+            // and shift the label as selection moves.
+            .border_1()
+            .border_color(cx.theme().transparent)
             .when(selected && !disabled, |this| {
                 this.bg(cx.theme().list_active)
-                    .border_1()
                     .border_color(cx.theme().list_active_border)
                     .text_color(cx.theme().foreground)
             })
