@@ -203,6 +203,37 @@ source = "git+https://github.com/BumpyClock/gpui?rev={OLD_REV}#{OLD_REV}"
 }
 
 #[test]
+fn rejects_lookalike_gpui_lock_source() {
+    let (directory, compatibility) = fixture();
+    let path = directory.path().join("Cargo.lock");
+    let source = fs::read_to_string(&path).unwrap().replace(
+        "https://github.com/BumpyClock/gpui?",
+        "https://github.com/BumpyClock/gpui-mirror?",
+    );
+    fs::write(path, source).unwrap();
+    assert!(
+        errors(directory.path(), &compatibility)
+            .contains("Cargo.lock must resolve exactly one Git package")
+    );
+}
+
+#[test]
+fn reports_root_workspace_dependency_errors_once() {
+    let (directory, compatibility) = fixture();
+    let path = directory.path().join("Cargo.toml");
+    let source = fs::read_to_string(&path)
+        .unwrap()
+        .replace(&format!("rev = \"{REV}\""), &format!("rev = \"{OLD_REV}\""));
+    fs::write(path, source).unwrap();
+    assert_eq!(
+        errors(directory.path(), &compatibility)
+            .matches("uses revision")
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn rejects_wrong_registry_alias() {
     let (directory, compatibility) = fixture();
     let path = directory.path().join("Cargo.toml");
@@ -513,6 +544,69 @@ fn require_registry_gate_rejects_non_registry_dry_run_blocker() {
 
     let error = require_registry_gate(&[node]).unwrap_err().to_string();
     assert!(error.contains("async-task"));
+}
+
+#[test]
+fn recognizes_only_exact_unpublished_engine_registry_failures() {
+    let (_, compatibility) = fixture();
+    assert!(
+        unavailable_engine_registry_failure(
+            "failed to select a version for the requirement `bumpyclock-gpui = \"=0.7.0\"`",
+            &compatibility,
+        )
+        .is_some()
+    );
+    assert!(
+        unavailable_engine_registry_failure(
+            "no matching package named `bumpyclock-gpui` found",
+            &compatibility,
+        )
+        .is_some()
+    );
+    assert!(
+        !unavailable_engine_registry_failure(
+            "failed to select a version for the requirement `bumpyclock-gpui = \"=0.8.0\"`",
+            &compatibility,
+        )
+        .is_some()
+    );
+    assert!(
+        !unavailable_engine_registry_failure(
+            "failed to select a version for the requirement `serde = \"=1.0.0\"`",
+            &compatibility,
+        )
+        .is_some()
+    );
+    assert!(
+        !unavailable_engine_registry_failure(
+            "failed to select a version for the requirement `serde = \"=1.0.0\"`\nrequired by `bumpyclock-gpui = \"=0.7.0\"`",
+            &compatibility,
+        )
+        .is_some()
+    );
+}
+
+#[test]
+fn registry_probe_status_is_fail_closed_for_unknown_failures() {
+    assert_eq!(registry_probe_status(true, b""), "published");
+    assert_eq!(
+        registry_probe_status(false, b"error: could not find `fixture`"),
+        "unpublished"
+    );
+    assert_eq!(registry_probe_status(false, b"network timeout"), "unknown");
+}
+
+#[test]
+fn strict_package_commands_do_not_allow_dirty_worktrees() {
+    for list in [false, true] {
+        let development = cargo_package_args("fixture", list, true, true);
+        assert!(development.contains(&"--allow-dirty".into()));
+        assert!(development.contains(&"--no-verify".into()));
+
+        let strict = cargo_package_args("fixture", list, false, false);
+        assert!(!strict.contains(&"--allow-dirty".into()));
+        assert!(!strict.contains(&"--no-verify".into()));
+    }
 }
 
 #[test]

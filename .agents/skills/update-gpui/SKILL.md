@@ -41,8 +41,11 @@ not select a moving ref.
 5. Build, test, and check release plan:
 
    ```bash
+   cargo fmt --all -- --check
+   cargo metadata --locked
+   cargo check --workspace --all-targets --locked
    cargo test --workspace --all-targets --locked
-   cargo clippy --workspace --all-targets --locked -- -D warnings
+   ./script/clippy --locked
    cargo xtask publish-plan
    cargo xtask release-check
    ```

@@ -85,7 +85,7 @@ Superseded: Phase 0 removed the GPUI submodule. This entry preserves rationale,
 not an operational workflow.
 What worked then:
 - Keep workspace dependencies as Git plus immutable revision; direct committed
-  source overrides failed due GPUI workspace dependency inheritance.
+  source overrides failed due to GPUI workspace dependency inheritance.
 Current rule: committed manifests use canonical Git URL, full revision, and
 exact package versions. A sibling checkout may be used only through an
 uncommitted Cargo patch; update compatibility metadata and generated docs with

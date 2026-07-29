@@ -4,9 +4,11 @@ use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     env, fs,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Stdio},
+    time::Duration,
 };
 use toml::Value;
+use wait_timeout::ChildExt;
 
 const COMPATIBILITY_FILE: &str = "compatibility.toml";
 const GENERATED_FILE: &str = "docs/COMPATIBILITY.md";
@@ -19,6 +21,7 @@ const VALID_REGISTRY_STATUSES: &[&str] = &[
 ];
 const VALID_EVIDENCE_STATUSES: &[&str] = &["verified", "not-verified", "not-applicable", "blocked"];
 const VALID_MATURITY: &[&str] = &["supported", "preview", "experimental"];
+const REGISTRY_PROBE_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Deserialize)]
 struct Compatibility {
@@ -245,7 +248,7 @@ fn validate(
         }
     };
     validate_root_manifest(&root_manifest, compatibility, &mut report.errors);
-    validate_all_manifests(root, compatibility, &mut report.errors);
+    validate_all_manifests(root, compatibility, &root_manifest_path, &mut report.errors);
     validate_lockfile(root, compatibility, &mut report.errors);
     validate_toolchain(root, compatibility, &mut report.errors);
     validate_publishable_dependencies(root, &mut report.errors);
@@ -455,7 +458,12 @@ fn validate_root_manifest(
     }
 }
 
-fn validate_all_manifests(root: &Path, compatibility: &Compatibility, errors: &mut Vec<String>) {
+fn validate_all_manifests(
+    root: &Path,
+    compatibility: &Compatibility,
+    root_manifest_path: &Path,
+    errors: &mut Vec<String>,
+) {
     let mut manifests = Vec::new();
     collect_manifests(root, &mut manifests, errors);
     for path in manifests {
@@ -463,6 +471,9 @@ fn validate_all_manifests(root: &Path, compatibility: &Compatibility, errors: &m
             continue;
         };
         visit_dependency_tables(&manifest, "", &mut |section, dependencies| {
+            if path == root_manifest_path && section == "workspace.dependencies" {
+                return;
+            }
             let is_workspace = section == "workspace.dependencies";
             for package in &compatibility.gpui.packages {
                 if let Some(value) = dependencies.get(&package.dependency) {
@@ -586,18 +597,17 @@ fn validate_lockfile(root: &Path, compatibility: &Compatibility, errors: &mut Ve
         errors.push("Cargo.lock has no package entries".into());
         return;
     };
+    let canonical_repository = normalized_git_repository(&compatibility.gpui.repository);
     let canonical_sources: Vec<_> = entries
         .iter()
         .filter_map(Value::as_table)
         .filter_map(|package| {
             let source = package.get("source").and_then(Value::as_str)?;
-            source
-                .contains(&compatibility.gpui.repository)
-                .then_some((package, source))
+            (normalized_git_repository(source) == canonical_repository).then_some((package, source))
         })
         .collect();
     for (package, source) in &canonical_sources {
-        if !source.contains(&compatibility.gpui.rev) {
+        if resolved_git_revision(source) != Some(compatibility.gpui.rev.as_str()) {
             errors.push(format!(
                 "Cargo.lock package `{}` uses canonical GPUI source at revision other than {}: `{source}`",
                 package
@@ -642,7 +652,11 @@ fn validate_lockfile(root: &Path, compatibility: &Compatibility, errors: &mut Ve
                     && package
                         .get("source")
                         .and_then(Value::as_str)
-                        .is_some_and(|source| source.contains(&compatibility.gpui.rev))
+                        .is_some_and(|source| {
+                            normalized_git_repository(source) == canonical_repository
+                                && resolved_git_revision(source)
+                                    == Some(compatibility.gpui.rev.as_str())
+                        })
             })
             .collect();
         if matches.len() != 1 {
@@ -1227,8 +1241,9 @@ fn add_resolved_engine_nodes(
         .iter()
         .filter(|package| {
             package.source.as_deref().is_some_and(|source| {
-                source.contains(&compatibility.gpui.repository)
-                    && source.contains(&compatibility.gpui.rev)
+                normalized_git_repository(source)
+                    == normalized_git_repository(&compatibility.gpui.repository)
+                    && resolved_git_revision(source) == Some(compatibility.gpui.rev.as_str())
             })
         })
         .map(|package| (normalize_package(&package.name), package))
@@ -1369,6 +1384,10 @@ fn normalized_git_repository(source: &str) -> String {
         .trim_end_matches('/')
         .trim_end_matches(".git")
         .to_owned()
+}
+
+fn resolved_git_revision(source: &str) -> Option<&str> {
+    source.rsplit_once('#').map(|(_, revision)| revision)
 }
 
 fn root_patch_reachability(
@@ -1516,11 +1535,6 @@ fn release_check(root: &Path, options: &Options) -> Result<()> {
     check(root, options.gpui_path.as_deref())?;
 
     let compatibility = load(root)?;
-    if options.require_registry {
-        println!("2/5 complete publication plan and registry availability");
-        publish_plan(root, options.gpui_path.as_deref(), true)?;
-    }
-
     println!("2/5 source build");
     run(Command::new("cargo")
         .args(["check", "--locked", "--workspace", "--all-targets"])
@@ -1567,22 +1581,22 @@ fn validate_packages(
         .any(|package| package.registry_status != "published");
     for package in publishable_package_order(&metadata)? {
         run(Command::new("cargo")
-            .args([
-                "package",
-                "--locked",
-                "--list",
-                "--allow-dirty",
-                "-p",
+            .args(cargo_package_args(
                 &package.name,
-            ])
+                true,
+                !require_registry,
+                false,
+            ))
             .current_dir(root))?;
         let mut command = Command::new("cargo");
         command
-            .args(["package", "--locked", "--allow-dirty", "-p", &package.name])
+            .args(cargo_package_args(
+                &package.name,
+                false,
+                !require_registry,
+                !require_registry,
+            ))
             .current_dir(root);
-        if !require_registry {
-            command.arg("--no-verify");
-        }
         let output = command
             .output()
             .with_context(|| format!("failed to package {}", package.name))?;
@@ -1592,21 +1606,16 @@ fn validate_packages(
             continue;
         }
         let stderr = String::from_utf8_lossy(&output.stderr);
-        let registry_failure = stderr.contains("failed to select a version")
-            || stderr.contains("no matching package named");
-        if !require_registry && engine_registry_blocked && registry_failure {
+        if !require_registry
+            && engine_registry_blocked
+            && let Some(registry_failure) =
+                unavailable_engine_registry_failure(&stderr, compatibility)
+        {
             blockers.push(format!(
                 "{} {} normalized artifact blocked until exact engine/framework prerequisites are published: {}",
                 package.name,
                 package.version,
-                stderr
-                    .lines()
-                    .find(|line| {
-                        line.contains("failed to select a version")
-                            || line.contains("no matching package named")
-                    })
-                    .unwrap_or("registry prerequisite unavailable")
-                    .trim()
+                registry_failure.trim()
             ));
             continue;
         }
@@ -1618,6 +1627,49 @@ fn validate_packages(
         );
     }
     Ok(blockers)
+}
+
+fn cargo_package_args(
+    package: &str,
+    list: bool,
+    allow_dirty: bool,
+    no_verify: bool,
+) -> Vec<String> {
+    let mut args = vec!["package".into(), "--locked".into()];
+    if list {
+        args.push("--list".into());
+    }
+    if allow_dirty {
+        args.push("--allow-dirty".into());
+    }
+    args.extend(["-p".into(), package.into()]);
+    if no_verify {
+        args.push("--no-verify".into());
+    }
+    args
+}
+
+fn unavailable_engine_registry_failure<'a>(
+    stderr: &'a str,
+    compatibility: &Compatibility,
+) -> Option<&'a str> {
+    for package in compatibility
+        .gpui
+        .packages
+        .iter()
+        .filter(|package| package.registry_status != "published")
+    {
+        let exact_requirement =
+            format!("`{} = \"={}\"`", package.registry_package, package.version);
+        let missing_package = format!("`{}` found", package.registry_package);
+        if let Some(line) = stderr.lines().find(|line| {
+            (line.contains("failed to select a version") && line.contains(&exact_requirement))
+                || (line.contains("no matching package named") && line.contains(&missing_package))
+        }) {
+            return Some(line);
+        }
+    }
+    None
 }
 
 fn publishable_package_order(metadata: &CargoMetadata) -> Result<Vec<&CargoPackage>> {
@@ -1808,23 +1860,43 @@ fn cargo_metadata_full(root: &Path) -> Result<CargoMetadata> {
 }
 
 fn registry_probe(package: &str, version: &str) -> String {
-    let output = Command::new("cargo")
+    let mut child = match Command::new("cargo")
         .args([
             "info",
             &format!("{package}@{version}"),
             "--registry",
             "crates-io",
         ])
-        .output();
-    match output {
-        Ok(output) if output.status.success() => "published".into(),
-        Ok(output)
-            if String::from_utf8_lossy(&output.stderr).contains("could not find")
-                || String::from_utf8_lossy(&output.stderr).contains("no matching package") =>
-        {
-            "unpublished".into()
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(_) => return "unknown".into(),
+    };
+    let output = match child.wait_timeout(REGISTRY_PROBE_TIMEOUT) {
+        Ok(Some(_)) => child.wait_with_output().ok(),
+        Ok(None) | Err(_) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return "unknown".into();
         }
-        Ok(_) | Err(_) => "unknown".into(),
+    };
+    match output {
+        Some(output) => registry_probe_status(output.status.success(), &output.stderr).into(),
+        None => "unknown".into(),
+    }
+}
+
+fn registry_probe_status(success: bool, stderr: &[u8]) -> &'static str {
+    if success {
+        return "published";
+    }
+    let stderr = String::from_utf8_lossy(stderr);
+    if stderr.contains("could not find") || stderr.contains("no matching package") {
+        "unpublished"
+    } else {
+        "unknown"
     }
 }
 
