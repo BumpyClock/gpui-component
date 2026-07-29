@@ -18,7 +18,7 @@ export default {
     // ...
     app.component("GitHubStar", GitHubStar);
 
-    app.config.globalProperties.GPUI_VERSION = "0.2.2";
+    app.config.globalProperties.GPUI_VERSION = "0.1.0";
     app.config.globalProperties.VERSION = config.package.version;
   },
 } satisfies Theme;

@@ -11,7 +11,7 @@ Use English with clear and concise description of the bug, if you just have a qu
 
 ## Environment
 
-- GPUI: [e.g., v0.2.2]
+- GPUI: [e.g., bumpyclock-gpui =0.1.0, commit d1a6019136eb9fb9386eaa047a7445c1032d8668]
 - GPUI Component: [e.g., v0.4.0]
 - Platform: [e.g., macOS 26, Windows 11, Ubuntu 20.04]
 

@@ -80,13 +80,16 @@ Outcome: no end-frame collapse; open state stays stable.
 Next time: avoid `bounce` for reveal/size/opacity; it is forward-then-reverse.
 
 ## 2026-02-10
-Context: vendoring GPUI for local patching.
-What worked:
-- Add `vendor/gpui` git submodule pinned to current `gpui` rev.
-- Keep workspace dependency as git+rev; direct path dependency failed due Zed workspace dependency inheritance.
-- Document patch workflow in `docs/learned/gpui-submodule.md`.
-Outcome: local GPUI source available for edits/review without breaking build.
-Next time: after GPUI patch commit, bump both `Cargo.toml` rev and submodule SHA together.
+Context: historical GPUI source vendoring for local patching.
+Superseded: Phase 0 removed the GPUI submodule. This entry preserves rationale,
+not an operational workflow.
+What worked then:
+- Keep workspace dependencies as Git plus immutable revision; direct committed
+  source overrides failed due to GPUI workspace dependency inheritance.
+Current rule: committed manifests use canonical Git URL, full revision, and
+exact package versions. A sibling checkout may be used only through an
+uncommitted Cargo patch; update compatibility metadata and generated docs with
+the revision.
 
 ## 2026-02-10
 Context: spring/overshoot easing support.
@@ -103,10 +106,12 @@ Outcome: no spring/damping/frequency tokens; only cubic-bezier and duration sets
 Next time: when adding springs, pick local defaults or extend tokens explicitly.
 
 ## 2026-02-10
-Context: trying to patch GPUI from local submodule during app build.
-What worked: path override does not work here because `gpui` uses workspace-inherited deps.
-Outcome: proper flow is commit/push submodule changes, then bump `Cargo.toml` `gpui` `rev` to the new commit.
-Next time: skip `[patch]` path attempts for this repo; use git `rev` updates only.
+Context: historical attempt to patch GPUI source during app build.
+Superseded: this observation predates Phase 0 sibling-checkout workflow and is
+not an instruction to create or update a submodule.
+Outcome: a temporary, uncommitted Cargo patch may be used for coordinated local
+testing. Before release validation, remove it and use committed canonical Git
+revision with exact package versions.
 
 ## 2026-02-11
 Context: implementing GPUI transform foundation for spring-style motion.

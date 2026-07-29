@@ -1,40 +1,66 @@
 ---
-title: "GPUI Submodule Workflow"
-summary: "Notes on keeping the GPUI submodule and workspace git dependency revision in sync."
-read_when: "updating GPUI, touching vendor/gpui, or changing workspace GPUI dependency pins"
+title: "Local GPUI Override Workflow"
+summary: "Use an uncommitted Cargo patch for coordinated framework and GPUI development."
+read_when: "testing framework changes against a sibling GPUI checkout or changing workspace GPUI dependency pins"
 ---
-# GPUI Submodule Workflow
+# Local GPUI Override Workflow
 
-Date: 2026-02-10
+The committed framework always uses the immutable GPUI Git revision in the
+workspace manifest. The repository does not vendor GPUI and has no GPUI
+submodule.
 
-## Why
+For coordinated development, create an untracked disposable framework snapshot
+in `/tmp`. Copy only source files, excluding Git metadata and build or docs
+output. Add the override only to the snapshot's `.cargo/config.toml`; never edit
+the tracked checkout or global `$CARGO_HOME/config.toml`:
 
-- Keep GPUI source local for patching/review.
-- Keep workspace build stable with upstream Zed workspace dependency model.
+```bash
+snapshot=$(mktemp -d /tmp/gpui-component-gpui-override.XXXXXX)
+rsync -a --exclude='.git' --exclude='target' --exclude='docs/node_modules' ./ "$snapshot/"
+cd "$snapshot"
+```
 
-## Current Setup
+Replace `/absolute/path/to/gpui` below with the absolute path of the sibling
+GPUI checkout. Absolute paths are required because the framework snapshot lives
+outside the sibling checkout directory.
 
-- Submodule path: `vendor/gpui`
-- Submodule remote: `https://github.com/BumpyClock/zed`
-- Workspace `gpui` dependency stays git+rev in `Cargo.toml`.
+```toml
+[patch."https://github.com/BumpyClock/gpui"]
+bumpyclock-gpui = { path = "/absolute/path/to/gpui/crates/gpui" }
+gpui_platform = { path = "/absolute/path/to/gpui/crates/gpui_platform" }
+gpui_macros = { path = "/absolute/path/to/gpui/crates/gpui_macros" }
+sum_tree = { path = "/absolute/path/to/gpui/crates/sum_tree" }
+```
 
-## Patch Flow
+The copied `Cargo.lock` still records Git sources, so first refresh it only in
+the disposable snapshot. Subsequent validation remains locked:
 
-1. Edit GPUI in submodule:
-   - `cd vendor/gpui`
-   - create branch
-   - patch + commit
-   - push to `BumpyClock/zed`
-2. Bump gpui rev in workspace:
-   - copy new GPUI commit SHA
-   - update `Cargo.toml` `workspace.dependencies.gpui.rev`
-3. Pin submodule to same SHA:
-   - `git -C vendor/gpui checkout <sha>`
-4. Verify:
-   - `cargo check -p gpui-component`
-   - optional: `cargo test -p gpui-component --lib`
+```bash
+cargo metadata --format-version 1
+cargo check --locked --workspace --all-targets
+cargo xtask release-check
+```
 
-## Important Note
+Patch keys are Cargo package identities, not dependency aliases or Rust import
+names. The framework manifest must already declare
+`gpui = { package = "bumpyclock-gpui", ... }`; a patch cannot bridge an old
+`gpui` package identity to the renamed package. During an identity transition,
+test in a disposable framework snapshot and wait for the canonical GPUI commit
+before changing the committed pin.
 
-- Direct path dependency to `vendor/gpui/crates/gpui` fails because `gpui` inherits many `workspace.dependencies` from Zed workspace.
-- Keep git dependency + local submodule in sync instead of path override.
+Add every GPUI package resolved by the framework to the patch table. Because
+the snapshot has no Git metadata, this developer-specific override cannot enter
+a commit. Do not use Cargo's `--config` flag for this workflow: `cargo xtask`
+launches child Cargo processes that do not inherit the parent command line's
+config. Before release work, discard the disposable snapshot, return to the
+tracked checkout, and verify the committed Git dependency:
+
+```bash
+cargo xtask compatibility check
+cargo xtask release-check
+```
+
+After the GPUI change merges, update the framework's full GPUI revision and
+exact registry versions together, regenerate compatibility documentation, then
+repeat the checks above. Engine packages must be published before framework
+packages; the committed override never represents a release dependency.

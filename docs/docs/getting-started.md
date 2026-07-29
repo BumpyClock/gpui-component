@@ -9,16 +9,17 @@ order: -2
 
 ## Installation
 
-Add dependencies to your `Cargo.toml`:
+Use the same immutable framework tag for every framework package. The framework
+owns GPUI selection, so this application does not declare GPUI directly.
 
-```toml-vue
+```toml
 [dependencies]
-gpui-component-app = "{{ VERSION }}"
-gpui-component-assets = "{{ VERSION }}"
+gpui-component-app = { git = "https://github.com/BumpyClock/gpui-component", tag = "v0.6.0" }
+gpui-component-assets = { git = "https://github.com/BumpyClock/gpui-component", tag = "v0.6.0" }
 serde = { version = "1", features = ["derive"] }
 
 [build-dependencies]
-gpui-component-manifest = "{{ VERSION }}"
+gpui-component-manifest = { git = "https://github.com/BumpyClock/gpui-component", tag = "v0.6.0" }
 
 [package.metadata.gpui-app]
 app_id = "com.example.hello"
@@ -26,11 +27,9 @@ display_name = "Hello"
 categories = ["Development"]
 ```
 
-:::tip
-`gpui-component-app` is experimental/pre-1.0. Until it is published as a stable
-release, pin AppShell, manifest, assets, and any direct GPUI dependencies to one
-repository revision. See [Building an Application](./app-shell.md).
-:::
+`v0.6.0` is the latest immutable framework tag. The current `0.7.0` source
+tree is not released, and registry consumption is blocked until exact GPUI fork
+packages are published. See [Compatibility](../COMPATIBILITY.md).
 
 ## Quick Start
 

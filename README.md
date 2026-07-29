@@ -10,7 +10,7 @@ This is a BumpyClock fork of the original gpui-component by longbridge. Goal is 
 
 # GPUI Component
 
-[![Build Status](https://github.com/BumpyClock/gpui-component/actions/workflows/ci.yml/badge.svg)](https://github.com/BumpyClock/gpui-component/actions/workflows/ci.yml) [![Docs](https://docs.rs/gpui-component/badge.svg)](https://docs.rs/gpui-component/) [![Crates.io](https://img.shields.io/crates/v/gpui-component.svg)](https://crates.io/crates/gpui-component)
+[![Build Status](https://github.com/BumpyClock/gpui-component/actions/workflows/ci.yml/badge.svg)](https://github.com/BumpyClock/gpui-component/actions/workflows/ci.yml)
 
 UI components for building fantastic desktop applications using [GPUI](https://gpui.rs).
 
@@ -29,13 +29,21 @@ UI components for building fantastic desktop applications using [GPUI](https://g
 - **Syntax Highlighting**: Syntax highlighting for editor and markdown components using Tree Sitter.
 
 
-## Usage
+## Installation
+
+The current framework stack is not ready for crates.io consumption. Use one
+immutable framework release and let it select its pinned GPUI revision. Do not
+add an independent `gpui` dependency or select a GPUI commit yourself.
 
 ```toml
-gpui = "0.2.2"
-gpui-component = "0.5.1"
-gpui-component-assets = "0.5.1"
+gpui-component = { git = "https://github.com/BumpyClock/gpui-component", tag = "v0.6.0" }
+gpui-component-assets = { git = "https://github.com/BumpyClock/gpui-component", tag = "v0.6.0" }
 ```
+
+`v0.6.0` is the latest immutable framework tag. The current `0.7.0` source
+tree is unreleased. See [compatibility status](docs/COMPATIBILITY.md) and the
+[release guide](RELEASING.md) before preparing a release. See
+[testing and CI](TESTING.md) for validation levels and native-runtime limits.
 
 ### AppShell (experimental)
 
@@ -66,8 +74,17 @@ current limitations.
 
 ### Manual GPUI bootstrap
 
+For hosts that need direct GPUI types, depend on `gpui-component-app` at the
+same framework tag and use its re-exports. This prevents a second GPUI type
+identity from entering the application.
+
+```toml
+gpui-component-app = { git = "https://github.com/BumpyClock/gpui-component", tag = "v0.6.0" }
+```
+
 ```rs
-use gpui::*;
+use gpui_component_app::gpui::*;
+use gpui_component_app::gpui_platform;
 use gpui_component::{button::*, *};
 
 pub struct HelloWorld;

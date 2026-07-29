@@ -28,14 +28,17 @@ GPUI Component is a comprehensive UI component library for building fantastic de
 
 For a native application, start with the experimental AppShell layer:
 
-```toml-vue
+```toml
 [dependencies]
-gpui-component-app = "{{ VERSION }}"
-gpui-component-assets = "{{ VERSION }}"
+gpui-component-app = { git = "https://github.com/BumpyClock/gpui-component", tag = "v0.6.0" }
+gpui-component-assets = { git = "https://github.com/BumpyClock/gpui-component", tag = "v0.6.0" }
 
 [build-dependencies]
-gpui-component-manifest = "{{ VERSION }}"
+gpui-component-manifest = { git = "https://github.com/BumpyClock/gpui-component", tag = "v0.6.0" }
 ```
+
+The framework tag selects its GPUI revision. Do not add a separate GPUI
+dependency; see [Installation](./installation.md) for release status.
 
 Declare `[package.metadata.gpui-app]` and the two-line identity `build.rs`
 described in [Building an Application](./app-shell.md), then create the window:

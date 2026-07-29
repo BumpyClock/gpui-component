@@ -109,9 +109,9 @@ Cross-cutting problems:
 4. **Nobody has window-bounds persistence**; layout persistence solved once (agent-term), settings solved well once (ansible).
 5. gpui fork has unused app primitives the library never wraps — but some are **stubs**:
    review verified URL-scheme registration is unimplemented on Windows
-   (`vendor/gpui/crates/gpui_windows/src/platform.rs:842`) and Linux
-   (`gpui_linux/src/platform.rs:685`), and X11 overlay click-through is a silent no-op
-   (`x11/window.rs:1619`). "Exists in the fork" ≠ "works on 3 OSes".
+   ([`BumpyClock/gpui@d1a6019136eb9fb9386eaa047a7445c1032d8668`](https://github.com/BumpyClock/gpui/blob/d1a6019136eb9fb9386eaa047a7445c1032d8668/crates/gpui_windows/src/platform.rs#L842)) and Linux
+   ([`gpui_linux/src/linux/platform.rs:685`](https://github.com/BumpyClock/gpui/blob/d1a6019136eb9fb9386eaa047a7445c1032d8668/crates/gpui_linux/src/linux/platform.rs#L685)), and X11 overlay click-through is a silent no-op
+   ([`gpui_linux/src/linux/x11/window.rs:1619`](https://github.com/BumpyClock/gpui/blob/d1a6019136eb9fb9386eaa047a7445c1032d8668/crates/gpui_linux/src/linux/x11/window.rs#L1619)). "Exists in the fork" ≠ "works on 3 OSes".
 
 ## 2. Decisions
 
