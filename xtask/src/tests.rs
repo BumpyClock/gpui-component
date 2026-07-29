@@ -564,25 +564,25 @@ fn recognizes_only_exact_unpublished_engine_registry_failures() {
         .is_some()
     );
     assert!(
-        !unavailable_engine_registry_failure(
+        unavailable_engine_registry_failure(
             "failed to select a version for the requirement `bumpyclock-gpui = \"=0.8.0\"`",
             &compatibility,
         )
-        .is_some()
+        .is_none()
     );
     assert!(
-        !unavailable_engine_registry_failure(
+        unavailable_engine_registry_failure(
             "failed to select a version for the requirement `serde = \"=1.0.0\"`",
             &compatibility,
         )
-        .is_some()
+        .is_none()
     );
     assert!(
-        !unavailable_engine_registry_failure(
+        unavailable_engine_registry_failure(
             "failed to select a version for the requirement `serde = \"=1.0.0\"`\nrequired by `bumpyclock-gpui = \"=0.7.0\"`",
             &compatibility,
         )
-        .is_some()
+        .is_none()
     );
 }
 
