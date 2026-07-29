@@ -12,8 +12,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Test
+  compile:
+    name: Compile and lint
     strategy:
       fail-fast: false
       matrix:
@@ -45,7 +45,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: test-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          key: compile-cargo-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
       - name: Typo check
         if: ${{ matrix.run_on == 'macos-latest' }}
         run: |
@@ -55,23 +55,47 @@ jobs:
           typos
       - name: Lint (macOS)
         if: ${{ matrix.run_on == 'macos-latest' }}
-        run: ./script/clippy
+        run: ./script/clippy --locked
       - name: Lint (Linux)
         if: ${{ matrix.run_on == 'ubuntu-latest' }}
-        run: ./script/clippy
+        run: ./script/clippy --locked
       - name: Lint (Windows)
         if: ${{ matrix.run_on == 'windows-latest' }}
-        run: ./script/clippy.ps1
-      # Tests are intentionally NOT run in CI — they are run locally before
-      # merge (repo policy; see CLAUDE.md "Testing"). CI gates on lint (which
-      # compiles all targets), typos, machete, and the native launch smoke below.
+        run: ./script/clippy.ps1 --locked
+
+  unit-and-headless:
+    name: Unit, doctest, and headless tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install system dependencies
+        run: script/bootstrap
+      - name: Run maintained unit and headless tests
+        run: cargo test --workspace --all-targets --locked
+      - name: Run doctests
+        run: cargo test --workspace --doc --locked
+
+  compatibility-and-packaging:
+    name: Compatibility and package manifests
+    needs: unit-and-headless
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+      - name: Install system dependencies
+        run: script/bootstrap
+      - name: Show publication prerequisites
+        run: cargo xtask publish-plan
+      - name: Validate compatibility and package artifacts
+        run: cargo xtask release-check
 
   # Native launch smoke test for the app-platform conformance examples
   # (examples/app_shell single-window, examples/app_shell_background zero-window
   # background liveness). Each
   # example boots the real shell, opens its window(s), then `--smoke` requests a
   # clean quit and exits 0. See docs/learned/app-platform-plan.md §5 Phase 1 and
-  # §6 gate 7. Keep the matrix in sync with the `test` job above.
+  # §6 gate 7. Keep the matrix in sync with the `compile` job above.
   native-launch-smoke:
     name: Native launch smoke
     strategy:
@@ -95,7 +119,7 @@ jobs:
       # include_identity!) cross-platform, even where we do not launch a
       # GPU-backed window below.
       - name: Build conformance examples
-        run: cargo build -p app_shell -p app_shell_background
+        run: cargo build --locked -p app_shell -p app_shell_background
       # Launch smoke runs on macOS only. Platform parity (CLAUDE.md) requires
       # documenting why the other two are gated off rather than silently skipped:
       #   - macOS: GitHub arm64 runners provide a working Metal device; the
@@ -104,18 +128,18 @@ jobs:
       #     and no Vulkan device, so a native launch needs both xvfb and a
       #     software driver (lavapipe) that is not guaranteed present. Gated off
       #     to avoid flaky reds; enable once the runner image ships them:
-      #         xvfb-run -a cargo run -p app_shell -- --smoke
-      #         xvfb-run -a cargo run -p app_shell_background -- --smoke
+      #         xvfb-run -a cargo run --locked -p app_shell -- --smoke
+      #         xvfb-run -a cargo run --locked -p app_shell_background -- --smoke
       #   - Windows: GPUI renders via DirectX; headless runners have no reliable
       #     present surface. Gated off pending a WARP-backed offscreen path:
-      #         cargo run -p app_shell -- --smoke
-      #         cargo run -p app_shell_background -- --smoke
+      #         cargo run --locked -p app_shell -- --smoke
+      #         cargo run --locked -p app_shell_background -- --smoke
       - name: Native launch smoke (macOS)
         if: ${{ matrix.run_on == 'macos-latest' }}
         run: |
-          cargo run -p app_shell -- --asset-smoke
-          cargo run -p app_shell -- --smoke
-          cargo run -p app_shell_background -- --smoke
+          cargo run --locked -p app_shell -- --asset-smoke
+          cargo run --locked -p app_shell -- --smoke
+          cargo run --locked -p app_shell_background -- --smoke
       # This path opens no window, so it does not require a render surface.
       # Windows is included because GPUI's Windows `quit` path exits with status
       # zero; AppShell must preserve a transactional startup failure as nonzero.
@@ -124,7 +148,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          output="$(cargo run -p app_shell -- --fail-start 2>&1)"
+          output="$(cargo run --locked -p app_shell -- --fail-start 2>&1)"
           exit_code=$?
           set -e
           printf '%s\n' "$output"
@@ -147,7 +171,7 @@ jobs:
           # native-error promotion, and exit explicitly.
           $ErrorActionPreference = 'Continue'
           $PSNativeCommandUseErrorActionPreference = $false
-          cargo run -p app_shell -- --fail-start *> app_shell_fail_start.log
+          cargo run --locked -p app_shell -- --fail-start *> app_shell_fail_start.log
           $exitCode = $LASTEXITCODE
           $output = Get-Content app_shell_fail_start.log -Raw
           Write-Output $output

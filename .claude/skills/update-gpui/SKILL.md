@@ -1,65 +1,59 @@
 ---
 name: update-gpui
-description: Update GPUI submodule to the latest commit. Use when asked to update, bump, or upgrade the gpui dependency.
+description: Update all immutable GPUI Git pins and compatibility metadata. Use when asked to update, bump, or upgrade GPUI.
 user_invocable: true
 ---
 
 ## Instructions
 
-Update the GPUI git submodule and all related Cargo.toml references to the latest commit on `origin/main`.
+Update GPUI only from a reviewed, supplied full 40-character commit hash. Do
+not select a moving ref.
 
 ### Steps
 
-1. **Fetch latest from remote**:
+1. Confirm target hash is exactly 40 lowercase hexadecimal characters and
+   record current hash and package versions from root `Cargo.toml`.
+
+2. Update every `https://github.com/BumpyClock/gpui` dependency declaration in
+   committed manifests. Keep each declaration's package alias and features, and
+   set both its `rev` and exact `version = "=X.Y.Z"`. This currently includes
+   `gpui` (`package = "bumpyclock-gpui"`), `gpui_platform`, `gpui-macros`
+   (`package = "gpui_macros"`), and `sum-tree` (`package = "sum_tree"`).
+   Search all `Cargo.toml` files; do not leave a GPUI-family package on a
+   previous revision.
+
+3. Update `[gpui]` and every `[[gpui.packages]]` entry in
+   `compatibility.toml` with same revision and exact package versions.
+   Regenerate and verify derived document:
+
    ```bash
-   cd vendor/gpui && git fetch origin
+   cargo xtask compatibility generate
+   cargo xtask compatibility check
    ```
 
-2. **Identify target commit**: Use the latest commit on `origin/main` (or a specific commit/branch if the user provides one via `$ARGUMENTS`).
+4. For coordinated source testing only, a sibling GPUI checkout may be wired
+   through an uncommitted `.cargo/config.toml` patch. Patch the actual packages
+   `bumpyclock-gpui`, `gpui_platform`, `gpui_macros`, and `sum_tree`; add
+   further resolved GPUI packages when needed. The committed manifest's
+   package identity must already match the checkout. Remove the override
+   before release checks. Never place it in a committed manifest or config.
+
+5. Build, test, and check release plan:
+
    ```bash
-   git log --oneline origin/main -5
+   cargo test --workspace --all-targets --locked
+   cargo clippy --workspace --all-targets --locked -- -D warnings
+   cargo xtask publish-plan
+   cargo xtask release-check
    ```
 
-3. **Update submodule pointer**:
-   ```bash
-   git -C vendor/gpui checkout <commit-hash>
-   ```
-
-4. **Update `Cargo.toml`**: Find all `rev = "..."` entries pointing to the gpui git repo in the workspace `Cargo.toml` and update them to the new commit hash. The entries look like:
-   ```toml
-   gpui = { git = "https://github.com/BumpyClock/gpui", rev = "<old-hash>", ... }
-   gpui_platform = { git = "https://github.com/BumpyClock/gpui", rev = "<old-hash>", ... }
-   ```
-   Update both `rev` values to the **full** commit hash.
-
-5. **Build and verify**:
-   ```bash
-   cargo build
-   ```
-
-6. **If build fails**: Inspect errors and fix any breaking API changes in the codebase. Common issues:
-   - Borrow checker issues from upstream tree-sitter/API changes
-   - New/removed/renamed methods in gpui APIs
-   - Changed trait signatures
-
-7. **Run clippy**:
-   ```bash
-   cargo clippy -- --deny warnings
-   ```
-
-8. **Version + compatibility bookkeeping** (this skill is the ONLY place a gpui rev changes — see docs/learned/app-platform-plan.md D6):
-   - Bump `[workspace.package] version` in the root `Cargo.toml` (minor bump for a gpui rev change or breaking API change while pre-1.0; patch otherwise). Keep the `version = "X.Y.Z"` values inside `[workspace.dependencies]` for the path crates (`gpui-component`, `gpui-component-*`) in sync.
-   - Add a row to `docs/COMPATIBILITY.md` pairing the new workspace version with the new gpui rev.
-   - After the change lands on `main`, create the annotated tag: `git tag -a v<version> -m "gpui-component v<version> (gpui <shortsha>)"` and push it. Apps pin these tags — never bare revs.
-
-9. **Report summary**: Show old commit, new commit, what changed (list new commits), whether build/clippy passed, and the new workspace version + tag.
+6. Report old/new revision, package versions, compatibility result, and
+   validation results. Version selection, tag creation, and publication need
+   separate owner authorization.
 
 ### Notes
 
-- The submodule is at `vendor/gpui` and tracks `https://github.com/BumpyClock/gpui`.
-- The `Cargo.toml` at the workspace root has `[workspace.dependencies]` entries for `gpui` and `gpui_platform` that pin to a specific `rev`.
-- Always update both the submodule pointer AND the Cargo.toml rev in lockstep.
-- **Always use `git + rev` dependencies, never path dependencies.** GPUI lives in its own repo; gpui-component consumes it as a git dependency.
-- Use full 40-char commit hashes in `rev = "..."` for reproducibility.
-- The submodule may need `git submodule update --init vendor/gpui` if not yet initialized.
-- If `$ARGUMENTS` contains a specific commit hash or branch, use that instead of `origin/main`.
+- Committed GPUI dependencies use only canonical Git URL, full immutable
+  revision, and exact version.
+- Repository has no GPUI submodule. Local sibling source is a temporary,
+  uncommitted development override only.

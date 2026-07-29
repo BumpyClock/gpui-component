@@ -1,7 +1,7 @@
 name: Release Docs
 on:
   workflow_run:
-    workflows: ["Release Crate"]
+    workflows: ["Release Gate"]
     types:
       - completed
   workflow_dispatch:

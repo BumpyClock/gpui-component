@@ -1,40 +1,42 @@
 ---
-title: "GPUI Submodule Workflow"
-summary: "Notes on keeping the GPUI submodule and workspace git dependency revision in sync."
-read_when: "updating GPUI, touching vendor/gpui, or changing workspace GPUI dependency pins"
+title: "Local GPUI Override Workflow"
+summary: "Use an uncommitted Cargo patch for coordinated framework and GPUI development."
+read_when: "testing framework changes against a sibling GPUI checkout or changing workspace GPUI dependency pins"
 ---
-# GPUI Submodule Workflow
+# Local GPUI Override Workflow
 
-Date: 2026-02-10
+The committed framework always uses the immutable GPUI Git revision in the
+workspace manifest. The repository does not vendor GPUI and has no GPUI
+submodule.
 
-## Why
+For coordinated development, clone GPUI beside this repository and create an
+uncommitted `.cargo/config.toml` override:
 
-- Keep GPUI source local for patching/review.
-- Keep workspace build stable with upstream Zed workspace dependency model.
+```toml
+[patch."https://github.com/BumpyClock/gpui"]
+bumpyclock-gpui = { path = "../gpui/crates/gpui" }
+gpui_platform = { path = "../gpui/crates/gpui_platform" }
+gpui_macros = { path = "../gpui/crates/gpui_macros" }
+sum_tree = { path = "../gpui/crates/sum_tree" }
+```
 
-## Current Setup
+Patch keys are Cargo package identities, not dependency aliases or Rust import
+names. The framework manifest must already declare
+`gpui = { package = "bumpyclock-gpui", ... }`; a patch cannot bridge an old
+`gpui` package identity to the renamed package. During an identity transition,
+test in a disposable framework snapshot and wait for the canonical GPUI commit
+before changing the committed pin.
 
-- Submodule path: `vendor/gpui`
-- Submodule remote: `https://github.com/BumpyClock/zed`
-- Workspace `gpui` dependency stays git+rev in `Cargo.toml`.
+Add every GPUI package resolved by the framework to the patch table. Keep this
+developer-specific override out of commits. Before release work, remove it and
+verify the committed Git dependency:
 
-## Patch Flow
+```bash
+cargo xtask compatibility check
+cargo xtask release-check
+```
 
-1. Edit GPUI in submodule:
-   - `cd vendor/gpui`
-   - create branch
-   - patch + commit
-   - push to `BumpyClock/zed`
-2. Bump gpui rev in workspace:
-   - copy new GPUI commit SHA
-   - update `Cargo.toml` `workspace.dependencies.gpui.rev`
-3. Pin submodule to same SHA:
-   - `git -C vendor/gpui checkout <sha>`
-4. Verify:
-   - `cargo check -p gpui-component`
-   - optional: `cargo test -p gpui-component --lib`
-
-## Important Note
-
-- Direct path dependency to `vendor/gpui/crates/gpui` fails because `gpui` inherits many `workspace.dependencies` from Zed workspace.
-- Keep git dependency + local submodule in sync instead of path override.
+After the GPUI change merges, update the framework's full GPUI revision and
+exact registry versions together, regenerate compatibility documentation, then
+repeat the checks above. Engine packages must be published before framework
+packages; the committed override never represents a release dependency.

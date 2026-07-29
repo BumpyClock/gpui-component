@@ -171,8 +171,8 @@ The `Icon` element does not include SVG files by default. You need to:
 
 ## Dependencies
 
-- GPUI: Git dependency from `https://github.com/BumpyClock/gpui` (our hard fork), pinned via `rev = "<commit>"` in workspace `Cargo.toml`. **Never use path dependencies for GPUI** — always use `git + rev`. The `vendor/gpui` submodule tracks the same repo/commit for local reference.
-- To update GPUI: use the `/update-gpui` skill. This updates both the submodule pointer and Cargo.toml rev entries, then builds and fixes any breaking API changes.
+- GPUI: Git dependency from `https://github.com/BumpyClock/gpui` (our hard fork), pinned by full immutable `rev` and exact `version` in workspace `Cargo.toml`. Dependency key and Rust import `gpui` map to Cargo package `bumpyclock-gpui`. Committed manifests must use only this Git source. For coordinated local development, use an uncommitted sibling-checkout patch described in `docs/learned/gpui-submodule.md`.
+- To update GPUI: use the `/update-gpui` skill. It updates every GPUI-family Git revision and exact version, compatibility metadata/docs, then runs release validation.
 - Tree-sitter: For syntax highlighting
 - Ropey: Rope data structure for text, and `RopeExt` trait with more features.
 - Markdown rendering: `markdown` crate
@@ -193,7 +193,7 @@ Uses `rust-i18n` crate.
 - Linux (x86_64)
 - Windows (x86_64)
 
-CI runs full test suite on each platform.
+CI compiles and lints three platforms; Ubuntu runs unit/headless tests and macOS has a native launch smoke. See `TESTING.md` for current coverage and limits.
 
 ## Skills Reference
 

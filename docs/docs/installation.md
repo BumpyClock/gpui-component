@@ -6,7 +6,12 @@ order: -1
 
 # Installation
 
-Before you start to build your application with `gpui-component`, you need to install the library.
+Use one immutable GPUI Component release. The framework source selects its
+matching GPUI revision; applications must not select GPUI independently.
+
+The latest framework tag is `v0.6.0`. The `0.7.0` source tree is not released,
+and crates.io publication remains blocked on GPUI fork packages. See the
+[compatibility matrix](../COMPATIBILITY.md) for current evidence and blockers.
 
 ## System Requirements
 
@@ -35,14 +40,20 @@ Run `./script/bootstrap` to install system dependencies.
 
 ## Rust and Cargo
 
-We use Rust programming language to build the `gpui-component` library. Make sure you have Rust and Cargo installed on your system.
+Make sure Rust and Cargo are installed.
 
 - Rust 1.90 or later
 - Cargo (comes with Rust)
 
-To install the `gpui-component` library, you can use Cargo, the Rust package manager. Add the following line to your `Cargo.toml` file under the `[dependencies]` section:
+Add GPUI Component from its immutable framework tag:
 
-```toml-vue
-gpui = "{{ GPUI_VERSION }}"
-gpui-component = "{{ VERSION }}"
+```toml
+[dependencies]
+gpui-component = { git = "https://github.com/BumpyClock/gpui-component", tag = "v0.6.0" }
+gpui-component-assets = { git = "https://github.com/BumpyClock/gpui-component", tag = "v0.6.0" }
 ```
+
+For AppShell, add `gpui-component-app` and
+`gpui-component-manifest` from the same tag as shown in
+[Getting Started](./getting-started.md). Do not add `gpui`,
+`gpui_platform`, or a GPUI Git revision directly.
