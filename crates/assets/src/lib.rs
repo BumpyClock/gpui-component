@@ -11,7 +11,8 @@ use std::{borrow::Cow, collections::HashSet};
 /// ```
 /// use gpui_component_assets::{Assets, chain};
 ///
-/// let app = gpui_platform::application().with_assets(chain(MyAssets, Assets));
+/// # fn main() -> gpui::Result<()> {
+/// let _app = gpui_platform::try_headless()?.with_assets(chain(MyAssets, Assets));
 ///
 /// # struct MyAssets;
 /// # impl gpui::AssetSource for MyAssets {
@@ -21,6 +22,8 @@ use std::{borrow::Cow, collections::HashSet};
 /// #     fn list(&self, _path: &str) -> gpui::Result<Vec<gpui::SharedString>> {
 /// #         Ok(Vec::new())
 /// #     }
+/// # }
+/// # Ok(())
 /// # }
 /// ```
 #[derive(RustEmbed)]
