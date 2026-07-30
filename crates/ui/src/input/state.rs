@@ -839,6 +839,10 @@ impl InputState {
         SharedString::new(self.text.to_string())
     }
 
+    pub(super) fn a11y_value(&self) -> Option<SharedString> {
+        (!self.masked).then(|| self.value())
+    }
+
     /// Return the value without mask.
     pub fn unmask_value(&self) -> SharedString {
         self.mask_pattern.unmask(&self.text.to_string()).into()
@@ -1773,6 +1777,7 @@ impl InputState {
 
     fn on_blur(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.is_context_menu_open(cx) {
+            // Context-menu blur is outside the supported composition terminal contract.
             return;
         }
 
@@ -1783,6 +1788,7 @@ impl InputState {
         self.diagnostic_popover = None;
         self.context_menu = None;
         self.clear_inline_completion(cx);
+        self.unmark_text(window, cx);
         self.blink_cursor.update(cx, |cursor, cx| {
             cursor.stop(cx);
         });
@@ -1991,7 +1997,7 @@ impl EntityInputHandler for InputState {
     ) -> Option<UTF16Selection> {
         Some(UTF16Selection {
             range: self.range_to_utf16(&self.selected_range.into()),
-            reversed: false,
+            reversed: self.selection_reversed,
         })
     }
 
@@ -2004,8 +2010,15 @@ impl EntityInputHandler for InputState {
             .map(|range| self.range_to_utf16(&range.into()))
     }
 
-    fn unmark_text(&mut self, _window: &mut Window, _cx: &mut Context<Self>) {
-        self.ime_marked_range = None;
+    // Explicit unmark is a supported terminal composition path: it keeps the composed text,
+    // emits a change event, and separates the next edit into a new undo step. Mouse-caret
+    // relocation, Escape, and context-menu blur remain unspecified pending cancellation policy.
+    fn unmark_text(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        if self.ime_marked_range.take().is_some() {
+            self.history.break_group();
+            cx.emit(InputEvent::Change);
+            cx.notify();
+        }
     }
 
     /// Replace text in range.
@@ -2024,6 +2037,7 @@ impl EntityInputHandler for InputState {
         }
 
         self.pause_blink_cursor(cx);
+        let commits_marked_text = self.ime_marked_range.is_some();
 
         let range = range_utf16
             .as_ref()
@@ -2033,6 +2047,7 @@ impl EntityInputHandler for InputState {
                 self.range_from_utf16(&range)
             }))
             .unwrap_or(self.selected_range.into());
+        let range = range.start.min(range.end)..range.start.max(range.end);
 
         let clipped_range = self.text.clip_offset(range.start, Bias::Left)
             ..self.text.clip_offset(range.end, Bias::Right);
@@ -2059,7 +2074,11 @@ impl EntityInputHandler for InputState {
         }
 
         self.push_history_with_old_text(&old_slice, &clipped_range, &new_text);
-        self.history.end_grouping();
+        if commits_marked_text {
+            self.history.break_group();
+        } else {
+            self.history.end_grouping();
+        }
         if let Some(diagnostics) = self.mode.diagnostics_mut() {
             diagnostics.reset(&self.text)
         }
@@ -2069,6 +2088,7 @@ impl EntityInputHandler for InputState {
             .update_highlighter(&range, &self.text, &new_text, true, cx);
         self.lsp.update(&self.text, window, cx);
         self.selected_range = (new_offset..new_offset).into();
+        self.selection_reversed = false;
         self.ime_marked_range.take();
         self.update_preferred_column();
         self.update_search(cx);
@@ -2094,6 +2114,7 @@ impl EntityInputHandler for InputState {
         }
 
         self.lsp.reset();
+        let had_marked_text = self.ime_marked_range.is_some();
 
         let range = range_utf16
             .as_ref()
@@ -2103,6 +2124,7 @@ impl EntityInputHandler for InputState {
                 self.range_from_utf16(&range)
             }))
             .unwrap_or(self.selected_range.into());
+        let range = range.start.min(range.end)..range.start.max(range.end);
 
         let clipped_range = self.text.clip_offset(range.start, Bias::Left)
             ..self.text.clip_offset(range.end, Bias::Right);
@@ -2127,20 +2149,31 @@ impl EntityInputHandler for InputState {
             .update_highlighter(&range, &self.text, &new_text, true, cx);
         self.lsp.update(&self.text, window, cx);
         if new_text.is_empty() {
-            self.selected_range = (range.start..range.start).into();
+            self.selected_range = (clipped_range.start..clipped_range.start).into();
             self.ime_marked_range = None;
         } else {
-            self.ime_marked_range = Some((range.start..range.start + new_text.len()).into());
+            let marked_range = clipped_range.start..clipped_range.start + new_text.len();
+            let marked_text = Rope::from(new_text);
+            self.ime_marked_range = Some(marked_range.clone().into());
             self.selected_range = new_selected_range_utf16
                 .as_ref()
-                .map(|range_utf16| self.range_from_utf16(range_utf16))
-                .map(|new_range| new_range.start + range.start..new_range.end + range.end)
-                .unwrap_or_else(|| range.start + new_text.len()..range.start + new_text.len())
+                .map(|range_utf16| {
+                    let start = marked_text.offset_utf16_to_offset(range_utf16.start);
+                    let end = marked_text.offset_utf16_to_offset(range_utf16.end);
+                    let (start, end) = (start.min(end), start.max(end));
+                    marked_range.start + start..marked_range.start + end
+                })
+                .unwrap_or_else(|| marked_range.end..marked_range.end)
                 .into();
         }
+        self.selection_reversed = false;
         self.mode.update_auto_grow(&self.text_wrapper);
         self.history.start_grouping();
         self.push_history_with_old_text(&old_slice, &clipped_range, new_text);
+        if new_text.is_empty() && had_marked_text {
+            self.history.break_group();
+            cx.emit(InputEvent::Change);
+        }
         cx.notify();
     }
 
@@ -2252,6 +2285,10 @@ impl Render for InputState {
 mod tests {
     use super::*;
     use gpui::TestAppContext;
+    use std::{
+        cell::{Cell, RefCell},
+        rc::Rc,
+    };
 
     fn new_input_state(
         cx: &mut TestAppContext,
@@ -2270,6 +2307,46 @@ mod tests {
         });
         let visual_cx = gpui::VisualTestContext::from_window(window.into(), cx);
         (window, visual_cx)
+    }
+
+    fn new_input_state_in_root(
+        cx: &mut TestAppContext,
+        value: &'static str,
+    ) -> (
+        gpui::WindowHandle<Root>,
+        gpui::VisualTestContext,
+        gpui::Entity<InputState>,
+    ) {
+        let input_slot = Rc::new(RefCell::new(None));
+        let input_for_root = input_slot.clone();
+        let window = cx.update(|cx| {
+            crate::init(cx);
+            cx.open_window(Default::default(), |window, cx| {
+                let input = cx.new(|cx| {
+                    InputState::new(window, cx)
+                        .multi_line(true)
+                        .default_value(value)
+                });
+                input_for_root.replace(Some(input.clone()));
+                cx.new(|cx| Root::new(input, window, cx))
+            })
+            .unwrap()
+        });
+        let visual_cx = gpui::VisualTestContext::from_window(window.into(), cx);
+        let input = input_slot.borrow_mut().take().unwrap();
+        (window, visual_cx, input)
+    }
+
+    #[gpui::test]
+    fn test_input_a11y_value_omits_masked_value(cx: &mut TestAppContext) {
+        let (window, cx) = &mut new_input_state(cx, "secret");
+        let input = window.root(cx).unwrap();
+
+        input.update_in(cx, |input, _, _| {
+            assert_eq!(input.a11y_value().as_deref(), Some("secret"));
+            input.masked = true;
+            assert_eq!(input.a11y_value(), None);
+        });
     }
 
     #[gpui::test]
@@ -2332,6 +2409,174 @@ mod tests {
             assert_eq!(input.selected_range, (3..4).into());
             assert!(!input.selection_reversed);
             assert_eq!(input.cursor(), 4);
+        });
+    }
+
+    #[gpui::test]
+    fn test_input_selected_text_range_preserves_reversed_selection(cx: &mut TestAppContext) {
+        let (window, cx) = &mut new_input_state(cx, "abcd");
+        let input = window.root(cx).unwrap();
+
+        input.update_in(cx, |input, window, cx| {
+            input.selected_range = (1..3).into();
+            input.selection_reversed = true;
+
+            let selection = input.selected_text_range(false, window, cx).unwrap();
+            assert_eq!(selection.range, 1..3);
+            assert!(selection.reversed);
+        });
+    }
+
+    #[gpui::test]
+    fn test_input_marked_text_selection_is_relative_to_marked_text(cx: &mut TestAppContext) {
+        let (window, cx) = &mut new_input_state(cx, "a💝bc");
+        let input = window.root(cx).unwrap();
+
+        input.update_in(cx, |input, window, cx| {
+            input.replace_and_mark_text_in_range(Some(3..4), "x💝", Some(1..3), window, cx);
+
+            assert_eq!(input.value(), "a💝x💝c");
+            assert_eq!(input.ime_marked_range, Some((5..10).into()));
+            assert_eq!(input.selected_range, (6..10).into());
+        });
+    }
+
+    #[gpui::test]
+    fn test_input_marked_text_selection_stays_within_marked_range(cx: &mut TestAppContext) {
+        let (window, cx) = &mut new_input_state(cx, "abcd");
+        let input = window.root(cx).unwrap();
+
+        input.update_in(cx, |input, window, cx| {
+            input.replace_and_mark_text_in_range(Some(1..2), "x", Some(0..usize::MAX), window, cx);
+
+            assert_eq!(input.ime_marked_range, Some((1..2).into()));
+            assert_eq!(input.selected_range, (1..2).into());
+        });
+    }
+
+    #[gpui::test]
+    fn test_input_reversed_replacement_range_is_normalized(cx: &mut TestAppContext) {
+        let (window, cx) = &mut new_input_state(cx, "abcd");
+        let input = window.root(cx).unwrap();
+
+        input.update_in(cx, |input, window, cx| {
+            input.replace_text_in_range(Some(3..1), "x", window, cx);
+
+            assert_eq!(input.value(), "axd");
+            assert_eq!(input.selected_range, (2..2).into());
+        });
+    }
+
+    // Supported terminal paths are explicit unmark, normal blur, replacement commit, and an
+    // empty marked-text update. Mouse-caret relocation, Escape, and context-menu blur are
+    // intentionally unspecified until an IME cancellation policy is defined.
+    #[gpui::test]
+    fn test_input_unmark_text_keeps_composed_value(cx: &mut TestAppContext) {
+        let (window, cx) = &mut new_input_state(cx, "abcd");
+        let input = window.root(cx).unwrap();
+
+        input.update_in(cx, |input, window, cx| {
+            input.replace_and_mark_text_in_range(Some(1..3), "漢", Some(0..1), window, cx);
+            input.unmark_text(window, cx);
+
+            assert_eq!(input.value(), "a漢d");
+            assert_eq!(input.ime_marked_range, None);
+            assert_eq!(input.selected_range, (1..4).into());
+        });
+    }
+
+    #[gpui::test]
+    fn test_input_unmark_text_ends_composition_history(cx: &mut TestAppContext) {
+        let (window, cx) = &mut new_input_state(cx, "abcd");
+        let input = window.root(cx).unwrap();
+
+        input.update_in(cx, |input, window, cx| {
+            input.replace_and_mark_text_in_range(Some(1..3), "x", Some(0..1), window, cx);
+            input.unmark_text(window, cx);
+            input.replace("y", window, cx);
+            assert_eq!(input.value(), "ayd");
+
+            input.undo(&Undo, window, cx);
+            assert_eq!(input.value(), "axd");
+        });
+    }
+
+    #[gpui::test]
+    fn test_input_replacement_ends_composition_history(cx: &mut TestAppContext) {
+        let (window, cx) = &mut new_input_state(cx, "abcd");
+        let input = window.root(cx).unwrap();
+
+        input.update_in(cx, |input, window, cx| {
+            input.replace_and_mark_text_in_range(Some(1..3), "x", Some(0..1), window, cx);
+            input.replace_text_in_range(Some(1..2), "x", window, cx);
+            input.replace("y", window, cx);
+            assert_eq!(input.value(), "axyd");
+
+            input.undo(&Undo, window, cx);
+            assert_eq!(input.value(), "axd");
+        });
+    }
+
+    #[gpui::test]
+    fn test_input_empty_marked_text_ends_composition(cx: &mut TestAppContext) {
+        let (window, cx) = &mut new_input_state(cx, "abcd");
+        let input = window.root(cx).unwrap();
+        let change_count = Rc::new(Cell::new(0));
+        let _subscription = cx.update(|_, cx| {
+            cx.subscribe(&input, {
+                let change_count = change_count.clone();
+                move |_, _: &InputEvent, _| change_count.set(change_count.get() + 1)
+            })
+        });
+
+        input.update_in(cx, |input, window, cx| {
+            input.replace_and_mark_text_in_range(Some(1..3), "x", Some(0..1), window, cx);
+            input.replace_and_mark_text_in_range(Some(1..2), "", None, window, cx);
+            input.unmark_text(window, cx);
+        });
+        cx.run_until_parked();
+        assert_eq!(change_count.get(), 1);
+
+        input.update_in(cx, |input, window, cx| {
+            input.replace("y", window, cx);
+            assert_eq!(input.value(), "ayd");
+
+            input.undo(&Undo, window, cx);
+            assert_eq!(input.value(), "ad");
+        });
+    }
+
+    #[gpui::test]
+    fn test_input_normal_blur_commits_marked_text(cx: &mut TestAppContext) {
+        let (_window, mut cx, input) = new_input_state_in_root(cx, "abcd");
+        let change_count = Rc::new(Cell::new(0));
+        let _subscription = cx.update(|_, cx| {
+            cx.subscribe(&input, {
+                let change_count = change_count.clone();
+                move |_, event: &InputEvent, _| {
+                    if matches!(event, InputEvent::Change) {
+                        change_count.set(change_count.get() + 1);
+                    }
+                }
+            })
+        });
+
+        input.update_in(&mut cx, |input, window, cx| {
+            input.replace_and_mark_text_in_range(Some(1..3), "漢", Some(0..1), window, cx);
+            assert_eq!(input.ime_marked_range, Some((1..4).into()));
+
+            input.on_blur(window, cx);
+
+            assert_eq!(input.value(), "a漢d");
+            assert_eq!(input.ime_marked_range, None);
+        });
+        cx.run_until_parked();
+        assert_eq!(change_count.get(), 1);
+
+        input.update_in(&mut cx, |input, window, cx| {
+            input.replace("y", window, cx);
+            input.undo(&Undo, window, cx);
+            assert_eq!(input.value(), "a漢d");
         });
     }
 }

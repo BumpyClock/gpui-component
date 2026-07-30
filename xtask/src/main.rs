@@ -1530,6 +1530,19 @@ fn publication_phase(node: &PlanNode) -> u8 {
     }
 }
 
+fn cargo_headless_test_args() -> [&'static str; 8] {
+    [
+        "test",
+        "--locked",
+        "-p",
+        "gpui-component-app",
+        "--test",
+        "headless",
+        "--features",
+        "test-support",
+    ]
+}
+
 fn release_check(root: &Path, options: &Options) -> Result<()> {
     println!("1/5 compatibility metadata and generated documentation");
     check(root, options.gpui_path.as_deref())?;
@@ -1543,6 +1556,9 @@ fn release_check(root: &Path, options: &Options) -> Result<()> {
     println!("3/5 unit and headless tests");
     run(Command::new("cargo")
         .args(["test", "--locked", "--workspace", "--all-targets"])
+        .current_dir(root))?;
+    run(Command::new("cargo")
+        .args(cargo_headless_test_args())
         .current_dir(root))?;
 
     println!("4/5 publication plan");

@@ -13,8 +13,8 @@ use crate::{Side, Size, SurfacePreset, h_flex, kbd::Kbd, v_flex};
 use gpui::{
     Action, AnyElement, App, AppContext, Bounds, Context, Corner, DismissEvent, Edges, Entity,
     EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement, KeyBinding,
-    ParentElement, Pixels, Render, ScrollHandle, SharedString, StatefulInteractiveElement, Styled,
-    WeakEntity, Window, anchored, div, prelude::FluentBuilder, px,
+    ParentElement, Pixels, Render, Role, ScrollHandle, SharedString, StatefulInteractiveElement,
+    Styled, Toggled, WeakEntity, Window, anchored, div, prelude::FluentBuilder, px,
 };
 use gpui::{ClickEvent, MouseDownEvent, OwnedMenuItem, Point, Subscription};
 use std::rc::Rc;
@@ -182,13 +182,13 @@ impl PopupMenuItem {
     /// Set checked state for the menu item.
     ///
     /// NOTE: If `check_side` is [`Side::Left`], the icon will replace with a check icon.
+    /// Use [`PopupMenu::menu_with_check`] for an unchecked checkable item; a standalone
+    /// `PopupMenuItem::checked(false)` is indistinguishable from an ordinary item.
     pub fn checked(mut self, checked: bool) -> Self {
         match &mut self {
-            PopupMenuItem::Item { checked: c, .. } => {
-                *c = checked;
-            }
-            PopupMenuItem::ElementItem { checked: c, .. } => {
-                *c = checked;
+            PopupMenuItem::Item { checked: value, .. }
+            | PopupMenuItem::ElementItem { checked: value, .. } => {
+                *value = checked;
             }
             _ => {}
         }
@@ -283,11 +283,35 @@ impl PopupMenuItem {
             _ => false,
         }
     }
+
+    fn a11y(&self, checkable: bool) -> (Option<Role>, Option<SharedString>, Option<Toggled>) {
+        let role = if checkable {
+            Role::MenuItemCheckBox
+        } else {
+            Role::MenuItem
+        };
+        let toggled = checkable.then_some(if self.is_checked() {
+            Toggled::True
+        } else {
+            Toggled::False
+        });
+
+        match self {
+            PopupMenuItem::Separator => (None, None, None),
+            PopupMenuItem::Label(label) => (Some(Role::Label), Some(label.clone()), None),
+            PopupMenuItem::Item { label, .. } => (Some(role), Some(label.clone()), toggled),
+            PopupMenuItem::ElementItem { .. } => (Some(role), None, toggled),
+            PopupMenuItem::Submenu { label, .. } => {
+                (Some(Role::MenuItem), Some(label.clone()), None)
+            }
+        }
+    }
 }
 
 pub struct PopupMenu {
     pub(crate) focus_handle: FocusHandle,
     pub(crate) menu_items: Vec<PopupMenuItem>,
+    item_checkability: Vec<bool>,
     /// The focus handle of Entity to handle actions.
     pub(crate) action_context: Option<FocusHandle>,
     selected_index: Option<usize>,
@@ -316,6 +340,7 @@ impl PopupMenu {
             action_context: None,
             parent_menu: None,
             menu_items: Vec::new(),
+            item_checkability: Vec::new(),
             selected_index: None,
             min_width: None,
             max_width: None,
@@ -337,6 +362,26 @@ impl PopupMenu {
         f: impl FnOnce(Self, &mut Window, &mut Context<PopupMenu>) -> Self,
     ) -> Entity<Self> {
         cx.new(|cx| f(Self::new(cx), window, cx))
+    }
+
+    fn push_item(&mut self, item: PopupMenuItem, checkable: bool) {
+        self.menu_items.push(item);
+        self.item_checkability.push(checkable);
+    }
+
+    fn item_a11y(&self, ix: usize) -> (Option<Role>, Option<SharedString>, Option<Toggled>) {
+        let item = &self.menu_items[ix];
+        let checkable = self
+            .item_checkability
+            .get(ix)
+            .copied()
+            .unwrap_or_else(|| item.is_checked());
+        item.a11y(checkable)
+    }
+
+    pub(crate) fn replace_menu_items(&mut self, menu: Self) {
+        self.menu_items = menu.menu_items;
+        self.item_checkability = menu.item_checkability;
     }
 
     /// Set the focus handle of Entity to handle actions.
@@ -399,7 +444,7 @@ impl PopupMenu {
         action: Box<dyn Action>,
         enable: bool,
     ) -> Self {
-        self.add_menu_item(label, None, action, !enable, false);
+        self.add_menu_item(label, None, action, !enable, false, false);
         self
     }
 
@@ -410,13 +455,13 @@ impl PopupMenu {
         action: Box<dyn Action>,
         disabled: bool,
     ) -> Self {
-        self.add_menu_item(label, None, action, disabled, false);
+        self.add_menu_item(label, None, action, disabled, false, false);
         self
     }
 
     /// Add label
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
-        self.menu_items.push(PopupMenuItem::label(label.into()));
+        self.push_item(PopupMenuItem::label(label.into()), false);
         self
     }
 
@@ -433,8 +478,7 @@ impl PopupMenu {
         disabled: bool,
     ) -> Self {
         let href = href.into();
-        self.menu_items
-            .push(PopupMenuItem::link(label, href).disabled(disabled));
+        self.push_item(PopupMenuItem::link(label, href).disabled(disabled), false);
         self
     }
 
@@ -457,10 +501,11 @@ impl PopupMenu {
         disabled: bool,
     ) -> Self {
         let href = href.into();
-        self.menu_items.push(
+        self.push_item(
             PopupMenuItem::link(label, href)
                 .icon(icon)
                 .disabled(disabled),
+            false,
         );
         self
     }
@@ -483,7 +528,7 @@ impl PopupMenu {
         action: Box<dyn Action>,
         disabled: bool,
     ) -> Self {
-        self.add_menu_item(label, Some(icon.into()), action, disabled, false);
+        self.add_menu_item(label, Some(icon.into()), action, disabled, false, false);
         self
     }
 
@@ -505,7 +550,7 @@ impl PopupMenu {
         action: Box<dyn Action>,
         disabled: bool,
     ) -> Self {
-        self.add_menu_item(label, None, action, disabled, checked);
+        self.add_menu_item(label, None, action, disabled, checked, true);
         self
     }
 
@@ -515,12 +560,12 @@ impl PopupMenu {
         F: Fn(&mut Window, &mut App) -> E + 'static,
         E: IntoElement,
     {
-        self.menu_element_with_check(false, action, builder)
+        self.menu_element_with_disabled(action, false, builder)
     }
 
     /// Add Menu Item with custom element render with disabled state.
     pub fn menu_element_with_disabled<F, E>(
-        self,
+        mut self,
         action: Box<dyn Action>,
         disabled: bool,
         builder: F,
@@ -529,7 +574,13 @@ impl PopupMenu {
         F: Fn(&mut Window, &mut App) -> E + 'static,
         E: IntoElement,
     {
-        self.menu_element_with_check_and_disabled(false, action, disabled, builder)
+        self.push_item(
+            PopupMenuItem::element(builder)
+                .action(action)
+                .disabled(disabled),
+            false,
+        );
+        self
     }
 
     /// Add Menu Item with custom element render with icon.
@@ -572,11 +623,12 @@ impl PopupMenu {
         F: Fn(&mut Window, &mut App) -> E + 'static,
         E: IntoElement,
     {
-        self.menu_items.push(
+        self.push_item(
             PopupMenuItem::element(builder)
                 .action(action)
                 .icon(icon)
                 .disabled(disabled),
+            false,
         );
         self
     }
@@ -593,11 +645,12 @@ impl PopupMenu {
         F: Fn(&mut Window, &mut App) -> E + 'static,
         E: IntoElement,
     {
-        self.menu_items.push(
+        self.push_item(
             PopupMenuItem::element(builder)
                 .action(action)
                 .checked(checked)
                 .disabled(disabled),
+            true,
         );
         self
     }
@@ -612,7 +665,7 @@ impl PopupMenu {
             return self;
         }
 
-        self.menu_items.push(PopupMenuItem::separator());
+        self.push_item(PopupMenuItem::separator(), false);
         self
     }
 
@@ -642,8 +695,9 @@ impl PopupMenu {
             view.parent_menu = Some(parent_menu);
         });
 
-        self.menu_items.push(
+        self.push_item(
             PopupMenuItem::submenu(label, submenu).when_some(icon, |this, icon| this.icon(icon)),
+            false,
         );
         self
     }
@@ -651,7 +705,8 @@ impl PopupMenu {
     /// Add menu item.
     pub fn item(mut self, item: impl Into<PopupMenuItem>) -> Self {
         let item: PopupMenuItem = item.into();
-        self.menu_items.push(item);
+        let checkable = item.is_checked();
+        self.push_item(item, checkable);
         self
     }
 
@@ -668,13 +723,19 @@ impl PopupMenu {
         action: Box<dyn Action>,
         disabled: bool,
         checked: bool,
+        checkable: bool,
     ) -> &mut Self {
-        self.menu_items.push(
-            PopupMenuItem::new(label)
-                .when_some(icon, |item, icon| item.icon(icon))
-                .disabled(disabled)
-                .checked(checked)
-                .action(action),
+        let item = PopupMenuItem::new(label)
+            .when_some(icon, |item, icon| item.icon(icon))
+            .disabled(disabled)
+            .action(action);
+        self.push_item(
+            if checkable {
+                item.checked(checked)
+            } else {
+                item
+            },
+            checkable,
         );
         self
     }
@@ -694,8 +755,21 @@ impl PopupMenu {
                     name,
                     action,
                     checked,
+                    disabled,
                     ..
-                } => self = self.menu_with_check(name, checked, action.boxed_clone()),
+                } => {
+                    // OwnedMenuItem cannot distinguish an unchecked checkbox from a regular action.
+                    self = if checked {
+                        self.menu_with_check_and_disabled(
+                            name,
+                            true,
+                            action.boxed_clone(),
+                            disabled,
+                        )
+                    } else {
+                        self.menu_with_disabled(name, action.boxed_clone(), disabled)
+                    }
+                }
                 OwnedMenuItem::Separator => {
                     self = self.separator();
                 }
@@ -1120,8 +1194,10 @@ impl PopupMenu {
         let is_submenu = matches!(item, PopupMenuItem::Submenu { .. });
         let group_name = format!("{}:item-{}", cx.entity().entity_id(), ix);
         let item_height = tokens.item_height;
+        let (a11y_role, a11y_label, a11y_toggled) = self.item_a11y(ix);
 
         let this = MenuItemElement::new(ix, &group_name)
+            .a11y(a11y_role, a11y_label, a11y_toggled)
             .relative()
             .text_size(tokens.label_size)
             .py_0()
@@ -1424,6 +1500,7 @@ impl Render for PopupMenu {
 
         let content = v_flex()
             .id("popup-menu")
+            .role(Role::Menu)
             .key_context(CONTEXT)
             .track_focus(&self.focus_handle)
             .on_action(cx.listener(Self::select_up))
@@ -1480,7 +1557,11 @@ impl Render for PopupMenu {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use gpui::{Corner, Empty, TestAppContext, VisualTestContext};
+    use std::cell::RefCell;
+
+    use gpui::{AccessibleAction, Corner, Empty, TestAppContext, VisualTestContext, actions};
+
+    actions!(popup_menu_test, [Toggle]);
 
     fn new_popup_menu(
         cx: &mut TestAppContext,
@@ -1540,5 +1621,129 @@ mod tests {
         menu.read_with(&cx, |menu, _| {
             assert_eq!(menu.selected_index, None);
         });
+    }
+
+    #[gpui::test]
+    fn test_popup_menu_projects_owned_action_disabled_state(cx: &mut TestAppContext) {
+        let (_window, mut cx, _) = new_popup_menu(cx);
+        let menu = cx.update(|window, cx| {
+            PopupMenu::build(window, cx, |menu, window, cx| {
+                menu.with_menu_items(
+                    [OwnedMenuItem::Action {
+                        name: "Toggle".to_string(),
+                        action: Box::new(Toggle),
+                        os_action: None,
+                        checked: true,
+                        disabled: true,
+                    }],
+                    window,
+                    cx,
+                )
+            })
+        });
+
+        menu.read_with(&cx, |menu, _| {
+            let PopupMenuItem::Item {
+                checked, disabled, ..
+            } = &menu.menu_items[0]
+            else {
+                panic!("owned action should project to a popup menu item");
+            };
+            assert!(*checked);
+            assert!(*disabled);
+        });
+    }
+
+    #[gpui::test]
+    fn checkable_popup_menu_builders_preserve_accessibility_state(cx: &mut TestAppContext) {
+        let (_window, mut cx, _) = new_popup_menu(cx);
+        let menu = cx.update(|window, cx| {
+            PopupMenu::build(window, cx, |menu, _, _| {
+                menu.menu_with_check_and_disabled("Off", false, Box::new(Toggle), true)
+                    .menu_with_check("On", true, Box::new(Toggle))
+                    .item(PopupMenuItem::new("Direct").checked(true))
+            })
+        });
+
+        menu.read_with(&cx, |menu, _| {
+            let (role, label, toggled) = menu.item_a11y(0);
+            assert_eq!(role, Some(Role::MenuItemCheckBox));
+            assert_eq!(label.as_deref(), Some("Off"));
+            assert_eq!(toggled, Some(Toggled::False));
+            assert!(menu.menu_items[0].is_disabled());
+
+            let (role, label, toggled) = menu.item_a11y(1);
+            assert_eq!(role, Some(Role::MenuItemCheckBox));
+            assert_eq!(label.as_deref(), Some("On"));
+            assert_eq!(toggled, Some(Toggled::True));
+
+            let (role, label, toggled) = menu.item_a11y(2);
+            assert_eq!(role, Some(Role::MenuItemCheckBox));
+            assert_eq!(label.as_deref(), Some("Direct"));
+            assert_eq!(toggled, Some(Toggled::True));
+        });
+    }
+
+    #[gpui::test]
+    fn popup_menu_projects_accessibility_tree(cx: &mut TestAppContext) {
+        let menu_slot = Rc::new(RefCell::new(None));
+        let menu_for_root = menu_slot.clone();
+        let window = cx.update(|cx| {
+            crate::init(cx);
+            cx.open_window(Default::default(), |window, cx| {
+                let menu = PopupMenu::build(window, cx, |menu, _, _| {
+                    menu.menu_with_check_and_disabled("Off", false, Box::new(Toggle), true)
+                        .menu_with_check("On", true, Box::new(Toggle))
+                });
+                menu_for_root.replace(Some(menu.clone()));
+                cx.new(|cx| crate::Root::new(menu, window, cx))
+            })
+            .unwrap()
+        });
+        let menu = menu_slot.borrow_mut().take().unwrap();
+        let mut visual_cx = VisualTestContext::from_window(window.into(), cx);
+
+        let update = visual_cx.update(|window, cx| {
+            menu.update(cx, |menu, cx| menu.focus_handle.focus(window, cx));
+            window.set_a11y_active_for_test(true);
+            window.draw(cx).clear();
+            let update = window
+                .last_a11y_tree_for_test()
+                .cloned()
+                .expect("accessibility tree should be captured after drawing");
+            window.set_a11y_active_for_test(false);
+            update
+        });
+
+        let (menu_id, menu_node) = update
+            .nodes
+            .iter()
+            .find_map(|(id, node)| (node.role() == Role::Menu).then_some((*id, node)))
+            .expect("popup menu node should be present");
+        assert!(menu_node.supports_action(AccessibleAction::Focus));
+        assert_eq!(update.focus, menu_id);
+
+        let off = update
+            .nodes
+            .iter()
+            .find_map(|(_, node)| {
+                (node.role() == Role::MenuItemCheckBox && node.label() == Some("Off"))
+                    .then_some(node)
+            })
+            .expect("unchecked checkable item should be present");
+        assert_eq!(off.toggled(), Some(Toggled::False));
+        assert!(off.is_disabled());
+        assert!(!off.supports_action(AccessibleAction::Click));
+
+        let on = update
+            .nodes
+            .iter()
+            .find_map(|(_, node)| {
+                (node.role() == Role::MenuItemCheckBox && node.label() == Some("On"))
+                    .then_some(node)
+            })
+            .expect("checked checkable item should be present");
+        assert_eq!(on.toggled(), Some(Toggled::True));
+        assert!(on.supports_action(AccessibleAction::Click));
     }
 }

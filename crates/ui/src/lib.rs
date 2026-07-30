@@ -24,6 +24,9 @@ mod window_border;
 mod window_ext;
 mod window_shell;
 
+#[cfg(test)]
+mod a11y_tests;
+
 pub(crate) mod actions;
 
 pub mod accordion;

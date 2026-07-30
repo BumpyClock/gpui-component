@@ -457,7 +457,8 @@ impl RenderOnce for Button {
         self.base
             .role(Role::Button)
             .when_some(aria_label, |this, label| this.aria_label(label))
-            .when(!self.disabled, |this| {
+            .aria_disabled(is_disabled)
+            .when(!is_disabled, |this| {
                 this.track_focus(
                     &focus_handle
                         .tab_index(self.tab_index)
@@ -548,8 +549,8 @@ impl RenderOnce for Button {
             })
             .refine_style(&self.style)
             .on_mouse_down(MouseButton::Left, move |_, window, cx| {
-                // Stop handle any click event when disabled.
-                // To avoid handle dropdown menu open when button is disabled.
+                // Keep the mouse-down barrier so a disabled or loading button cannot arm an
+                // ancestor's click listener while omitting its own accessible Click action.
                 if is_disabled {
                     cx.stop_propagation();
                     return;
@@ -558,16 +559,9 @@ impl RenderOnce for Button {
                 // Avoid focus on mouse down.
                 window.prevent_default();
             })
-            .when_some(self.on_click, |this, on_click| {
-                this.on_click(move |event, window, cx| {
-                    // Stop handle any click event when disabled.
-                    // To avoid handle dropdown menu open when button is disabled.
-                    if !clickable {
-                        cx.stop_propagation();
-                        return;
-                    }
-
-                    on_click(event, window, cx);
+            .when(clickable, |this| {
+                this.when_some(self.on_click, |this, on_click| {
+                    this.on_click(move |event, window, cx| on_click(event, window, cx))
                 })
             })
             .when_some(self.on_hover.filter(|_| hoverable), |this, on_hover| {
@@ -1005,6 +999,49 @@ impl ButtonVariant {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gpui::AppContext as _;
+    use std::{cell::Cell, rc::Rc};
+
+    struct ButtonPropagationFixture {
+        parent_clicks: Rc<Cell<usize>>,
+    }
+
+    impl gpui::Render for ButtonPropagationFixture {
+        fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
+            let disabled_parent_clicks = self.parent_clicks.clone();
+            let loading_parent_clicks = self.parent_clicks.clone();
+
+            crate::v_flex()
+                .child(
+                    div()
+                        .id("disabled-button-parent")
+                        .debug_selector(|| "disabled-button-parent".into())
+                        .on_click(move |_, _, _| {
+                            disabled_parent_clicks.set(disabled_parent_clicks.get() + 1)
+                        })
+                        .child(
+                            Button::new("disabled-button")
+                                .label("Disabled")
+                                .disabled(true)
+                                .on_click(|_, _, _| {}),
+                        ),
+                )
+                .child(
+                    div()
+                        .id("loading-button-parent")
+                        .debug_selector(|| "loading-button-parent".into())
+                        .on_click(move |_, _, _| {
+                            loading_parent_clicks.set(loading_parent_clicks.get() + 1)
+                        })
+                        .child(
+                            Button::new("loading-button")
+                                .label("Loading")
+                                .loading(true)
+                                .on_click(|_, _, _| {}),
+                        ),
+                )
+        }
+    }
 
     #[gpui::test]
     fn test_button_builder(_cx: &mut gpui::TestAppContext) {
@@ -1052,6 +1089,33 @@ mod tests {
         // Loading button should not be clickable
         let loading = Button::new("test").loading(true).on_click(|_, _, _| {});
         assert!(!loading.clickable());
+    }
+
+    #[gpui::test]
+    fn test_disabled_and_loading_buttons_stop_parent_clicks(cx: &mut gpui::TestAppContext) {
+        let parent_clicks = Rc::new(Cell::new(0));
+        let parent_clicks_for_root = parent_clicks.clone();
+        let window = cx.update(|cx| {
+            crate::init(cx);
+            cx.open_window(Default::default(), |window, cx| {
+                let fixture = cx.new(|_| ButtonPropagationFixture {
+                    parent_clicks: parent_clicks_for_root,
+                });
+                cx.new(|cx| crate::Root::new(fixture, window, cx))
+            })
+            .unwrap()
+        });
+        let mut visual_cx = gpui::VisualTestContext::from_window(window.into(), cx);
+
+        visual_cx.update(|window, cx| window.draw(cx).clear());
+        for selector in ["disabled-button-parent", "loading-button-parent"] {
+            let bounds = visual_cx
+                .debug_bounds(selector)
+                .expect("button parent should have debug bounds");
+            visual_cx.simulate_click(bounds.center(), gpui::Modifiers::none());
+        }
+
+        assert_eq!(parent_clicks.get(), 0);
     }
 
     #[gpui::test]

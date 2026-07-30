@@ -1,8 +1,8 @@
 use crate::{ActiveTheme, Disableable, Icon, Selectable, Sizable as _, StyledExt, h_flex};
 use gpui::{
     AnyElement, App, ClickEvent, Div, ElementId, InteractiveElement, IntoElement, MouseMoveEvent,
-    ParentElement, RenderOnce, Stateful, StatefulInteractiveElement as _, StyleRefinement, Styled,
-    Window, div, prelude::FluentBuilder as _,
+    ParentElement, RenderOnce, Role, Stateful, StatefulInteractiveElement as _, StyleRefinement,
+    Styled, Window, div, prelude::FluentBuilder as _,
 };
 use smallvec::SmallVec;
 
@@ -160,6 +160,11 @@ impl RenderOnce for ListItem {
         let is_selectable = !(self.disabled || self.mode.is_separator());
 
         self.base
+            .when(!self.mode.is_separator(), |this| {
+                this.role(Role::ListBoxOption)
+                    .aria_selected(self.selected)
+                    .aria_disabled(self.disabled)
+            })
             .relative()
             .gap_x_1()
             .py_1()

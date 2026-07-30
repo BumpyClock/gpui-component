@@ -12,7 +12,7 @@ previous_release_gpui_rev = "2a03ae6e789b77e98f9d9bd5489758a082313c75"
 
 [gpui]
 repository = "https://github.com/BumpyClock/gpui"
-rev = "d1a6019136eb9fb9386eaa047a7445c1032d8668"
+rev = "67c20f3ae1046aa873591ff4b44953b53df37bc4"
 zed_repository = "https://github.com/zed-industries/zed"
 zed_upstream_base = "2c4e44704c37ee87e59ac84e3e17388178b28545"
 
@@ -73,11 +73,11 @@ target = "aarch64-apple-darwin"
 build = "verified"
 unit = "verified"
 headless = "verified"
-native_runtime = "verified"
+native_runtime = "not-verified"
 renderer = "not-verified"
 package = "not-verified"
 maturity = "preview"
-notes = "Locked workspace build, unit suite, AppShell headless harness, and native AppShell launch/quit smokes passed locally on macOS; renderer presentation was not separately verified."
+notes = "Locked workspace build, unit suite, and AppShell headless harness passed locally. All six Stage 1 macos-metal scenarios passed local source-blind validation, including exact AppKit display/window groups, Metal backend-accepted evidence, and the external pbpaste clipboard handshake. No immutable retained CI evidence references that local run, so published native-runtime and renderer status remain not-verified."
 
 [[platforms]]
 name = "Windows"
@@ -89,7 +89,7 @@ native_runtime = "not-verified"
 renderer = "not-verified"
 package = "not-verified"
 maturity = "experimental"
-notes = "Earlier CI compiled Windows, but the uncommitted 0.7 compatibility line has not run there; no native DirectX present surface is exercised."
+notes = "The Stage 1 WARP job is configured but has not run. Native Windows lifecycle/window/presentation runtime remains unrun for this compatibility line, and WM_QUERYENDSESSION/WM_ENDSESSION are unsupported."
 
 [[platforms]]
 name = "Linux X11"
@@ -101,7 +101,7 @@ native_runtime = "not-verified"
 renderer = "not-verified"
 package = "not-verified"
 maturity = "experimental"
-notes = "X11 implementation and earlier compile evidence exist, but the uncommitted 0.7 line has not run on Linux; CI has no stable display and Vulkan presentation evidence."
+notes = "The Stage 1 Xvfb/lavapipe job is configured but has not run. Source and compile evidence exist; live Linux X11 lifecycle/window/presentation runtime remains unrun."
 
 [[platforms]]
 name = "Linux Wayland"
@@ -113,4 +113,4 @@ native_runtime = "not-verified"
 renderer = "not-verified"
 package = "not-verified"
 maturity = "experimental"
-notes = "Wayland implementation exists, but the uncommitted 0.7 line has not run on Linux and prior CI did not isolate or exercise a Wayland session."
+notes = "The Stage 1 normal-Weston and private clipboard-fixture topology is configured but has not run in GitHub Actions. A pinned Weston 16 build, normal compositor readiness probe, and fixture TAP probe passed in Ubuntu 24.04 Docker; live GPUI Wayland lifecycle/window/presentation runtime remains unrun."

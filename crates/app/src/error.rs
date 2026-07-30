@@ -100,6 +100,10 @@ pub enum AppShellError {
         source: anyhow::Error,
     },
 
+    /// The GPUI platform could not be constructed.
+    #[error("failed to initialize application platform")]
+    Platform(#[source] anyhow::Error),
+
     /// The application startup transaction failed.
     #[error("application startup failed")]
     Startup(#[source] anyhow::Error),

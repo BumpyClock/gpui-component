@@ -3,7 +3,6 @@ use gpui::{
     InteractiveElement, Interactivity, IntoElement, LayoutId, ParentElement, Pixels,
     StatefulInteractiveElement, StyleRefinement, Styled, WeakFocusHandle, Window,
 };
-use std::collections::HashMap;
 
 /// Initialize the focus trap manager as a global
 pub(crate) fn init(cx: &mut App) {
@@ -51,8 +50,8 @@ impl<T: InteractiveElement + Sized> FocusTrapElement for T {}
 
 /// Global state to manage all focus trap containers
 pub(crate) struct FocusTrapManager {
-    /// Map from container element ID to its focus trap info
-    traps: HashMap<GlobalElementId, WeakFocusHandle>,
+    /// Traps in layout order. Nested containers register after their parents.
+    traps: Vec<(GlobalElementId, WeakFocusHandle)>,
 }
 
 impl Global for FocusTrapManager {}
@@ -60,9 +59,7 @@ impl Global for FocusTrapManager {}
 impl FocusTrapManager {
     /// Create a new focus trap manager
     fn new() -> Self {
-        Self {
-            traps: HashMap::new(),
-        }
+        Self { traps: Vec::new() }
     }
 
     pub(crate) fn global(cx: &App) -> &Self {
@@ -76,13 +73,16 @@ impl FocusTrapManager {
     /// Register a focus trap container
     fn register_trap(id: &GlobalElementId, container_handle: WeakFocusHandle, cx: &mut App) {
         let this = Self::global_mut(cx);
-        this.traps.insert(id.clone(), container_handle);
         this.cleanup();
+        if let Some(index) = this.traps.iter().position(|(existing, _)| existing == id) {
+            this.traps.remove(index);
+        }
+        this.traps.push((id.clone(), container_handle));
     }
 
-    /// Find which focus trap contains the currently focused element
+    /// Find the innermost focus trap containing the currently focused element.
     pub(crate) fn find_active_trap(window: &Window, cx: &App) -> Option<FocusHandle> {
-        for (_id, container_handle) in Self::global(cx).traps.iter() {
+        for (_, container_handle) in Self::global(cx).traps.iter().rev() {
             let Some(container) = container_handle.upgrade() else {
                 continue;
             };
@@ -96,7 +96,7 @@ impl FocusTrapManager {
 
     /// Cleanup any traps with dropped handles
     fn cleanup(&mut self) {
-        self.traps.retain(|_, handle| handle.upgrade().is_some());
+        self.traps.retain(|(_, handle)| handle.upgrade().is_some());
     }
 }
 
@@ -218,5 +218,148 @@ impl<E: InteractiveElement + ParentElement + Styled + Element + 'static> Element
             window,
             cx,
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use gpui::{
+        AppContext as _, Context, FocusHandle, IntoElement, Render, TestAppContext, Window, div, px,
+    };
+
+    struct NestedFocusTraps {
+        outer: FocusHandle,
+        inner: FocusHandle,
+        focused: FocusHandle,
+    }
+
+    impl Render for NestedFocusTraps {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .id("outer-trap")
+                .size_full()
+                .child(
+                    div()
+                        .id("inner-trap")
+                        .child(
+                            div()
+                                .id("inner-focus")
+                                .w(px(10.))
+                                .h(px(10.))
+                                .track_focus(&self.focused),
+                        )
+                        .focus_trap("inner-trap", &self.inner),
+                )
+                .focus_trap("outer-trap", &self.outer)
+        }
+    }
+
+    struct DynamicNestedFocusTraps {
+        outer: FocusHandle,
+        inner: FocusHandle,
+        focused: FocusHandle,
+        wrap_inner: bool,
+    }
+
+    impl Render for DynamicNestedFocusTraps {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            let inner = div()
+                .id("inner-trap")
+                .child(
+                    div()
+                        .id("inner-focus")
+                        .w(px(10.))
+                        .h(px(10.))
+                        .track_focus(&self.focused),
+                )
+                .focus_trap("inner-trap", &self.inner)
+                .into_any_element();
+
+            if self.wrap_inner {
+                div()
+                    .id("outer-trap")
+                    .size_full()
+                    .child(inner)
+                    .focus_trap("outer-trap", &self.outer)
+                    .into_any_element()
+            } else {
+                inner
+            }
+        }
+    }
+
+    #[gpui::test]
+    fn nested_focus_trap_prefers_inner_container(cx: &mut TestAppContext) {
+        cx.update(init);
+        let (outer, inner, focused) =
+            cx.update(|cx| (cx.focus_handle(), cx.focus_handle(), cx.focus_handle()));
+        let window: gpui::AnyWindowHandle = cx
+            .add_window({
+                let inner = inner.clone();
+                let focused = focused.clone();
+                move |_, _| NestedFocusTraps {
+                    outer,
+                    inner,
+                    focused,
+                }
+            })
+            .into();
+
+        cx.update_window(window, |_, window, cx| {
+            window.focus(&focused, cx);
+            window.draw(cx).clear();
+        })
+        .unwrap();
+
+        let active = cx
+            .update_window(window, |_, window, cx| {
+                FocusTrapManager::find_active_trap(window, cx)
+            })
+            .unwrap();
+        assert_eq!(active, Some(inner));
+    }
+
+    #[gpui::test]
+    fn nested_focus_trap_reregistration_preserves_current_layout_order(cx: &mut TestAppContext) {
+        cx.update(init);
+        let (outer, inner, focused) =
+            cx.update(|cx| (cx.focus_handle(), cx.focus_handle(), cx.focus_handle()));
+        let window = cx.add_window({
+            let inner = inner.clone();
+            let focused = focused.clone();
+            move |_, _| DynamicNestedFocusTraps {
+                outer,
+                inner,
+                focused,
+                wrap_inner: false,
+            }
+        });
+        let any_window: gpui::AnyWindowHandle = window.into();
+
+        cx.update_window(any_window, |_, window, cx| {
+            window.focus(&focused, cx);
+            window.draw(cx).clear();
+        })
+        .unwrap();
+
+        window
+            .update(cx, |view, _, cx| {
+                view.wrap_inner = true;
+                cx.notify();
+            })
+            .unwrap();
+        cx.update_window(any_window, |_, window, cx| {
+            window.focus(&focused, cx);
+            window.draw(cx).clear();
+        })
+        .unwrap();
+
+        let active = cx
+            .update_window(any_window, |_, window, cx| {
+                FocusTrapManager::find_active_trap(window, cx)
+            })
+            .unwrap();
+        assert_eq!(active, Some(inner));
     }
 }

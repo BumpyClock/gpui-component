@@ -610,6 +610,23 @@ fn strict_package_commands_do_not_allow_dirty_worktrees() {
 }
 
 #[test]
+fn headless_test_command_enables_test_support() {
+    assert_eq!(
+        cargo_headless_test_args(),
+        [
+            "test",
+            "--locked",
+            "-p",
+            "gpui-component-app",
+            "--test",
+            "headless",
+            "--features",
+            "test-support",
+        ]
+    );
+}
+
+#[test]
 fn rejects_publishable_package_with_git_only_normal_dependency() {
     let package = CargoPackage {
         id: "published 1.0.0".into(),

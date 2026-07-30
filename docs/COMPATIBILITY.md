@@ -13,7 +13,7 @@ read_when: "updating GPUI pins, packaging crates, or preparing a release"
 - Repository-pinned toolchain: `1.95.0` (not installed in this environment)
 - Audit host toolchain: `1.97.1`
 - GPUI repository: `https://github.com/BumpyClock/gpui`
-- GPUI commit: `d1a6019136eb9fb9386eaa047a7445c1032d8668`
+- GPUI commit: `67c20f3ae1046aa873591ff4b44953b53df37bc4`
 - Zed upstream: `https://github.com/zed-industries/zed`
 - Zed upstream base: `2c4e44704c37ee87e59ac84e3e17388178b28545`
 
@@ -36,15 +36,15 @@ read_when: "updating GPUI pins, packaging crates, or preparing a release"
 
 | Platform | Target | Build | Unit | Headless | Native runtime | Renderer presentation | Package artifact | Maturity |
 |---|---|---|---|---|---|---|---|---|
-| macOS | `aarch64-apple-darwin` | verified | verified | verified | verified | not-verified | not-verified | preview |
+| macOS | `aarch64-apple-darwin` | verified | verified | verified | not-verified | not-verified | not-verified | preview |
 | Windows | `x86_64-pc-windows-msvc` | not-verified | not-verified | not-verified | not-verified | not-verified | not-verified | experimental |
 | Linux X11 | `x86_64-unknown-linux-gnu` | not-verified | not-verified | not-verified | not-verified | not-verified | not-verified | experimental |
 | Linux Wayland | `x86_64-unknown-linux-gnu` | not-verified | not-verified | not-verified | not-verified | not-verified | not-verified | experimental |
 
-- **macOS:** Locked workspace build, unit suite, AppShell headless harness, and native AppShell launch/quit smokes passed locally on macOS; renderer presentation was not separately verified.
-- **Windows:** Earlier CI compiled Windows, but the uncommitted 0.7 compatibility line has not run there; no native DirectX present surface is exercised.
-- **Linux X11:** X11 implementation and earlier compile evidence exist, but the uncommitted 0.7 line has not run on Linux; CI has no stable display and Vulkan presentation evidence.
-- **Linux Wayland:** Wayland implementation exists, but the uncommitted 0.7 line has not run on Linux and prior CI did not isolate or exercise a Wayland session.
+- **macOS:** Locked workspace build, unit suite, and AppShell headless harness passed locally. All six Stage 1 macos-metal scenarios passed local source-blind validation, including exact AppKit display/window groups, Metal backend-accepted evidence, and the external pbpaste clipboard handshake. No immutable retained CI evidence references that local run, so published native-runtime and renderer status remain not-verified.
+- **Windows:** The Stage 1 WARP job is configured but has not run. Native Windows lifecycle/window/presentation runtime remains unrun for this compatibility line, and WM_QUERYENDSESSION/WM_ENDSESSION are unsupported.
+- **Linux X11:** The Stage 1 Xvfb/lavapipe job is configured but has not run. Source and compile evidence exist; live Linux X11 lifecycle/window/presentation runtime remains unrun.
+- **Linux Wayland:** The Stage 1 normal-Weston and private clipboard-fixture topology is configured but has not run in GitHub Actions. A pinned Weston 16 build, normal compositor readiness probe, and fixture TAP probe passed in Ubuntu 24.04 Docker; live GPUI Wayland lifecycle/window/presentation runtime remains unrun.
 
 ## crates.io readiness
 

@@ -16,11 +16,15 @@ model.
 
 ## Try it
 
-Run the conformance app:
+Run the AppShell conformance example:
 
 ```bash
 cargo run -p app_shell
 ```
+
+The separate non-publishable `gpui-component-conformance` executable drives
+Stage 1 native scenarios and emits the JSONL evidence contract described in
+[Testing and Runtime Evidence](runtime-evidence.md).
 
 Or run `cargo run -p gpui-component-story` and select **App Shell**. The story
 previews standard menus, Settings/About actions, launch and liveness policies,
@@ -165,8 +169,26 @@ activation, and idle-exit evaluation. It may consume prebuilt app state, create
 fallible path-aware services from `cx.app_info()`, install GPUI globals/entities,
 register product commands, and open initial windows.
 
-A returned startup error is fatal and produces `AppShellError::Startup`. AppShell
-closes its proxy and runs initialized plugin shutdown in reverse exactly once.
+A platform-construction failure is returned as `AppShellError::Platform` before
+AppShell enters GPUI; it does not panic or create a proxy. A returned startup
+error after platform construction is also fatal and produces
+`AppShellError::Startup`; AppShell closes its proxy and runs initialized plugin
+shutdown in reverse exactly once.
+
+Orderly native and headless shutdown returns from `AppShellBuilder::run`. First
+quit admission closes cross-thread proxy dispatch, invokes quit observers once,
+and runs initialized plugin teardown once in reverse order. Repeated quit is a
+no-op. GPUI gives all shutdown futures one shared 100 ms completion window;
+settings stores claim that same absolute deadline for one bounded best-effort
+flush. Launch-time quit, posted/cross-thread quit, zero-window launch,
+final-window close, and supported OS quit requests converge on this path.
+AppShell does not turn Windows `WM_QUERYENDSESSION` or `WM_ENDSESSION` into an
+orderly quit yet. Web and caller-owned embedded lifecycle remain GPUI host
+contracts rather than AppShell native-run modes.
+
+The normal-return behavior requires the Stage 1 GPUI lifecycle contract. Until
+this workspace pins that GPUI revision, validate it only through the
+[documented disposable local override](../learned/gpui-submodule.md).
 External resources created during `start` should therefore use RAII ownership;
 the transaction does not roll back arbitrary external side effects.
 
@@ -202,7 +224,8 @@ Use `menus(MenuPlan)` for exact custom ordering. Do not combine
 
 Register each schema under a stable `StoreKey`. Settings are stored below the
 identity-derived config directory with schema envelopes, migrations, validation,
-debounced atomic writes, and bounded orderly-shutdown flush.
+debounced atomic writes, and a bounded best-effort shutdown flush attempt. A
+blocked store or elapsed shutdown budget can leave pending changes unwritten.
 
 Settings stores are not secret stores. Backups deliberately create more copies;
 use an OS credential service for tokens and passwords.
@@ -254,7 +277,9 @@ error before GPUI platform construction.
 | Typed singleton content access | Not implemented; type/root reuse is guarded |
 | Binding contexts and user keymaps | Not implemented |
 | Existing React/WebView apps | Require a native UI rewrite for full Linux parity |
+| Windows session end | `WM_QUERYENDSESSION` / `WM_ENDSESSION` are unsupported by the orderly lifecycle path |
 
-See [AppShell platform compatibility](../COMPATIBILITY.md#appshell-platform-support)
-and the [Agent Term parity audit](../learned/agent-term-appshell-parity.md) before
-making replacement claims.
+See the [generated compatibility matrix](../COMPATIBILITY.md),
+[Testing and Runtime Evidence](runtime-evidence.md), and the
+[Agent Term parity audit](../learned/agent-term-appshell-parity.md) before making
+replacement claims.

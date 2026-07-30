@@ -1,6 +1,7 @@
 use std::any::{Any, TypeId};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, mpsc};
+use std::time::Instant;
 
 use gpui::BorrowAppContext;
 
@@ -17,8 +18,11 @@ pub(super) trait ErasedSettingsEntry {
     fn version(&self) -> u64;
     fn last_error(&self) -> Option<String>;
     fn flush(&mut self) -> Result<(), SettingsError>;
-    fn flush_for_exit(&mut self) -> Result<(), SettingsError>;
+    fn flush_for_exit(&mut self, deadline: Instant) -> Result<(), SettingsError>;
 }
+
+#[cfg(test)]
+pub(super) type ExitFlushHook = Arc<dyn Fn() -> Result<(), SettingsError> + Send + Sync>;
 
 pub(super) struct SettingsEntry<T: AppSettings> {
     pub(super) key: String,
@@ -31,6 +35,8 @@ pub(super) struct SettingsEntry<T: AppSettings> {
     pub(super) version: u64,
     pub(super) lifecycle_error: Option<String>,
     pub(super) exit_flushed: bool,
+    #[cfg(test)]
+    pub(super) exit_flush_hook: Option<ExitFlushHook>,
 }
 
 impl<T: AppSettings> SettingsEntry<T> {
@@ -127,36 +133,23 @@ impl<T: AppSettings> ErasedSettingsEntry for SettingsEntry<T> {
         }
     }
 
-    fn flush_for_exit(&mut self) -> Result<(), SettingsError> {
+    fn flush_for_exit(&mut self, deadline: Instant) -> Result<(), SettingsError> {
         if self.exit_flushed {
             return Ok(());
         }
         let store = Arc::clone(&self.store);
-        let (tx, rx) = mpsc::channel();
-        let key = self.key.clone();
-        if let Err(error) = std::thread::Builder::new()
-            .name("gpui-settings-flush".to_string())
-            .spawn(move || {
-                let _ = tx.send(store.flush());
-            })
-        {
-            let error = SettingsError::FlushWorker(error.to_string());
-            self.lifecycle_error = Some(error.to_string());
-            return Err(error);
-        }
-
-        let result = match rx.recv_timeout(EXIT_FLUSH_TIMEOUT) {
-            Ok(result) => result.map_err(SettingsError::from),
-            Err(_) => Err(SettingsError::FlushTimedOut {
-                key,
-                timeout: EXIT_FLUSH_TIMEOUT,
-            }),
-        };
+        #[cfg(test)]
+        let exit_flush_hook = self.exit_flush_hook.clone();
+        let result = run_exit_flush(self.key.clone(), deadline, move || {
+            #[cfg(test)]
+            if let Some(hook) = exit_flush_hook {
+                return hook();
+            }
+            store.flush().map_err(SettingsError::from)
+        });
         match &result {
-            // Only a genuinely completed flush marks the exit flush done. A
-            // timeout or worker error must NOT set `exit_flushed`, otherwise the
-            // next call would short-circuit to `Ok(())` and silently suppress the
-            // unreported persistence failure.
+            // Only a genuinely completed direct entry flush marks it done. The
+            // registry owns one-shot shutdown coordination and reports failures.
             Ok(()) => {
                 self.exit_flushed = true;
                 self.lifecycle_error = None;
@@ -167,9 +160,63 @@ impl<T: AppSettings> ErasedSettingsEntry for SettingsEntry<T> {
     }
 }
 
+fn run_exit_flush(
+    key: String,
+    deadline: Instant,
+    flush: impl FnOnce() -> Result<(), SettingsError> + Send + 'static,
+) -> Result<(), SettingsError> {
+    let timeout = deadline.saturating_duration_since(Instant::now());
+    if timeout.is_zero() {
+        return Err(SettingsError::FlushTimedOut { key, timeout });
+    }
+
+    let (tx, rx) = mpsc::channel();
+    if let Err(error) = std::thread::Builder::new()
+        .name("gpui-settings-flush".to_string())
+        .spawn(move || {
+            let _ = tx.send(flush());
+        })
+    {
+        return Err(SettingsError::FlushWorker(error.to_string()));
+    }
+
+    let timeout = deadline.saturating_duration_since(Instant::now());
+    if timeout.is_zero() {
+        return Err(SettingsError::FlushTimedOut { key, timeout });
+    }
+    match rx.recv_timeout(timeout) {
+        Ok(result) => result,
+        Err(_) => Err(SettingsError::FlushTimedOut { key, timeout }),
+    }
+}
+
+#[derive(Default)]
+struct ExitFlushCoordinator {
+    deadline: Option<Instant>,
+    claimed: HashSet<String>,
+}
+
+impl ExitFlushCoordinator {
+    fn claim(&mut self, key: &str) -> Option<Instant> {
+        if !self.claimed.insert(key.to_string()) {
+            return None;
+        }
+        Some(
+            *self
+                .deadline
+                .get_or_insert_with(|| Instant::now() + EXIT_FLUSH_TIMEOUT),
+        )
+    }
+
+    fn expire(&mut self) {
+        self.deadline = Some(Instant::now());
+    }
+}
+
 #[derive(Default)]
 pub(super) struct SettingsRegistry {
     pub(super) entries: HashMap<String, Box<dyn ErasedSettingsEntry>>,
+    exit_flush: ExitFlushCoordinator,
 }
 
 impl gpui::Global for SettingsRegistry {}
@@ -197,6 +244,20 @@ impl SettingsRegistry {
             .ok_or_else(|| SettingsError::NotRegistered(key.as_str().to_string()))?;
         ensure_type::<T>(entry.as_ref(), key)?;
         Ok(entry.as_mut())
+    }
+
+    pub(super) fn flush_for_exit<T: AppSettings>(
+        &mut self,
+        key: &StoreKey,
+    ) -> Result<(), SettingsError> {
+        let Some(deadline) = self.exit_flush.claim(&key.filename()) else {
+            return Ok(());
+        };
+        let result = self.entry_mut::<T>(key)?.flush_for_exit(deadline);
+        if matches!(&result, Err(SettingsError::FlushTimedOut { .. })) {
+            self.exit_flush.expire();
+        }
+        result
     }
 }
 

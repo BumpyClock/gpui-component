@@ -93,6 +93,8 @@ pub struct PlatformRunner {
 enum RunnerKind {
     Native,
     Headless,
+    #[cfg(test)]
+    Failing,
 }
 
 impl PlatformRunner {
@@ -110,10 +112,21 @@ impl PlatformRunner {
         }
     }
 
-    fn build(self) -> Application {
+    #[cfg(test)]
+    fn failing() -> Self {
+        Self {
+            kind: RunnerKind::Failing,
+        }
+    }
+
+    fn build(self) -> Result<Application, AppShellError> {
         match self.kind {
-            RunnerKind::Native => gpui_platform::application(),
-            RunnerKind::Headless => gpui_platform::headless(),
+            RunnerKind::Native => gpui_platform::try_application().map_err(AppShellError::Platform),
+            RunnerKind::Headless => gpui_platform::try_headless().map_err(AppShellError::Platform),
+            #[cfg(test)]
+            RunnerKind::Failing => Err(AppShellError::Platform(anyhow::anyhow!(
+                "test platform construction failure"
+            ))),
         }
     }
 }
@@ -406,7 +419,7 @@ impl AppShellBuilder {
         let launch = LaunchRequest::from_env();
 
         // ---- ConfigureApp ----
-        let mut application = runner.build().with_assets(ChainedAssets::new(assets));
+        let mut application = runner.build()?.with_assets(ChainedAssets::new(assets));
         if let Some(configure) = configure_app {
             application = configure(application)?;
         }
@@ -456,19 +469,10 @@ impl AppShellBuilder {
         let error_slot = Arc::clone(&error_cell);
         application.run(move |cx| {
             if let Err(err) = boot.run(cx) {
-                // On macOS and Windows `cx.quit()` terminates the process with
-                // status 0 before `Application::run` returns, which would
-                // convert a startup failure into a successful exit (and let
-                // broken boots pass the CI smoke gate). Initialized plugins
-                // were already unwound in reverse by `boot.run`'s error path,
-                // so exit directly with a failing status. On platforms where
-                // `run` returns, the error cell below still reports the same
-                // error.
+                // Boot already completed fatal teardown. Retain its error until
+                // the application loop returns, then surface it to the caller.
                 log::error!("app shell startup failed: {err}");
                 *error_slot.lock().expect("error cell poisoned") = Some(err);
-                if cfg!(any(target_os = "macos", target_os = "windows")) {
-                    std::process::exit(2);
-                }
                 cx.quit();
             }
         });
@@ -600,6 +604,19 @@ impl Boot {
 
         // DrainQueue: deliver Started, enable post-ready delivery, drain buffer.
         handles::deliver_event(cx, &AppEvent::Started(launch));
+        if cx
+            .global::<crate::handles::ShellState>()
+            .is_shutdown_requested()
+        {
+            // A Started handler may request quit synchronously. Do not publish
+            // queued launch events or activate after that shutdown boundary.
+            pending
+                .queue
+                .lock()
+                .expect("pending queue poisoned")
+                .clear();
+            return Ok(());
+        }
         let _ = pending.proxy.set(proxy);
         handles::drain_pending(cx);
         cx.global_mut::<crate::handles::ShellState>()
@@ -770,6 +787,297 @@ mod tests {
         }
     }
 
+    struct RecordingPlugin {
+        name: &'static str,
+        fail_init: bool,
+        log: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl crate::plugin::sealed::Sealed for RecordingPlugin {}
+
+    impl AppPlugin for RecordingPlugin {
+        fn init(&mut self, _cx: &mut App, _shell: &ShellSeed) -> Result<(), AppShellError> {
+            self.log
+                .lock()
+                .expect("recording plugin log poisoned")
+                .push(format!("{}:init", self.name));
+            if self.fail_init {
+                return Err(AppShellError::Service {
+                    service: self.name,
+                    source: anyhow::anyhow!("{} failed", self.name),
+                });
+            }
+            Ok(())
+        }
+
+        fn on_event(&mut self, event: &AppEvent, _cx: &mut App) -> Result<(), AppShellError> {
+            self.log
+                .lock()
+                .expect("recording plugin log poisoned")
+                .push(format!("{}:{}", self.name, event.name()));
+            Ok(())
+        }
+
+        fn shutdown(&mut self, _cx: &mut App) {
+            self.log
+                .lock()
+                .expect("recording plugin log poisoned")
+                .push(format!("{}:shutdown", self.name));
+        }
+    }
+
+    fn recording_plugin(
+        name: &'static str,
+        fail_init: bool,
+        log: Arc<Mutex<Vec<String>>>,
+    ) -> Box<dyn AppPlugin> {
+        Box::new(RecordingPlugin {
+            name,
+            fail_init,
+            log,
+        })
+    }
+
+    fn recording_handler(log: Arc<Mutex<Vec<String>>>, quit_on_started: bool) -> EventHandler {
+        Box::new(move |event, cx| {
+            log.lock()
+                .expect("recording handler log poisoned")
+                .push(format!("handler:{}", event.name()));
+            if quit_on_started && matches!(event, AppEvent::Started(_)) {
+                handles::request_quit(cx);
+            }
+            Ok(())
+        })
+    }
+
+    fn test_boot(
+        plugins: Vec<Box<dyn AppPlugin>>,
+        pending: Arc<PendingEvents>,
+        start: Option<StartCallback>,
+        log: Arc<Mutex<Vec<String>>>,
+    ) -> Boot {
+        Boot {
+            app_info: AppInfo::new(
+                identity(),
+                AppPaths::new("appshell-boot-tests", PathLayout::PlatformDefault)
+                    .expect("test paths resolve"),
+                PlatformCapabilities::detect(),
+            ),
+            liveness: Liveness::new(ExitPolicy::Explicit, InitialActivation::Passive),
+            initial_activation: InitialActivation::Passive,
+            plugins,
+            handlers: vec![recording_handler(log, false)],
+            pending,
+            state: HashMap::new(),
+            launch: LaunchRequest::default(),
+            start,
+            error_reporter: Box::new(|_, _| {}),
+        }
+    }
+
+    fn assert_shutdown_rejects_proxy(cx: &mut gpui::TestAppContext, expected_last: Phase) {
+        use crate::error::AppClosed;
+        use crate::handles::{AppShellExt, ShellState};
+
+        cx.update(|app| {
+            let proxy = app.app_proxy();
+            assert!(proxy.is_closed());
+            assert_eq!(proxy.dispatch(|_| {}), Err(AppClosed));
+            assert_eq!(
+                app.global::<ShellState>().phases().last(),
+                Some(expected_last)
+            );
+        });
+    }
+
+    #[gpui::test]
+    fn plugin_init_failure_unwinds_initialized_prefix_without_readiness(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let pending = Arc::new(PendingEvents::default());
+        pending.push(AppEvent::Reopened);
+        let boot = test_boot(
+            vec![
+                recording_plugin("first", false, Arc::clone(&log)),
+                recording_plugin("second", false, Arc::clone(&log)),
+                recording_plugin("broken", true, Arc::clone(&log)),
+            ],
+            Arc::clone(&pending),
+            None,
+            Arc::clone(&log),
+        );
+
+        let result = cx.update(|app| boot.run(app));
+
+        assert!(matches!(
+            result,
+            Err(AppShellError::Service {
+                service: "broken",
+                ..
+            })
+        ));
+        assert_eq!(
+            *log.lock().expect("recording plugin log poisoned"),
+            vec![
+                "first:init",
+                "second:init",
+                "broken:init",
+                "first:shutdown_requested",
+                "second:shutdown_requested",
+                "handler:shutdown_requested",
+                "first:will_exit",
+                "second:will_exit",
+                "handler:will_exit",
+                "second:shutdown",
+                "first:shutdown",
+            ]
+        );
+        assert!(
+            pending
+                .queue
+                .lock()
+                .expect("pending queue poisoned")
+                .is_empty(),
+            "fatal startup clears queued launch events"
+        );
+        assert_shutdown_rejects_proxy(cx, Phase::CoreServices);
+    }
+
+    #[gpui::test]
+    fn start_failure_unwinds_plugins_without_publishing_readiness(cx: &mut gpui::TestAppContext) {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let pending = Arc::new(PendingEvents::default());
+        pending.push(AppEvent::Reopened);
+        let start_log = Arc::clone(&log);
+        let boot = test_boot(
+            vec![
+                recording_plugin("first", false, Arc::clone(&log)),
+                recording_plugin("second", false, Arc::clone(&log)),
+            ],
+            Arc::clone(&pending),
+            Some(Box::new(move |_, _| {
+                start_log
+                    .lock()
+                    .expect("recording plugin log poisoned")
+                    .push("start".to_string());
+                Err(anyhow::anyhow!("start failed"))
+            })),
+            Arc::clone(&log),
+        );
+
+        let result = cx.update(|app| boot.run(app));
+
+        assert!(matches!(result, Err(AppShellError::Startup(_))));
+        assert_eq!(
+            *log.lock().expect("recording plugin log poisoned"),
+            vec![
+                "first:init",
+                "second:init",
+                "start",
+                "first:shutdown_requested",
+                "second:shutdown_requested",
+                "handler:shutdown_requested",
+                "first:will_exit",
+                "second:will_exit",
+                "handler:will_exit",
+                "second:shutdown",
+                "first:shutdown",
+            ]
+        );
+        assert!(
+            pending
+                .queue
+                .lock()
+                .expect("pending queue poisoned")
+                .is_empty(),
+            "fatal startup clears queued launch events"
+        );
+        assert_shutdown_rejects_proxy(cx, Phase::PluginInit);
+    }
+
+    #[gpui::test]
+    fn successful_quit_during_start_returns_ok_without_readiness(cx: &mut gpui::TestAppContext) {
+        use crate::handles::AppShellExt;
+
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let pending = Arc::new(PendingEvents::default());
+        pending.push(AppEvent::Reopened);
+        let boot = test_boot(
+            vec![recording_plugin("first", false, Arc::clone(&log))],
+            Arc::clone(&pending),
+            Some(Box::new(|_, cx| {
+                cx.request_quit();
+                Ok(())
+            })),
+            Arc::clone(&log),
+        );
+
+        let result = cx.update(|app| boot.run(app));
+
+        assert!(result.is_ok(), "a successful startup quit is not fatal");
+        assert!(
+            pending
+                .queue
+                .lock()
+                .expect("pending queue poisoned")
+                .is_empty(),
+            "a startup quit clears queued launch events"
+        );
+        let events = log.lock().expect("recording plugin log poisoned");
+        assert!(
+            !events
+                .iter()
+                .any(|event| event.ends_with(":started") || event.ends_with(":reopened")),
+            "a startup quit does not publish readiness or drain queued events: {events:?}"
+        );
+        assert_shutdown_rejects_proxy(cx, Phase::Start);
+    }
+
+    #[gpui::test]
+    fn started_quit_discards_pending_events_and_skips_activation(cx: &mut gpui::TestAppContext) {
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let pending = Arc::new(PendingEvents::default());
+        pending.push(AppEvent::Reopened);
+        let mut boot = test_boot(
+            vec![recording_plugin("first", false, Arc::clone(&log))],
+            Arc::clone(&pending),
+            None,
+            Arc::clone(&log),
+        );
+        boot.handlers = vec![recording_handler(Arc::clone(&log), true)];
+
+        let result = cx.update(|app| boot.run(app));
+
+        assert!(result.is_ok(), "Started-triggered quit is not fatal");
+        let events = log.lock().expect("recording plugin log poisoned");
+        assert!(events.iter().any(|event| event == "first:started"));
+        assert!(
+            events
+                .iter()
+                .any(|event| event == "handler:shutdown_requested"),
+            "Started-triggered quit must enter the normal shutdown path: {events:?}"
+        );
+        assert!(
+            !events.iter().any(|event| event.ends_with(":reopened")),
+            "queued events must not drain after Started requests quit: {events:?}"
+        );
+        drop(events);
+        assert!(
+            pending
+                .queue
+                .lock()
+                .expect("pending queue poisoned")
+                .is_empty(),
+            "Started-triggered quit clears queued launch events"
+        );
+        assert!(
+            pending.proxy.get().is_none(),
+            "shutdown must not enable post-ready event delivery"
+        );
+        assert_shutdown_rejects_proxy(cx, Phase::Start);
+    }
+
     #[test]
     fn default_environment_policy_is_inherit() {
         let builder = AppShellBuilder::new(identity());
@@ -821,6 +1129,18 @@ mod tests {
             Err(AppShellError::Configuration(
                 BuilderConfigurationError::DuplicateStartup { .. }
             ))
+        ));
+    }
+
+    #[test]
+    fn platform_construction_failure_returns_platform_error() {
+        let result = AppShell::builder(identity())
+            .runner(PlatformRunner::failing())
+            .run();
+
+        assert!(matches!(
+            result,
+            Err(AppShellError::Platform(error)) if error.to_string() == "test platform construction failure"
         ));
     }
 

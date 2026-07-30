@@ -23,9 +23,11 @@ use crate::plugin::{AppPlugin, ShellSeed};
 mod runtime;
 
 pub use runtime::SettingsExt;
-use runtime::{ErasedSettingsEntry, SettingsEntry, SettingsRegistry};
+use runtime::{SettingsEntry, SettingsRegistry};
 
-const EXIT_FLUSH_TIMEOUT: Duration = Duration::from_secs(5);
+// GPUI runs quit observers synchronously before applying its 100ms deadline to
+// their returned futures. All settings stores share half that window.
+const EXIT_FLUSH_TIMEOUT: Duration = Duration::from_millis(50);
 
 /// A serializable application settings schema.
 pub trait AppSettings: Serialize + DeserializeOwned + Default + Send + 'static {
@@ -254,6 +256,8 @@ impl<T: AppSettings> SettingsPlugin<T> {
             version: 0,
             lifecycle_error: None,
             exit_flushed: false,
+            #[cfg(test)]
+            exit_flush_hook: None,
         };
         if migrated {
             entry.queue_current()?;
@@ -305,8 +309,7 @@ impl<T: AppSettings> SettingsPlugin<T> {
     fn flush_for_exit(&self, cx: &mut App) {
         let result = cx
             .global_mut::<SettingsRegistry>()
-            .entry_mut::<T>(&self.key)
-            .and_then(ErasedSettingsEntry::flush_for_exit);
+            .flush_for_exit::<T>(&self.key);
         if let Err(error) = result {
             crate::handles::report_error(
                 cx,
