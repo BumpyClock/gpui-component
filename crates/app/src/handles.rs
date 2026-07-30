@@ -94,9 +94,9 @@ impl AppInfo {
 ///
 /// Backed by the gpui fork's [`MainThreadPoster`]: posting wakes the main run
 /// loop through the platform dispatcher, so an idle app stays parked (no poll
-/// loop). The `closed` flag is our own shutdown boundary, set at
-/// `ShutdownRequested` — which precedes app teardown, so it fires strictly
-/// before the poster's own after-teardown rejection (see [`AppProxy::dispatch`]).
+/// loop). The `closed` flag is the shell-requested shutdown boundary. A
+/// platform-initiated quit can close GPUI's poster first; either boundary makes
+/// [`AppProxy::dispatch`] return [`AppClosed`].
 #[derive(Clone)]
 pub struct AppProxy {
     inner: Arc<ProxyInner>,
@@ -104,10 +104,12 @@ pub struct AppProxy {
 
 struct ProxyInner {
     poster: MainThreadPoster,
-    /// Set at the `ShutdownRequested` boundary. Two roles: `dispatch` rejects
-    /// new work once it is set, and every posted closure re-checks it on the
-    /// main thread before running so work already queued behind a callback that
-    /// triggered shutdown is discarded rather than run mid-teardown.
+    /// Serializes a dispatch's final closed check and enqueue with shutdown.
+    /// `close` acquires the gate before publishing the boundary.
+    admission: Mutex<()>,
+    /// Set at the `ShutdownRequested` boundary. `dispatch` rejects new work once
+    /// it is set, and every posted closure re-checks it on the main thread before
+    /// running so work queued before shutdown is discarded mid-teardown.
     closed: AtomicBool,
 }
 
@@ -118,6 +120,7 @@ impl AppProxy {
         Self {
             inner: Arc::new(ProxyInner {
                 poster: cx.main_thread_poster(),
+                admission: Mutex::new(()),
                 closed: AtomicBool::new(false),
             }),
         }
@@ -125,20 +128,34 @@ impl AppProxy {
 
     /// Schedule `f` to run on the main thread with `&mut App`.
     ///
-    /// Returns [`AppClosed`] once shutdown has begun — the proxy is closed at the
-    /// `ShutdownRequested` boundary, which precedes app teardown. Two layers
-    /// enforce the boundary:
+    /// Returns [`AppClosed`] once shutdown has begun. Shell-requested shutdown
+    /// closes the proxy at `ShutdownRequested`, before teardown. Admission is
+    /// serialized with `close()`: a dispatch either queues work before that
+    /// boundary or observes it and returns [`AppClosed`]. Posted work re-checks
+    /// `closed` on the main thread before running, so work queued before shutdown
+    /// is discarded if teardown wins before the pump drains it.
     ///
-    /// - a fast pre-check rejects if `closed` is already visible here, and
-    /// - the posted closure re-checks `closed` on the main thread before running
-    ///   `f`. Since `close()` also runs on the main thread, any closure the pump
-    ///   dispatches after `close()` sees the flag and drops its payload. So a
-    ///   dispatch that races `close()` may return `Ok`, but its `f` never runs
-    ///   past the boundary — matching the old drain-loop's discard-after-close.
-    ///
-    /// A `false` from the poster (the main-thread receiver is gone, i.e. the app
-    /// has fully torn down past `close()`) also maps to [`AppClosed`].
+    /// A platform-initiated quit may close GPUI's poster before the shell's
+    /// `on_app_quit` hook closes this proxy. A `false` from that poster also maps
+    /// to [`AppClosed`].
     pub fn dispatch(&self, f: impl FnOnce(&mut App) + Send + 'static) -> Result<(), AppClosed> {
+        self.dispatch_inner(f, || {})
+    }
+
+    fn dispatch_inner(
+        &self,
+        f: impl FnOnce(&mut App) + Send + 'static,
+        after_initial_check: impl FnOnce(),
+    ) -> Result<(), AppClosed> {
+        if self.inner.closed.load(Ordering::Acquire) {
+            return Err(AppClosed);
+        }
+        after_initial_check();
+        let _admission = self
+            .inner
+            .admission
+            .lock()
+            .expect("proxy admission gate poisoned");
         if self.inner.closed.load(Ordering::Acquire) {
             return Err(AppClosed);
         }
@@ -159,6 +176,16 @@ impl AppProxy {
     /// Close the proxy: reject future dispatches and cause already-queued posts
     /// to discard their payload when the pump reaches them. Idempotent.
     fn close(&self) {
+        self.close_inner(|| {});
+    }
+
+    fn close_inner(&self, before_boundary: impl FnOnce()) {
+        let _admission = self
+            .inner
+            .admission
+            .lock()
+            .expect("proxy admission gate poisoned");
+        before_boundary();
         self.inner.closed.store(true, Ordering::Release);
     }
 }
@@ -253,6 +280,10 @@ impl ShellState {
     /// The recorded phase progress.
     pub fn phases(&self) -> &PhaseTracker {
         &self.phases
+    }
+
+    pub(crate) fn is_shutdown_requested(&self) -> bool {
+        self.shutdown_requested
     }
 
     pub(crate) fn record_phase(&mut self, phase: crate::phases::Phase) {
@@ -615,8 +646,9 @@ fn run_will_exit(cx: &mut App) {
         st.will_exit_done = true;
     }
     // Close the proxy before any teardown so nothing is accepted past the
-    // boundary. Idempotent: on the `request_quit` path it is already closed; on a
-    // platform-initiated quit (Cmd+Q / OS logout) this is the earliest hook.
+    // shell boundary. Idempotent: it is already closed on `request_quit`; on a
+    // platform-initiated quit this is the earliest shell hook, though GPUI may
+    // already have rejected poster sends.
     cx.global::<ShellState>().proxy.close();
     // A platform-initiated quit never went through `request_quit`; surface a
     // uniform `ShutdownRequested` first.
@@ -678,6 +710,9 @@ const _: fn() = || {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::mpsc::sync_channel;
+
     use super::*;
     use gpui::TestAppContext;
 
@@ -755,10 +790,12 @@ mod tests {
 
         let sink = log.clone();
         let closer = proxy.clone();
+        let after_close = proxy.clone();
         proxy
             .dispatch(move |_app| {
                 sink.lock().unwrap().push('a');
                 closer.close();
+                assert_eq!(after_close.dispatch(|_| {}), Err(AppClosed));
             })
             .expect("first dispatch");
         let sink = log.clone();
@@ -771,6 +808,72 @@ mod tests {
             *log.lock().unwrap(),
             vec!['a'],
             "work behind the shutdown-triggering callback is discarded"
+        );
+    }
+
+    /// `close` must hold admission before it publishes the shutdown boundary.
+    /// A dispatch that sees the pre-boundary state but waits on admission must
+    /// observe the boundary at its final check and return `AppClosed`.
+    #[gpui::test]
+    fn close_publishes_boundary_after_admission(cx: &mut TestAppContext) {
+        let proxy = cx.update(AppProxy::new);
+        let (admitted_sender, admitted_receiver) = sync_channel(0);
+        let (release_sender, release_receiver) = sync_channel(0);
+
+        let closer = proxy.clone();
+        let close_thread = std::thread::spawn(move || {
+            closer.close_inner(|| {
+                admitted_sender.send(()).expect("signal close admission");
+                release_receiver.recv().expect("release close boundary");
+            });
+        });
+
+        admitted_receiver.recv().expect("wait for close admission");
+        if proxy.is_closed() {
+            release_sender.send(()).expect("release close boundary");
+            close_thread.join().expect("join close");
+            panic!("close published its boundary before acquiring admission");
+        }
+
+        let (initial_check_sender, initial_check_receiver) = sync_channel(0);
+        let (release_initial_check_sender, release_initial_check_receiver) = sync_channel(0);
+        let executed = Arc::new(AtomicBool::new(false));
+        let dispatched = proxy;
+        let executed_in_dispatch = Arc::clone(&executed);
+        let dispatch_thread = std::thread::spawn(move || {
+            dispatched.dispatch_inner(
+                move |_app| {
+                    executed_in_dispatch.store(true, Ordering::SeqCst);
+                },
+                || {
+                    initial_check_sender
+                        .send(())
+                        .expect("signal initial dispatch check");
+                    release_initial_check_receiver
+                        .recv()
+                        .expect("release initial dispatch check");
+                },
+            )
+        });
+
+        initial_check_receiver
+            .recv()
+            .expect("wait for initial dispatch check");
+        release_initial_check_sender
+            .send(())
+            .expect("release initial dispatch check");
+        release_sender.send(()).expect("release close boundary");
+        close_thread.join().expect("join close");
+
+        assert_eq!(
+            dispatch_thread.join().expect("join dispatch"),
+            Err(AppClosed),
+            "dispatch that observed the pre-boundary state must be rejected"
+        );
+        cx.run_until_parked();
+        assert!(
+            !executed.load(Ordering::SeqCst),
+            "rejected dispatch must not enqueue a payload"
         );
     }
 }

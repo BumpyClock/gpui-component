@@ -8,6 +8,12 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Internal fixture; enable it explicitly for the harness-free headless test.
+test-support = []
+# Conformance-only Weston input seam; never enable in publishable application builds.
+wayland-conformance = ["gpui/test-support", "gpui_platform/test-support"]
+
 [dependencies]
 anyhow.workspace = true
 gpui.workspace = true
@@ -30,13 +36,15 @@ fix-path-env.workspace = true
 gpui = { workspace = true, features = ["test-support"] }
 serde_json.workspace = true
 tempfile.workspace = true
+wait-timeout.workspace = true
 
 # GPUI must construct its `App` on the main thread, which cargo's default test
 # harness (worker threads) cannot provide. This test drives the shell from its
-# own `main`, on the process main thread.
+# own `main`, on the process main thread. Run it with `--features test-support`.
 [[test]]
 name = "headless"
 harness = false
+required-features = ["test-support"]
 
 [lints]
 workspace = true

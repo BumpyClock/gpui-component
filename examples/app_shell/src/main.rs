@@ -16,6 +16,7 @@
 
 use std::borrow::Cow;
 use std::path::PathBuf;
+use std::process::ExitCode;
 use std::thread;
 use std::time::Duration;
 
@@ -163,7 +164,17 @@ impl Render for AboutView {
     }
 }
 
-fn main() -> Result<(), AppShellError> {
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(error) => {
+            eprintln!("app_shell failed: {error:#}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn run() -> Result<(), AppShellError> {
     let smoke = std::env::args().any(|arg| arg == "--smoke");
     let asset_smoke = std::env::args().any(|arg| arg == "--asset-smoke");
     let fail_start = std::env::args().any(|arg| arg == "--fail-start");
@@ -183,7 +194,7 @@ fn main() -> Result<(), AppShellError> {
         .start(move |_launch, cx| {
             if fail_start {
                 // Startup failure wins over a quit requested during Starting:
-                // AppShell discards the deferred reason and exits nonzero.
+                // AppShell returns the error and this executable maps it nonzero.
                 eprintln!("APP_SHELL_FAIL_START_REACHED");
                 cx.request_quit();
                 bail!("requested startup failure");
