@@ -342,8 +342,9 @@ jobs:
           artifact_dir="$RUNNER_TEMP/stage1-${{ github.job }}"
           export DISPLAY=:99
           unset WAYLAND_DISPLAY
-          lavapipe_icd="$(find /usr/share/vulkan/icd.d -type f -name 'lvp_icd.*.json' -print -quit)"
+          lavapipe_icd="$(find /usr/share/vulkan/icd.d -type f \( -name 'lvp_icd.json' -o -name 'lvp_icd.*.json' \) -print -quit)"
           test -n "$lavapipe_icd"
+          printf '%s\n' "$lavapipe_icd" > "$artifact_dir/lavapipe-icd.path"
           export VK_ICD_FILENAMES="$lavapipe_icd"
 
           Xvfb "$DISPLAY" -screen 0 1280x1024x24 >"$artifact_dir/xvfb.log" 2>&1 &
@@ -540,8 +541,9 @@ jobs:
           export XDG_RUNTIME_DIR="$(mktemp -d "$RUNNER_TEMP/stage1-wayland-runtime.XXXXXX")"
           chmod 700 "$XDG_RUNTIME_DIR"
           unset DISPLAY
-          lavapipe_icd="$(find /usr/share/vulkan/icd.d -type f -name 'lvp_icd.*.json' -print -quit)"
+          lavapipe_icd="$(find /usr/share/vulkan/icd.d -type f \( -name 'lvp_icd.json' -o -name 'lvp_icd.*.json' \) -print -quit)"
           test -n "$lavapipe_icd"
+          printf '%s\n' "$lavapipe_icd" > "$artifact_dir/lavapipe-icd.path"
           export VK_ICD_FILENAMES="$lavapipe_icd"
           binary="$GITHUB_WORKSPACE/target/debug/gpui-component-conformance"
           validation_profile="linux-wayland-lavapipe"
