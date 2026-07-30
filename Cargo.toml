@@ -10,6 +10,7 @@ members = [
     "crates/assets",
     "crates/reqwest_client",
     "crates/webview",
+    "conformance/app",
     "examples/app_assets",
     "examples/app_shell",
     "examples/app_shell_background",
