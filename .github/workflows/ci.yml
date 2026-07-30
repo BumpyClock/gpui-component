@@ -79,7 +79,7 @@ jobs:
       - name: Install system dependencies
         run: script/bootstrap
       - name: Run maintained unit and headless tests
-        run: cargo test --workspace --all-targets --locked
+        run: cargo test --workspace --all-targets --locked --features test-support
       - name: Run doctests
         run: cargo test --workspace --doc --locked
 
