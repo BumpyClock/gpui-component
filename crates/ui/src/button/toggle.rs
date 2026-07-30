@@ -1,8 +1,8 @@
 use std::{cell::Cell, rc::Rc};
 
 use gpui::{
-    AnyElement, App, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce,
-    SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Window, div,
+    AnyElement, App, ElementId, InteractiveElement, IntoElement, ParentElement, RenderOnce, Role,
+    SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Toggled, Window, div,
     prelude::FluentBuilder as _,
 };
 use smallvec::{SmallVec, smallvec};
@@ -37,6 +37,7 @@ pub struct Toggle {
     size: Size,
     variant: ToggleVariant,
     disabled: bool,
+    aria_label: Option<SharedString>,
     children: SmallVec<[AnyElement; 1]>,
     on_click: Option<Box<dyn Fn(&bool, &mut Window, &mut App) + 'static>>,
 }
@@ -51,6 +52,7 @@ impl Toggle {
             size: Size::default(),
             variant: ToggleVariant::default(),
             disabled: false,
+            aria_label: None,
             children: smallvec![],
             on_click: None,
         }
@@ -59,6 +61,7 @@ impl Toggle {
     /// Add a label to the toggle.
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         let label: SharedString = label.into();
+        self.aria_label = Some(label.clone());
         self.children.push(label.into_any_element());
         self
     }
@@ -126,6 +129,15 @@ impl RenderOnce for Toggle {
 
         div()
             .id(self.id)
+            .role(Role::Switch)
+            .when_some(self.aria_label, |this, label| this.aria_label(label))
+            .aria_toggled(if checked {
+                Toggled::True
+            } else {
+                Toggled::False
+            })
+            .aria_disabled(disabled)
+            .when(!disabled, |this| this.focusable().tab_stop(true))
             .flex()
             .flex_row()
             .items_center()

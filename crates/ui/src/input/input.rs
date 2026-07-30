@@ -1,8 +1,8 @@
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
     AnyElement, App, DefiniteLength, Edges, EdgesRefinement, Entity, InteractiveElement as _,
-    IntoElement, IsZero, MouseButton, ParentElement as _, Rems, RenderOnce, StyleRefinement,
-    Styled, TextAlign, Window, div, px, relative,
+    IntoElement, IsZero, MouseButton, ParentElement as _, Rems, RenderOnce, Role, SharedString,
+    StatefulInteractiveElement as _, StyleRefinement, Styled, TextAlign, Window, div, px, relative,
 };
 
 use crate::button::{Button, ButtonVariants as _};
@@ -33,6 +33,7 @@ pub struct Input {
     bordered: bool,
     focus_bordered: bool,
     tab_index: isize,
+    aria_label: Option<SharedString>,
     selected: bool,
 }
 
@@ -71,6 +72,7 @@ impl Input {
             bordered: true,
             focus_bordered: true,
             tab_index: 0,
+            aria_label: None,
             selected: false,
         }
     }
@@ -82,6 +84,12 @@ impl Input {
 
     pub fn suffix(mut self, suffix: impl IntoElement) -> Self {
         self.suffix = Some(suffix.into_any_element());
+        self
+    }
+
+    /// Set the accessible name for the input.
+    pub fn aria_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.aria_label = Some(label.into());
         self
     }
 
@@ -252,6 +260,14 @@ impl RenderOnce for Input {
         });
 
         let state = self.state.read(cx);
+        let input_role = if state.mode.is_multi_line() {
+            Role::MultilineTextInput
+        } else {
+            Role::TextInput
+        };
+        let input_value = state.a11y_value();
+        let input_placeholder = state.placeholder.clone();
+        let input_aria_label = self.aria_label;
         let focused = state.focus_handle.is_focused(window) && !state.disabled;
         let gap_x = match self.size {
             Size::Small => px(4.),
@@ -280,10 +296,19 @@ impl RenderOnce for Input {
 
         div()
             .id(("input", self.state.entity_id()))
+            .role(input_role)
+            .when_some(input_aria_label, |this, label| this.aria_label(label))
+            .when_some(input_value, |this, value| this.aria_value(value))
+            .when(!input_placeholder.is_empty(), |this| {
+                this.aria_placeholder(input_placeholder)
+            })
+            .aria_disabled(state.disabled)
             .flex()
             .key_context(crate::input::CONTEXT)
-            .track_focus(&state.focus_handle.clone())
-            .tab_index(self.tab_index)
+            .when(!state.disabled, |this| {
+                this.track_focus(&state.focus_handle.clone())
+                    .tab_index(self.tab_index)
+            })
             .when(!state.disabled, |this| {
                 this.on_action(window.listener_for(&self.state, InputState::backspace))
                     .on_action(window.listener_for(&self.state, InputState::delete))

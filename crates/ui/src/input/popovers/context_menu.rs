@@ -75,7 +75,7 @@ impl InputState {
                     .separator()
                     .menu(t!("Input.Select All"), Box::new(input::SelectAll));
 
-                menu.menu_items = new_menu.menu_items;
+                menu.replace_menu_items(new_menu);
                 menu.action_context = Some(action_context);
                 cx.notify();
             });
