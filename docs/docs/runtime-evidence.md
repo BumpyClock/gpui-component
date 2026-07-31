@@ -99,8 +99,9 @@ active readiness probe. The Wayland job runs non-clipboard scenarios on a normal
 Weston headless/Pixman desktop-shell compositor and stops it before the private
 fixture starts. Only `clipboard` runs in Weston's 320x240 Pixman test-desktop
 client-test fixture. The fixture owns a Bash clipboard-orchestrator child, which
-owns one GPUI conformance descendant. `wl-paste` remains an ordinary client and
-does not bind `weston_test`. Elapsed time is never treated as readiness.
+owns separate GPUI conformance and clipboard-reader descendants. The reader uses
+`weston_test` only to focus its own surface, then transfers the selection through
+the ordinary `wl_data_device` protocol. Elapsed time is never treated as readiness.
 
 ## Clipboard, input, and accessibility boundaries
 
@@ -109,8 +110,9 @@ with a nonempty UTF-8 `expected_payload` with no trailing line break and an
 `ack_address` of the form `127.0.0.1:<port>` while the application remains alive.
 The external harness must read that payload with `pbpaste` on macOS, PowerShell
 `Get-Clipboard -Raw` on Windows, `xclip -selection clipboard -o` on Linux X11,
-or `wl-paste --no-newline` on Linux Wayland; normalize reader line endings and
-exact-compare the result; connect to the loopback address; and send `verified\n`.
+or the fixture-built external `gpui-wayland-clipboard-reader` on Linux Wayland;
+normalize reader line endings and exact-compare the result; connect to the
+loopback address; and send `verified\n`.
 The scenario must emit `clipboard_acknowledged` only after receiving that exact
 acknowledgement; only then may it quit, emit its terminal record, and be
 validated. An arbitrary delay, GPUI self-read, or an in-process clipboard cache is not native
@@ -125,7 +127,9 @@ then receives the compositor's ordinary `wl_keyboard.key` event. GPUI records
 that event's genuine compositor serial in its normal `SerialTracker`, dispatches
 a non-held `KeyDownEvent` for `a`, and writes the clipboard synchronously inside
 that callback. The request completes only after normal input dispatch accepts
-the event.
+the event. Because the test-desktop shell does not activate newly created client
+surfaces, the external reader separately requests focus for its own surface
+before reading the selection through `wl_data_device`.
 
 This establishes synthetic compositor-test focus/key/serial propagation through
 GPUI's ordinary Wayland selection path. Weston 16 does not validate that

@@ -1398,7 +1398,9 @@ fn finish_normal_run(
 ) -> anyhow::Result<ScenarioOutcome> {
     emit_after_run(&protocol, &result)?;
     if let Err(error) = result {
-        bail!("native lifecycle scenario returned AppShell error: {error:#}");
+        return Err(
+            anyhow::Error::new(error).context("native lifecycle scenario returned AppShell error")
+        );
     }
     if let Some(failure) = state.failure() {
         bail!("native lifecycle scenario failed: {failure}");

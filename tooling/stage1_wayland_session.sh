@@ -5,6 +5,7 @@ repo_root="${GPUI_STAGE1_REPO_ROOT:?GPUI_STAGE1_REPO_ROOT is required}"
 artifact_dir="${GPUI_STAGE1_ARTIFACT_DIR:?GPUI_STAGE1_ARTIFACT_DIR is required}"
 binary="${GPUI_STAGE1_BINARY:?GPUI_STAGE1_BINARY is required}"
 validation_profile="linux-wayland-lavapipe"
+reader_command="${GPUI_STAGE1_WAYLAND_CLIPBOARD_READER:?GPUI_STAGE1_WAYLAND_CLIPBOARD_READER is required}"
 cd "$repo_root"
 
 python3 tooling/stage1_clipboard_harness.py \
@@ -19,4 +20,4 @@ python3 tooling/stage1_clipboard_harness.py \
   --validation-stderr "$artifact_dir/clipboard.validation.stderr.log" \
   --validation-log "$artifact_dir/clipboard.validation.watchdog.log" \
   --validation-profile "$validation_profile" \
-  --reader-command wl-paste --no-newline
+  --reader-command "$reader_command"

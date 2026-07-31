@@ -128,17 +128,20 @@ Linux Wayland first starts a normal Weston 16 headless/Pixman compositor for
 `lifecycle-background-quit`, `window-cycle`, and `menu-command`. It stops that
 compositor before starting the official private client-test fixture. Only the
 clipboard scenario runs inside the 320x240 Pixman test-desktop fixture. Its C
-fixture owns one Bash clipboard-orchestrator child, which owns one GPUI
-conformance descendant; `wl-paste` connects as an ordinary client and has no
-code for binding the private protocol.
+fixture owns one Bash clipboard-orchestrator child, which owns separate GPUI
+conformance and external clipboard-reader descendants. The reader uses the
+private protocol only to focus its own surface, then transfers the selection
+through the ordinary `wl_data_device` protocol.
 
 After first presentation, the GPUI child asks the private fixture to activate
 its own `wl_surface`, waits for matching `wl_keyboard.enter`, injects pressed and
 released Linux `KEY_A`, receives the compositor's normal `wl_keyboard.key`
 serial, records that serial through GPUI's ordinary `SerialTracker`, and handles
 the resulting non-held `KeyDownEvent`. The key callback writes the clipboard;
-the request completes only after normal input dispatch accepts the event. This
-proves the focus/key/serial path through GPUI selection handling. Weston 16 does
+the request completes only after normal input dispatch accepts the event. The
+external reader then focuses its own surface and reads the selection before the
+orchestrator sends its loopback acknowledgement. This proves the
+focus/key/serial path through GPUI selection handling. Weston 16 does
 not validate the selection serial itself, so this does not prove rejection of an
 invalid serial. It also does not prove physical input, arbitrary compositor
 support, or production support for `weston_test`.

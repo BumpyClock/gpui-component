@@ -23,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--tarball", type=Path, required=True)
     parser.add_argument("--source-parent", type=Path, required=True)
     parser.add_argument("--fixture", type=Path, required=True)
+    parser.add_argument("--reader", type=Path, required=True)
     parser.add_argument("--metadata", type=Path, required=True)
     return parser.parse_args()
 
@@ -39,6 +40,7 @@ def prepare_source(
     tarball: Path,
     source_parent: Path,
     fixture: Path,
+    reader: Path,
     metadata: Path,
 ) -> Path:
     actual_sha256 = sha256(tarball)
@@ -61,6 +63,9 @@ def prepare_source(
 
     fixture_destination = source_dir / "tests" / f"{TEST_NAME}-test.c"
     shutil.copyfile(fixture, fixture_destination)
+    reader_name = "gpui-wayland-clipboard-reader"
+    reader_destination = source_dir / "tests" / f"{reader_name}.c"
+    shutil.copyfile(reader, reader_destination)
 
     meson_path = source_dir / "tests" / "meson.build"
     meson = meson_path.read_text(encoding="utf-8")
@@ -70,6 +75,29 @@ def prepare_source(
     meson = meson.replace(
         marker,
         f"\n\t{{\t'name': '{TEST_NAME}', }},\n]\n\nif get_option('renderer-gl')",
+        1,
+    )
+    reader_marker = "\nforeach t : tests\n"
+    if meson.count(reader_marker) != 1:
+        raise ValueError("could not locate the Weston test build loop")
+    meson = meson.replace(
+        reader_marker,
+        f"""
+gpui_wayland_clipboard_reader = executable(
+\t'{reader_name}',
+\t[
+\t\t'{reader_name}.c',
+\t\tweston_test_client_protocol_h,
+\t\tweston_test_protocol_c,
+\t],
+\tbuild_by_default: true,
+\tinclude_directories: common_inc,
+\tdependencies: dep_wayland_client,
+\tinstall: false,
+)
+
+foreach t : tests
+""",
         1,
     )
     meson_path.write_text(meson, encoding="utf-8")
@@ -82,6 +110,7 @@ def prepare_source(
                 "weston_commit": WESTON_COMMIT,
                 "weston_tarball_sha256": WESTON_TARBALL_SHA256,
                 "test_name": TEST_NAME,
+                "clipboard_reader": reader_name,
                 "backend": "headless",
                 "renderer": "pixman",
                 "shell": "test-desktop",
@@ -106,6 +135,7 @@ def main() -> int:
         args.tarball,
         args.source_parent,
         args.fixture,
+        args.reader,
         args.metadata,
     )
     print(source_dir)

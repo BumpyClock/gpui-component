@@ -42,10 +42,10 @@ gpui-component-macros = { path = "crates/macros", version = "=0.7.0" }
 gpui-component-assets = { path = "crates/assets", version = "=0.7.0" }
 story = { path = "crates/story" }
 
-gpui = { package = "bumpyclock-gpui", version = "=0.1.0", git = "https://github.com/BumpyClock/gpui", rev = "67c20f3ae1046aa873591ff4b44953b53df37bc4", features = ["font-kit"] }
-gpui_platform = { version = "=0.1.0", git = "https://github.com/BumpyClock/gpui", rev = "67c20f3ae1046aa873591ff4b44953b53df37bc4", features = ["font-kit"] }
-gpui-macros = { package = "gpui_macros", version = "=0.1.0", git = "https://github.com/BumpyClock/gpui", rev = "67c20f3ae1046aa873591ff4b44953b53df37bc4" }
-sum-tree = { package = "sum_tree", version = "=0.1.0", git = "https://github.com/BumpyClock/gpui", rev = "67c20f3ae1046aa873591ff4b44953b53df37bc4" }
+gpui = { package = "bumpyclock-gpui", version = "=0.1.0", git = "https://github.com/BumpyClock/gpui", rev = "d0959c0b60a5b52460d1ad7369eb73ed71e5b029", features = ["font-kit"] }
+gpui_platform = { version = "=0.1.0", git = "https://github.com/BumpyClock/gpui", rev = "d0959c0b60a5b52460d1ad7369eb73ed71e5b029", features = ["font-kit"] }
+gpui-macros = { package = "gpui_macros", version = "=0.1.0", git = "https://github.com/BumpyClock/gpui", rev = "d0959c0b60a5b52460d1ad7369eb73ed71e5b029" }
+sum-tree = { package = "sum_tree", version = "=0.1.0", git = "https://github.com/BumpyClock/gpui", rev = "d0959c0b60a5b52460d1ad7369eb73ed71e5b029" }
 # reqwest = { version = "0.12.15-zed", package = "zed-reqwest" }
 reqwest = { git = "https://github.com/zed-industries/reqwest.git", rev = "c15662463bda39148ba154100dd44d3fba5873a4", default-features = false, features = [
     "charset",

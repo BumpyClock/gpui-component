@@ -458,8 +458,7 @@ jobs:
             ninja-build \
             pkg-config \
             vulkan-tools \
-            wayland-utils \
-            wl-clipboard
+            wayland-utils
       - name: Build native conformance runner
         run: cargo build --locked -p gpui-component-conformance --features wayland-conformance
       - name: Build pinned Weston Wayland fixture
@@ -495,6 +494,7 @@ jobs:
             --tarball "$tarball" \
             --source-parent "$source_parent" \
             --fixture tooling/weston_gpui_wayland_input_test.c \
+            --reader tooling/weston_gpui_wayland_clipboard_reader.c \
             --metadata "$artifact_dir/weston-fixture.json")"
           meson setup "$build_dir" "$source_dir" \
             -Dbackend-default=headless \
@@ -529,10 +529,12 @@ jobs:
             weston-keyboard \
             test-plugin \
             weston-test-desktop-shell \
-            test-gpui-wayland-input
+            test-gpui-wayland-input \
+            gpui-wayland-clipboard-reader
           echo "GPUI_WESTON_BUILD_DIR=$build_dir" >> "$GITHUB_ENV"
           echo "GPUI_WESTON_BINARY=$build_dir/frontend/weston" >> "$GITHUB_ENV"
           echo "GPUI_WESTON_FIXTURE=$build_dir/tests/test-gpui-wayland-input" >> "$GITHUB_ENV"
+          echo "GPUI_WESTON_CLIPBOARD_READER=$build_dir/tests/gpui-wayland-clipboard-reader" >> "$GITHUB_ENV"
       - name: Run and validate native scenarios
         shell: bash
         run: |
@@ -548,10 +550,12 @@ jobs:
           binary="$GITHUB_WORKSPACE/target/debug/gpui-component-conformance"
           validation_profile="linux-wayland-lavapipe"
           normal_socket="stage1-wayland-normal"
+          export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
           eval "$(meson devenv -C "$GPUI_WESTON_BUILD_DIR" --dump)"
           "$GPUI_WESTON_BINARY" \
             --backend=headless-backend.so \
             --renderer=pixman \
+            --fake-seat \
             --idle-time=0 \
             --socket="$normal_socket" \
             >"$artifact_dir/weston-normal.log" 2>&1 &
@@ -608,6 +612,7 @@ jobs:
           export GPUI_STAGE1_ARTIFACT_DIR="$artifact_dir"
           export GPUI_STAGE1_BINARY="$binary"
           export GPUI_STAGE1_WAYLAND_CLIPBOARD_SESSION="$GITHUB_WORKSPACE/tooling/stage1_wayland_session.sh"
+          export GPUI_STAGE1_WAYLAND_CLIPBOARD_READER="$GPUI_WESTON_CLIPBOARD_READER"
           python3 tooling/stage1_watchdog.py \
             --timeout-seconds 900 \
             --stdout "$artifact_dir/weston-fixture.tap.log" \

@@ -13,7 +13,7 @@ read_when: "updating GPUI pins, packaging crates, or preparing a release"
 - Repository-pinned toolchain: `1.95.0` (not installed in this environment)
 - Audit host toolchain: `1.97.1`
 - GPUI repository: `https://github.com/BumpyClock/gpui`
-- GPUI commit: `67c20f3ae1046aa873591ff4b44953b53df37bc4`
+- GPUI commit: `d0959c0b60a5b52460d1ad7369eb73ed71e5b029`
 - Zed upstream: `https://github.com/zed-industries/zed`
 - Zed upstream base: `2c4e44704c37ee87e59ac84e3e17388178b28545`
 
