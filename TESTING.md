@@ -129,9 +129,11 @@ Linux Wayland first starts a normal Weston 16 headless/Pixman compositor for
 compositor before starting the official private client-test fixture. Only the
 clipboard scenario runs inside the 320x240 Pixman test-desktop fixture. Its C
 fixture owns one Bash clipboard-orchestrator child, which owns separate GPUI
-conformance and external clipboard-reader descendants. The reader uses the
-private protocol only to focus its own surface, then transfers the selection
-through the ordinary `wl_data_device` protocol.
+conformance and external clipboard-reader descendants. The prepared fixture
+relaxes Weston's single-test-client guard while retaining the first client as
+harness owner. The reader uses the private protocol only to focus its own
+surface, then transfers the selection through the ordinary `wl_data_device`
+protocol.
 
 After first presentation, the GPUI child asks the private fixture to activate
 its own `wl_surface`, waits for matching `wl_keyboard.enter`, injects pressed and

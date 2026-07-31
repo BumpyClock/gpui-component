@@ -99,9 +99,11 @@ active readiness probe. The Wayland job runs non-clipboard scenarios on a normal
 Weston headless/Pixman desktop-shell compositor and stops it before the private
 fixture starts. Only `clipboard` runs in Weston's 320x240 Pixman test-desktop
 client-test fixture. The fixture owns a Bash clipboard-orchestrator child, which
-owns separate GPUI conformance and clipboard-reader descendants. The reader uses
-`weston_test` only to focus its own surface, then transfers the selection through
-the ordinary `wl_data_device` protocol. Elapsed time is never treated as readiness.
+owns separate GPUI conformance and clipboard-reader descendants. The prepared
+private fixture relaxes Weston's single-test-client guard while retaining the
+first client as harness owner. The reader uses `weston_test` only to focus its
+own surface, then transfers the selection through the ordinary `wl_data_device`
+protocol. Elapsed time is never treated as readiness.
 
 ## Clipboard, input, and accessibility boundaries
 

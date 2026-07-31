@@ -67,6 +67,38 @@ def prepare_source(
     reader_destination = source_dir / "tests" / f"{reader_name}.c"
     shutil.copyfile(reader, reader_destination)
 
+    test_plugin_path = source_dir / "tests" / "harness" / "weston-test.c"
+    test_plugin = test_plugin_path.read_text(encoding="utf-8")
+    destroy_single_client = """\tassert(tsd->wl_client);
+\ttsd->wl_client = NULL;
+"""
+    destroy_multiple_clients = """\tif (tsd->wl_client == wl_resource_get_client(resource))
+\t\ttsd->wl_client = NULL;
+"""
+    bind_single_client = """\t/* There can only be one wl_client bound */
+\tassert(!tsd->wl_client);
+\ttsd->wl_client = client;
+"""
+    bind_multiple_clients = """\t/* Keep the first client as the harness owner while allowing the
+\t * external clipboard reader to use activation requests. */
+\tif (!tsd->wl_client)
+\t\ttsd->wl_client = client;
+"""
+    if test_plugin.count(destroy_single_client) != 1:
+        raise ValueError("could not locate the Weston test client destroy guard")
+    if test_plugin.count(bind_single_client) != 1:
+        raise ValueError("could not locate the Weston test client bind guard")
+    test_plugin = test_plugin.replace(
+        destroy_single_client,
+        destroy_multiple_clients,
+        1,
+    ).replace(
+        bind_single_client,
+        bind_multiple_clients,
+        1,
+    )
+    test_plugin_path.write_text(test_plugin, encoding="utf-8")
+
     meson_path = source_dir / "tests" / "meson.build"
     meson = meson_path.read_text(encoding="utf-8")
     marker = "\n]\n\nif get_option('renderer-gl')"
@@ -111,6 +143,7 @@ foreach t : tests
                 "weston_tarball_sha256": WESTON_TARBALL_SHA256,
                 "test_name": TEST_NAME,
                 "clipboard_reader": reader_name,
+                "weston_test_multi_client_patch": True,
                 "backend": "headless",
                 "renderer": "pixman",
                 "shell": "test-desktop",

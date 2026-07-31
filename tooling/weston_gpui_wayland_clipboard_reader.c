@@ -295,7 +295,8 @@ main(void)
 
 	while (!reader.finished && !reader.failed) {
 		if (wl_display_dispatch(reader.display) < 0) {
-			fprintf(stderr, "Wayland clipboard dispatch failed\n");
+			fprintf(stderr, "Wayland clipboard dispatch failed: %s\n",
+				strerror(errno));
 			reader.failed = 1;
 		}
 	}
