@@ -95,6 +95,14 @@ AppShell::builder(APP_IDENTITY)
 Calling `.theme(...)` opts into shell preferences automatically. Apps without a
 theme or explicit `.shell_preferences()` consumer do not create that store.
 
+## Material Surfaces
+
+Menus and dropdowns use the flyout material from `SurfacePreset::flyout()`. Its
+default backdrop blur extent is 24px, with popover tint opacity of 0.86 in light
+mode and 0.88 in dark mode. Themes can override these values through
+`material.flyout_blur_radius`, `material.flyout_light_opacity`, and
+`material.flyout_dark_opacity`.
+
 ## Theme Registry
 
 There have more than 20 built-in themes available in [themes](https://github.com/BumpyClock/gpui-component/tree/main/themes) folder.
