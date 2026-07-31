@@ -9,6 +9,7 @@ from ctypes import wintypes
 import math
 import os
 import subprocess
+import time
 from os import PathLike
 from typing import BinaryIO, Mapping
 
@@ -16,6 +17,7 @@ from typing import BinaryIO, Mapping
 CREATE_NEW_PROCESS_GROUP = 0x00000200
 EXTENDED_STARTUPINFO_PRESENT = 0x00080000
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1
 JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 PROC_THREAD_ATTRIBUTE_HANDLE_LIST = 0x00020002
 PROC_THREAD_ATTRIBUTE_JOB_LIST = 0x0002000D
@@ -26,6 +28,19 @@ WAIT_OBJECT_0 = 0
 WAIT_TIMEOUT = 258
 WAIT_FAILED = 0xFFFFFFFF
 INFINITE = 0xFFFFFFFF
+
+
+class BasicAccountingInformation(ctypes.Structure):
+    _fields_ = [
+        ("total_user_time", ctypes.c_longlong),
+        ("total_kernel_time", ctypes.c_longlong),
+        ("this_period_total_user_time", ctypes.c_longlong),
+        ("this_period_total_kernel_time", ctypes.c_longlong),
+        ("total_page_fault_count", wintypes.DWORD),
+        ("total_processes", wintypes.DWORD),
+        ("active_processes", wintypes.DWORD),
+        ("total_terminated_processes", wintypes.DWORD),
+    ]
 
 
 class BasicLimitInformation(ctypes.Structure):
@@ -114,6 +129,14 @@ def _kernel32() -> ctypes.WinDLL:
         wintypes.DWORD,
     ]
     kernel32.SetInformationJobObject.restype = wintypes.BOOL
+    kernel32.QueryInformationJobObject.argtypes = [
+        wintypes.HANDLE,
+        wintypes.DWORD,
+        ctypes.c_void_p,
+        wintypes.DWORD,
+        ctypes.POINTER(wintypes.DWORD),
+    ]
+    kernel32.QueryInformationJobObject.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel32.CloseHandle.restype = wintypes.BOOL
     kernel32.InitializeProcThreadAttributeList.argtypes = [
@@ -311,11 +334,11 @@ class WindowsJobProcess:
             raise ctypes.WinError(ctypes.get_last_error())
         raise OSError(f"WaitForSingleObject returned {result}")
 
-    def terminate_tree(self) -> bool:
+    def terminate_tree(self, *, deadline: float) -> bool:
         # PID-based taskkill is intentionally not a fallback: the target can exit and its PID can
         # be reused between a handle check and taskkill. The retained Job/process handles are the
         # only safe process identities; failure to terminate them is reported to the caller.
-        return close_job(self)
+        return terminate_job(self, deadline=deadline)
 
     def close(self) -> None:
         close_job(self)
@@ -340,6 +363,45 @@ def close_job(process: WindowsJobProcess) -> bool:
     if handle is None:
         return False
     if not _close_or_terminate_job(process._kernel32, handle):
+        return False
+    process._stage1_job_handle = None
+    return True
+
+
+def _active_job_processes(
+    kernel32: ctypes.WinDLL,
+    handle: wintypes.HANDLE,
+) -> int:
+    accounting = BasicAccountingInformation()
+    if not kernel32.QueryInformationJobObject(
+        handle,
+        JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION,
+        ctypes.byref(accounting),
+        ctypes.sizeof(accounting),
+        None,
+    ):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return accounting.active_processes
+
+
+def terminate_job(process: WindowsJobProcess, *, deadline: float) -> bool:
+    handle = process._stage1_job_handle
+    if handle is None:
+        return False
+
+    try:
+        if _active_job_processes(process._kernel32, handle) > 0:
+            if not process._kernel32.TerminateJobObject(handle, 1):
+                return False
+            while _active_job_processes(process._kernel32, handle) > 0:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                time.sleep(min(0.01, remaining))
+    except OSError:
+        return False
+
+    if not _close_handle(process._kernel32, handle):
         return False
     process._stage1_job_handle = None
     return True

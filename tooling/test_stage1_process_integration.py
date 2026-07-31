@@ -91,7 +91,9 @@ class WindowsProcessIntegrationTests(unittest.TestCase):
             self.assertTrue(process_running(process.pid))
             self.assertTrue(process_running(grandchild_pid))
 
-            self.assertTrue(process.terminate_tree())  # type: ignore[attr-defined]
+            self.assertTrue(  # type: ignore[attr-defined]
+                process.terminate_tree(deadline=time.monotonic() + 2)
+            )
             process.wait(timeout=2)
             stage1_process.close_process(process)
 
@@ -178,10 +180,11 @@ class WindowsProcessIntegrationTests(unittest.TestCase):
         )
 
         self.assertEqual(success.returncode, 0)
-        self.assertEqual(success.stdout, b"stage1 stdout complete\n")
-        self.assertEqual(success.stderr, b"stage1 stderr complete\n")
+        line_ending = os.linesep.encode()
+        self.assertEqual(success.stdout, b"stage1 stdout complete" + line_ending)
+        self.assertEqual(success.stderr, b"stage1 stderr complete" + line_ending)
         self.assertEqual(nonzero.returncode, 7)
-        self.assertEqual(nonzero.stdout, b"declared exit 7\n")
+        self.assertEqual(nonzero.stdout, b"declared exit 7" + line_ending)
         self.assertFalse(success.cleanup_timed_out)
         self.assertFalse(nonzero.cleanup_timed_out)
 

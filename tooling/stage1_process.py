@@ -258,7 +258,7 @@ def terminate_process_tree(
 ) -> bool:
     """Terminate one process tree before reaping its identity, then wait to the deadline."""
     if os.name == "nt":
-        job_terminated = process.terminate_tree()  # type: ignore[attr-defined]
+        job_terminated = process.terminate_tree(deadline=deadline)  # type: ignore[attr-defined]
         return job_terminated and _reap_until(process, deadline)
 
     termination_confirmed = True
@@ -392,7 +392,9 @@ def finish_streaming_processes(
     if os.name == "nt":
         for process in managed:
             try:
-                if not process.terminate_tree():  # type: ignore[attr-defined]
+                if not process.terminate_tree(  # type: ignore[attr-defined]
+                    deadline=cleanup_deadline
+                ):
                     termination_confirmed = False
             except (OSError, ValueError):
                 termination_confirmed = False

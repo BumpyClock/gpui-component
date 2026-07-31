@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pyright: reportArgumentType=false
 """Unit seams for the Windows atomic Job Object launcher."""
 
 from __future__ import annotations
@@ -9,6 +10,7 @@ import io
 from pathlib import Path
 import subprocess
 import sys
+import time
 import unittest
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -16,8 +18,13 @@ import stage1_windows_job as launcher  # noqa: E402
 
 
 class FakeKernel32:
-    def __init__(self, close_result: bool = True) -> None:
+    def __init__(
+        self,
+        close_result: bool = True,
+        active_process_counts: list[int] | None = None,
+    ) -> None:
         self.close_result = close_result
+        self.active_process_counts = active_process_counts or [1, 0]
         self.closed_handles: list[int] = []
         self.terminated_jobs: list[int] = []
 
@@ -27,6 +34,21 @@ class FakeKernel32:
 
     def TerminateJobObject(self, handle: int, exit_code: int) -> bool:
         self.terminated_jobs.append(handle)
+        return True
+
+    def QueryInformationJobObject(
+        self,
+        handle: int,
+        information_class: int,
+        information: object,
+        information_size: int,
+        return_length: object,
+    ) -> bool:
+        accounting = ctypes.cast(
+            information,
+            ctypes.POINTER(launcher.BasicAccountingInformation),
+        ).contents
+        accounting.active_processes = self.active_process_counts.pop(0)
         return True
 
 
@@ -64,13 +86,33 @@ class WindowsJobLauncherTests(unittest.TestCase):
         self.assertEqual(kernel32.closed_handles, [123])
         self.assertIsNone(process._stage1_job_handle)
 
-    def test_close_job_keeps_handle_for_taskkill_fallback_when_close_fails(self) -> None:
+    def test_close_job_keeps_handle_when_close_and_termination_fail(self) -> None:
         kernel32 = FakeKernel32(close_result=False)
         process = FakeProcess(kernel32, 123)
 
         self.assertFalse(launcher.close_job(process))
         self.assertEqual(kernel32.closed_handles, [123, 123])
         self.assertEqual(kernel32.terminated_jobs, [123])
+        self.assertEqual(process._stage1_job_handle, 123)
+
+    def test_terminate_job_waits_for_empty_job_before_releasing_handle(self) -> None:
+        kernel32 = FakeKernel32()
+        process = FakeProcess(kernel32, 123)
+
+        self.assertTrue(
+            launcher.terminate_job(process, deadline=time.monotonic() + 1)
+        )
+        self.assertEqual(kernel32.terminated_jobs, [123])
+        self.assertEqual(kernel32.closed_handles, [123])
+        self.assertIsNone(process._stage1_job_handle)
+
+    def test_terminate_job_timeout_retains_job_identity(self) -> None:
+        kernel32 = FakeKernel32(active_process_counts=[1, 1])
+        process = FakeProcess(kernel32, 123)
+
+        self.assertFalse(launcher.terminate_job(process, deadline=0))
+        self.assertEqual(kernel32.terminated_jobs, [123])
+        self.assertEqual(kernel32.closed_handles, [])
         self.assertEqual(process._stage1_job_handle, 123)
 
     def test_wait_reports_timeout_without_windows_runtime(self) -> None:
