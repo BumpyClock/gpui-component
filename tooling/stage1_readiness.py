@@ -7,10 +7,13 @@ import argparse
 import datetime as dt
 from pathlib import Path
 import shlex
+import os
 import subprocess
 import sys
 import time
 from typing import TextIO
+
+import stage1_process
 
 
 def log_line(log: TextIO, message: str) -> None:
@@ -47,7 +50,9 @@ def main() -> int:
     deadline = time.monotonic() + args.timeout_seconds
 
     with args.log.open("a", encoding="utf-8") as log:
-        command = shlex.join(args.command)
+        command = (
+            subprocess.list2cmdline(args.command) if os.name == "nt" else shlex.join(args.command)
+        )
         log_line(log, f"readiness_command={command}")
         while True:
             remaining = deadline - time.monotonic()
@@ -56,17 +61,21 @@ def main() -> int:
                 return 124
 
             try:
-                result = subprocess.run(
+                result = stage1_process.run_capture(
                     args.command,
-                    check=False,
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    timeout=min(args.probe_timeout_seconds, remaining),
+                    timeout_seconds=min(args.probe_timeout_seconds, remaining),
                 )
-            except subprocess.TimeoutExpired:
-                result = None
+            except OSError as error:
+                log_line(log, f"readiness command could not start: {error}")
+                return 127
+            log.write(result.stdout.decode("utf-8", errors="replace"))
+            log.write(result.stderr.decode("utf-8", errors="replace"))
+            log.flush()
 
-            if result is not None and result.returncode == 0:
+            if result.cleanup_timed_out:
+                log_line(log, "readiness command cleanup exceeded its hard allowance")
+                return 124
+            if not result.timed_out and result.returncode == 0:
                 log_line(log, "readiness command succeeded")
                 return 0
 

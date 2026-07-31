@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pyright: reportAttributeAccessIssue=false
 """Launch a Windows process in a kill-on-close Job Object before it runs."""
 
 from __future__ import annotations
@@ -8,7 +9,8 @@ from ctypes import wintypes
 import math
 import os
 import subprocess
-from typing import BinaryIO
+from os import PathLike
+from typing import BinaryIO, Mapping
 
 
 CREATE_NEW_PROCESS_GROUP = 0x00000200
@@ -174,15 +176,6 @@ def _close_or_terminate_job(kernel32: ctypes.WinDLL, handle: wintypes.HANDLE) ->
     return _close_handle(kernel32, handle)
 
 
-def _taskkill_tree(process_id: int) -> None:
-    subprocess.run(
-        ["taskkill", "/PID", str(process_id), "/T", "/F"],
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-
 def _create_kill_on_close_job(kernel32: ctypes.WinDLL) -> wintypes.HANDLE:
     job = kernel32.CreateJobObjectW(None, None)
     if not job:
@@ -213,7 +206,7 @@ def _require_process_in_job(
         raise OSError("CreateProcessW did not place the scenario in its Job Object")
 
 
-def _pipe() -> tuple[BinaryIO, int]:
+def _output_pipe() -> tuple[BinaryIO, int]:
     read_fd, write_fd = os.pipe()
     try:
         os.set_inheritable(read_fd, False)
@@ -225,21 +218,57 @@ def _pipe() -> tuple[BinaryIO, int]:
         raise
 
 
+def _child_stdin(
+    stdin: BinaryIO | int,
+) -> tuple[BinaryIO | None, int]:
+    if stdin == subprocess.PIPE:
+        read_fd, write_fd = os.pipe()
+        try:
+            os.set_inheritable(read_fd, True)
+            os.set_inheritable(write_fd, False)
+            return os.fdopen(write_fd, "wb", buffering=0), read_fd
+        except BaseException:
+            os.close(read_fd)
+            os.close(write_fd)
+            raise
+    if stdin == subprocess.DEVNULL:
+        stdin_fd = os.open(os.devnull, os.O_RDONLY)
+    elif isinstance(stdin, int):
+        stdin_fd = os.dup(stdin)
+    else:
+        stdin_fd = os.dup(stdin.fileno())
+    os.set_inheritable(stdin_fd, True)
+    return None, stdin_fd
+
+
+def _environment_block(environment: Mapping[str, str] | None) -> ctypes.Array[ctypes.c_wchar] | None:
+    if environment is None:
+        return None
+    entries = []
+    for key, value in sorted(environment.items(), key=lambda item: item[0].casefold()):
+        if not key or "=" in key or "\0" in key or "\0" in value:
+            raise ValueError(f"invalid environment entry {key!r}")
+        entries.append(f"{key}={value}")
+    return ctypes.create_unicode_buffer("\0".join(entries) + "\0\0")
+
+
 class WindowsJobProcess:
     def __init__(
         self,
         kernel32: ctypes.WinDLL,
         process_handle: wintypes.HANDLE,
         process_id: int,
+        stdin: BinaryIO | None,
         stdout: BinaryIO,
         stderr: BinaryIO,
         job_handle: wintypes.HANDLE,
         command: list[str],
     ) -> None:
         self._kernel32 = kernel32
-        self._handle = process_handle
-        self._stage1_job_handle = job_handle
+        self._handle: wintypes.HANDLE | None = process_handle
+        self._stage1_job_handle: wintypes.HANDLE | None = job_handle
         self.pid = process_id
+        self.stdin = stdin
         self.stdout = stdout
         self.stderr = stderr
         self.args = command
@@ -275,18 +304,32 @@ class WindowsJobProcess:
             milliseconds = min(max(0, math.ceil(timeout * 1000)), INFINITE - 1)
         result = self._kernel32.WaitForSingleObject(self._handle, milliseconds)
         if result == WAIT_TIMEOUT:
-            raise subprocess.TimeoutExpired(self.args, timeout)
+            raise subprocess.TimeoutExpired(self.args, timeout if timeout is not None else 0.0)
         if result == WAIT_OBJECT_0:
             return self._collect_returncode()
         if result == WAIT_FAILED:
             raise ctypes.WinError(ctypes.get_last_error())
         raise OSError(f"WaitForSingleObject returned {result}")
 
+    def terminate_tree(self) -> bool:
+        # PID-based taskkill is intentionally not a fallback: the target can exit and its PID can
+        # be reused between a handle check and taskkill. The retained Job/process handles are the
+        # only safe process identities; failure to terminate them is reported to the caller.
+        return close_job(self)
+
     def close(self) -> None:
         close_job(self)
         if self._handle is not None:
             _close_handle(self._kernel32, self._handle)
             self._handle = None
+        for stream_name in ("stdin", "stdout", "stderr"):
+            stream = getattr(self, stream_name)
+            if stream is not None:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+                setattr(self, stream_name, None)
 
     def __del__(self) -> None:
         self.close()
@@ -302,7 +345,13 @@ def close_job(process: WindowsJobProcess) -> bool:
     return True
 
 
-def start_process(command: list[str]) -> WindowsJobProcess:
+def start_process(
+    command: list[str],
+    *,
+    stdin: BinaryIO | int = subprocess.DEVNULL,
+    environment: Mapping[str, str] | None = None,
+    cwd: str | PathLike[str] | None = None,
+) -> WindowsJobProcess:
     if os.name != "nt":
         raise OSError("Windows Job Object launcher requires Windows")
 
@@ -310,6 +359,7 @@ def start_process(command: list[str]) -> WindowsJobProcess:
 
     kernel32 = _kernel32()
     job = None
+    parent_stdin = None
     stdout = None
     stderr = None
     stdout_write_fd = None
@@ -320,10 +370,9 @@ def start_process(command: list[str]) -> WindowsJobProcess:
     process_info = ProcessInformation()
     try:
         job = _create_kill_on_close_job(kernel32)
-        stdout, stdout_write_fd = _pipe()
-        stderr, stderr_write_fd = _pipe()
-        stdin_fd = os.open(os.devnull, os.O_RDONLY)
-        os.set_inheritable(stdin_fd, True)
+        parent_stdin, stdin_fd = _child_stdin(stdin)
+        stdout, stdout_write_fd = _output_pipe()
+        stderr, stderr_write_fd = _output_pipe()
 
         attribute_list_size = ctypes.c_size_t()
         if kernel32.InitializeProcThreadAttributeList(
@@ -375,6 +424,12 @@ def start_process(command: list[str]) -> WindowsJobProcess:
         startup_info.startup_info.h_std_error = standard_handles[2]
         startup_info.attribute_list = attribute_list
         command_line = ctypes.create_unicode_buffer(subprocess.list2cmdline(command))
+        environment_buffer = _environment_block(environment)
+        environment_pointer = (
+            ctypes.cast(environment_buffer, ctypes.c_void_p)
+            if environment_buffer is not None
+            else None
+        )
         creation_flags = (
             CREATE_NEW_PROCESS_GROUP | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT
         )
@@ -385,8 +440,8 @@ def start_process(command: list[str]) -> WindowsJobProcess:
             None,
             True,
             creation_flags,
-            None,
-            None,
+            environment_pointer,
+            os.fspath(cwd) if cwd is not None else None,
             ctypes.byref(startup_info.startup_info),
             ctypes.byref(process_info),
         ):
@@ -399,12 +454,14 @@ def start_process(command: list[str]) -> WindowsJobProcess:
             kernel32,
             process_info.process_handle,
             process_info.process_id,
+            parent_stdin,
             stdout,
             stderr,
             job,
             command,
         )
         process_info.process_handle = None
+        parent_stdin = None
         stdout = None
         stderr = None
         job = None
@@ -415,15 +472,12 @@ def start_process(command: list[str]) -> WindowsJobProcess:
         for fd in (stdin_fd, stdout_write_fd, stderr_write_fd):
             if fd is not None:
                 os.close(fd)
-        if stdout is not None:
-            stdout.close()
-        if stderr is not None:
-            stderr.close()
+        for stream in (parent_stdin, stdout, stderr):
+            if stream is not None:
+                stream.close()
         if process_info.process_handle:
             if job and _close_or_terminate_job(kernel32, job):
                 job = None
-            if job:
-                _taskkill_tree(process_info.process_id)
             kernel32.TerminateProcess(process_info.process_handle, 1)
         if process_info.thread_handle:
             _close_handle(kernel32, process_info.thread_handle)

@@ -85,6 +85,7 @@ class WindowsJobLauncherTests(unittest.TestCase):
             kernel32,
             1,
             7,
+            None,
             io.BytesIO(),
             io.BytesIO(),
             2,

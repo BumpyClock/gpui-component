@@ -8,11 +8,11 @@ import datetime as dt
 import os
 from pathlib import Path
 import shlex
-import signal
 import subprocess
 import sys
-import time
 from typing import TextIO
+
+import stage1_process
 
 
 def command_text(command: list[str]) -> str:
@@ -27,28 +27,18 @@ def log_line(log: TextIO, message: str) -> None:
     log.flush()
 
 
-def terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
-    if os.name == "nt":
-        subprocess.run(
-            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        return
-
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-    except ProcessLookupError:
-        pass
-
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Run a command with a wall-clock timeout and preserve its output.",
         allow_abbrev=False,
     )
     parser.add_argument("--timeout-seconds", type=float, required=True)
+    parser.add_argument(
+        "--cleanup-seconds",
+        type=float,
+        default=stage1_process.DEFAULT_CLEANUP_SECONDS,
+        help="Hard post-timeout cleanup allowance; defaults to 5 seconds.",
+    )
     parser.add_argument("--stdout", type=Path, required=True)
     parser.add_argument("--stderr", type=Path, required=True)
     parser.add_argument("--log", type=Path, required=True)
@@ -65,6 +55,8 @@ def parse_args() -> argparse.Namespace:
 
     if args.timeout_seconds <= 0:
         parser.error("--timeout-seconds must be greater than zero")
+    if args.cleanup_seconds <= 0:
+        parser.error("--cleanup-seconds must be greater than zero")
     if args.stdout == args.stderr:
         parser.error("--stdout and --stderr must name different files")
 
@@ -94,6 +86,7 @@ def main() -> int:
     with args.log.open("w", encoding="utf-8") as log:
         log_line(log, f"command={command_text(args.command)}")
         log_line(log, f"timeout_seconds={args.timeout_seconds:g}")
+        log_line(log, f"cleanup_seconds={args.cleanup_seconds:g}")
         log_line(log, f"expected_exit_codes={sorted(expected_exit_codes)}")
 
         stdin = None
@@ -102,43 +95,54 @@ def main() -> int:
                 stdin = args.stdin.open("rb")
                 log_line(log, f"stdin={args.stdin}")
 
-            popen_kwargs: dict[str, object] = {
-                "stdin": stdin if stdin is not None else subprocess.DEVNULL,
-                "stdout": subprocess.PIPE,
-                "stderr": subprocess.PIPE,
-            }
-            if os.name == "nt":
-                popen_kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-            else:
-                popen_kwargs["start_new_session"] = True
-
-            started = time.monotonic()
             try:
-                process = subprocess.Popen(args.command, **popen_kwargs)
+                result = stage1_process.run_capture(
+                    args.command,
+                    timeout_seconds=args.timeout_seconds,
+                    cleanup_seconds=args.cleanup_seconds,
+                    stdin=stdin if stdin is not None else subprocess.DEVNULL,
+                )
             except OSError as error:
                 message = f"could not start command: {error}\n"
                 args.stderr.write_text(message, encoding="utf-8")
                 log_line(log, message.rstrip())
                 return 127
 
-            try:
-                stdout, stderr = process.communicate(timeout=args.timeout_seconds)
-            except subprocess.TimeoutExpired:
-                elapsed = time.monotonic() - started
-                log_line(log, f"timeout after {elapsed:.3f} seconds; terminating process tree")
-                terminate_process_tree(process)
-                stdout, stderr = process.communicate()
-                args.stdout.write_bytes(stdout)
-                args.stderr.write_bytes(stderr)
-                log_line(log, f"stdout_bytes={len(stdout)} stderr_bytes={len(stderr)}")
+            args.stdout.write_bytes(result.stdout)
+            args.stderr.write_bytes(result.stderr)
+            if result.timed_out:
+                log_line(
+                    log,
+                    f"timeout after {result.elapsed_seconds:.3f} seconds; process-tree termination requested",
+                )
+                if result.cleanup_timed_out:
+                    log_line(
+                        log,
+                        "cleanup allowance expired before process termination and output draining were confirmed",
+                    )
+                else:
+                    log_line(log, "process termination and output draining confirmed")
+                log_line(
+                    log,
+                    f"stdout_bytes={len(result.stdout)} stderr_bytes={len(result.stderr)}",
+                )
                 return 124
 
-            elapsed = time.monotonic() - started
-            args.stdout.write_bytes(stdout)
-            args.stderr.write_bytes(stderr)
-            log_line(log, f"exit_code={process.returncode} elapsed_seconds={elapsed:.3f}")
-            log_line(log, f"stdout_bytes={len(stdout)} stderr_bytes={len(stderr)}")
-            if process.returncode not in expected_exit_codes:
+            log_line(
+                log,
+                f"exit_code={result.returncode} elapsed_seconds={result.elapsed_seconds:.3f}",
+            )
+            log_line(
+                log,
+                f"stdout_bytes={len(result.stdout)} stderr_bytes={len(result.stderr)}",
+            )
+            if result.cleanup_timed_out:
+                log_line(
+                    log,
+                    "cleanup allowance expired before process termination and output draining were confirmed",
+                )
+                return 1
+            if result.returncode not in expected_exit_codes:
                 log_line(log, "command exited with an unexpected status")
                 return 1
             return 0

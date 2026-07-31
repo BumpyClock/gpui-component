@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
@@ -9,10 +10,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest import mock
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
-HARNESS = REPOSITORY_ROOT / "tooling" / "stage1_clipboard_harness.py"
+TOOLING = REPOSITORY_ROOT / "tooling"
+sys.path.insert(0, str(TOOLING))
+HARNESS = TOOLING / "stage1_clipboard_harness.py"
 SCENARIO = Path(__file__).parent / "fixtures" / "fake_clipboard_scenario.py"
 READER = Path(__file__).parent / "fixtures" / "fake_clipboard_reader.py"
 HARNESS_SPEC = importlib.util.spec_from_file_location("stage1_clipboard_harness", HARNESS)
@@ -116,6 +121,45 @@ class ClipboardHarnessTests(unittest.TestCase):
         self.assert_listener_closed(host, port)
         self.assertIn("clipboard_acknowledged", [record["event"] for record in records])
         self.assertIn("terminal", [record["event"] for record in records])
+
+
+class ClipboardCleanupReportingTests(unittest.TestCase):
+    def test_reports_unconfirmed_cleanup_with_primary_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory_name:
+            directory = Path(directory_name)
+            args = SimpleNamespace(
+                binary=directory / "scenario",
+                timeout_seconds=1.0,
+                reader_timeout_seconds=1.0,
+                validation_timeout_seconds=1.0,
+                validation_profile="macos-metal",
+                stdout=directory / "scenario.stdout",
+                stderr=directory / "scenario.stderr",
+                log=directory / "harness.log",
+                reader_stdout=directory / "reader.stdout",
+                reader_stderr=directory / "reader.stderr",
+                validation_stdout=directory / "validation.stdout",
+                validation_stderr=directory / "validation.stderr",
+                validation_log=directory / "validation.log",
+                reader_command=["reader"],
+            )
+            process = SimpleNamespace(stdout=io.BytesIO(), stderr=io.BytesIO())
+
+            with (
+                mock.patch.object(HARNESS_MODULE, "parse_args", return_value=args),
+                mock.patch.object(HARNESS_MODULE, "start_process", return_value=process),
+                mock.patch.object(
+                    HARNESS_MODULE.stage1_process,
+                    "finish_streaming_process",
+                    return_value=False,
+                ),
+            ):
+                self.assertEqual(HARNESS_MODULE.main(), 1)
+
+            self.assertIn(
+                "clipboard scenario cleanup was not confirmed",
+                args.log.read_text(encoding="utf-8"),
+            )
 
 
 class ClipboardReadyTests(unittest.TestCase):

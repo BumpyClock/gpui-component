@@ -12,13 +12,14 @@ import os
 from pathlib import Path
 import queue
 import shlex
-import signal
 import socket
 import subprocess
 import sys
 import threading
 import time
 from typing import BinaryIO, TextIO
+
+import stage1_process
 
 
 class HarnessError(Exception):
@@ -35,34 +36,6 @@ def log_line(log: TextIO, message: str) -> None:
     timestamp = dt.datetime.now(dt.timezone.utc).isoformat()
     log.write(f"{timestamp} {message}\n")
     log.flush()
-
-
-def close_windows_job(process: object) -> bool:
-    if getattr(process, "_stage1_job_handle", None) is None:
-        return False
-    import stage1_windows_job
-
-    return stage1_windows_job.close_job(process)
-
-
-def terminate_process_tree(process: subprocess.Popen[bytes]) -> None:
-    if os.name == "nt":
-        if close_windows_job(process):
-            return
-        subprocess.run(
-            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        close_windows_job(process)
-        return
-    try:
-        # The conformance child starts a new session, so its PID remains the
-        # process-group ID even when the leader has already exited.
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
-        pass
 
 
 def parse_args() -> argparse.Namespace:
@@ -114,25 +87,8 @@ def start_process(
     command: list[str],
     *,
     stdin: BinaryIO | int = subprocess.DEVNULL,
-) -> subprocess.Popen[bytes]:
-    kwargs: dict[str, object] = {
-        "stdin": stdin,
-        "stdout": subprocess.PIPE,
-        "stderr": subprocess.PIPE,
-    }
-    if os.name == "nt":
-        kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
-    else:
-        kwargs["start_new_session"] = True
-    return subprocess.Popen(command, **kwargs)
-
-
-def start_scenario_process(command: list[str]) -> subprocess.Popen[bytes]:
-    if os.name == "nt":
-        import stage1_windows_job
-
-        return stage1_windows_job.start_process(command)  # type: ignore[return-value]
-    return start_process(command)
+) -> stage1_process.ManagedProcess:
+    return stage1_process.start_process(command, stdin=stdin)
 
 
 def pump_stdout(
@@ -140,17 +96,24 @@ def pump_stdout(
     output: BinaryIO,
     records: queue.Queue[bytes | None],
 ) -> None:
-    for line in iter(stream.readline, b""):
-        output.write(line)
-        output.flush()
-        records.put(line)
-    records.put(None)
+    try:
+        for line in iter(stream.readline, b""):
+            output.write(line)
+            output.flush()
+            records.put(line)
+    except (OSError, ValueError):
+        pass
+    finally:
+        records.put(None)
 
 
 def pump_stderr(stream: BinaryIO, output: BinaryIO) -> None:
-    for chunk in iter(lambda: stream.read(65536), b""):
-        output.write(chunk)
-        output.flush()
+    try:
+        for chunk in iter(lambda: stream.read(65536), b""):
+            output.write(chunk)
+            output.flush()
+    except (OSError, ValueError):
+        pass
 
 
 def remaining(deadline: float) -> float:
@@ -216,7 +179,7 @@ def reject_premature_completion(record: dict[str, object], phase: str) -> None:
 
 
 def wait_for_clipboard_ready(
-    process: subprocess.Popen[bytes],
+    process: stage1_process.ManagedProcess,
     records: queue.Queue[bytes | None],
     deadline: float,
 ) -> tuple[bytes, str]:
@@ -238,7 +201,7 @@ def wait_for_clipboard_ready(
             return ready
 
 
-def require_process_running(process: subprocess.Popen[bytes], phase: str) -> None:
+def require_process_running(process: stage1_process.ManagedProcess, phase: str) -> None:
     if process.poll() is not None:
         raise HarnessError(
             f"clipboard scenario exited with status {process.returncode} {phase}"
@@ -246,7 +209,7 @@ def require_process_running(process: subprocess.Popen[bytes], phase: str) -> Non
 
 
 def require_scenario_active(
-    process: subprocess.Popen[bytes],
+    process: stage1_process.ManagedProcess,
     records: queue.Queue[bytes | None],
     phase: str,
 ) -> None:
@@ -276,36 +239,35 @@ def normalize_reader_output(output: bytes) -> bytes:
 def run_reader(
     command: list[str],
     timeout_seconds: float,
+    cleanup_deadline: float,
     stdout_path: Path,
     stderr_path: Path,
     log: TextIO,
 ) -> bytes:
     log_line(log, f"clipboard_reader_command={command_text(command)}")
     try:
-        process = start_process(command)
+        result = stage1_process.run_capture(
+            command,
+            timeout_seconds=timeout_seconds,
+            cleanup_deadline=cleanup_deadline,
+        )
     except OSError as error:
         raise HarnessError(f"could not start clipboard reader: {error}") from error
 
-    try:
-        stdout, stderr = process.communicate(timeout=timeout_seconds)
-    except subprocess.TimeoutExpired:
-        terminate_process_tree(process)
-        stdout, stderr = process.communicate()
-        stdout_path.write_bytes(stdout)
-        stderr_path.write_bytes(stderr)
-        raise HarnessError(f"clipboard reader exceeded {timeout_seconds:g} seconds")
-    finally:
-        terminate_process_tree(process)
-
-    stdout_path.write_bytes(stdout)
-    stderr_path.write_bytes(stderr)
+    stdout_path.write_bytes(result.stdout)
+    stderr_path.write_bytes(result.stderr)
     log_line(
         log,
-        f"clipboard_reader_exit_code={process.returncode} stdout_bytes={len(stdout)} stderr_bytes={len(stderr)}",
+        f"clipboard_reader_exit_code={result.returncode} "
+        f"stdout_bytes={len(result.stdout)} stderr_bytes={len(result.stderr)}",
     )
-    if process.returncode != 0:
-        raise HarnessError(f"clipboard reader exited with status {process.returncode}")
-    return stdout
+    if result.timed_out:
+        raise HarnessError(f"clipboard reader exceeded {timeout_seconds:g} seconds")
+    if result.cleanup_timed_out:
+        raise HarnessError("clipboard reader cleanup exceeded its hard allowance")
+    if result.returncode != 0:
+        raise HarnessError(f"clipboard reader exited with status {result.returncode}")
+    return result.stdout
 
 
 def parse_loopback_address(address: str) -> tuple[str, int]:
@@ -340,14 +302,15 @@ def acknowledge(address: str, timeout_seconds: float, log: TextIO) -> None:
     log_line(log, f"clipboard_acknowledged={host}:{port}")
 
 
-def wait_for_exit(process: subprocess.Popen[bytes], deadline: float, log: TextIO) -> None:
-    try:
-        process.wait(timeout=remaining(deadline))
-    except subprocess.TimeoutExpired:
+def wait_for_exit(
+    process: stage1_process.ManagedProcess, deadline: float, log: TextIO
+) -> None:
+    if not stage1_process.observe_process_exit(process, deadline=deadline):
         raise HarnessError("clipboard scenario did not return after verification")
-    log_line(log, f"clipboard_scenario_exit_code={process.returncode}")
-    if process.returncode != 0:
-        raise HarnessError(f"clipboard scenario exited with status {process.returncode}")
+    returncode = process.poll()
+    log_line(log, f"clipboard_scenario_exit_code={returncode}")
+    if returncode != 0:
+        raise HarnessError(f"clipboard scenario exited with status {returncode}")
 
 
 def validate_trace(
@@ -364,34 +327,31 @@ def validate_trace(
         path.parent.mkdir(parents=True, exist_ok=True)
     with log_output.open("w", encoding="utf-8") as log:
         log_line(log, f"validator_command={command_text(command)}")
-        process = None
         with stdout_path.open("rb") as trace:
             try:
-                process = start_process(command, stdin=trace)
+                result = stage1_process.run_capture(
+                    command,
+                    timeout_seconds=timeout_seconds,
+                    stdin=trace,
+                )
             except OSError as error:
                 raise HarnessError(f"could not start conformance validator: {error}") from error
-            try:
-                stdout, stderr = process.communicate(timeout=timeout_seconds)
-            except subprocess.TimeoutExpired:
-                terminate_process_tree(process)
-                stdout, stderr = process.communicate()
-                stdout_output.write_bytes(stdout)
-                stderr_output.write_bytes(stderr)
-                log_line(log, "validator timed out")
-                raise HarnessError(f"conformance validator exceeded {timeout_seconds:g} seconds")
-            finally:
-                if process is not None:
-                    terminate_process_tree(process)
 
-        stdout_output.write_bytes(stdout)
-        stderr_output.write_bytes(stderr)
+        stdout_output.write_bytes(result.stdout)
+        stderr_output.write_bytes(result.stderr)
         log_line(
             log,
-            f"validator_exit_code={process.returncode} stdout_bytes={len(stdout)} stderr_bytes={len(stderr)}",
+            f"validator_exit_code={result.returncode} "
+            f"stdout_bytes={len(result.stdout)} stderr_bytes={len(result.stderr)}",
         )
-        if process.returncode != 0:
-            raise HarnessError(f"conformance validator exited with status {process.returncode}")
-        if stdout:
+        if result.timed_out:
+            log_line(log, "validator timed out")
+            raise HarnessError(f"conformance validator exceeded {timeout_seconds:g} seconds")
+        if result.cleanup_timed_out:
+            raise HarnessError("conformance validator cleanup exceeded its hard allowance")
+        if result.returncode != 0:
+            raise HarnessError(f"conformance validator exited with status {result.returncode}")
+        if result.stdout:
             raise HarnessError("conformance validator wrote unexpected stdout")
 
 
@@ -467,16 +427,20 @@ def main() -> int:
     process = None
     stdout_thread = None
     stderr_thread = None
-    cleanup_finished = False
+    started_threads: list[threading.Thread] = []
+    cleanup_attempted = False
+    cleanup_succeeded = False
+    cleanup_deadline = None
     with args.log.open("w", encoding="utf-8") as log:
         command = [str(args.binary), "--scenario", "clipboard"]
         log_line(log, f"clipboard_scenario_command={command_text(command)}")
         log_line(log, f"timeout_seconds={args.timeout_seconds:g}")
+        deadline = time.monotonic() + args.timeout_seconds
+        cleanup_deadline = deadline + stage1_process.DEFAULT_CLEANUP_SECONDS
         try:
-            process = start_scenario_process(command)
+            process = start_process(command)
             assert process.stdout is not None
             assert process.stderr is not None
-            deadline = time.monotonic() + args.timeout_seconds
             records: queue.Queue[bytes | None] = queue.Queue()
             with args.stdout.open("wb") as stdout, args.stderr.open("wb") as stderr:
                 try:
@@ -491,7 +455,9 @@ def main() -> int:
                         daemon=True,
                     )
                     stdout_thread.start()
+                    started_threads.append(stdout_thread)
                     stderr_thread.start()
+                    started_threads.append(stderr_thread)
 
                     expected_payload, acknowledgement_address = wait_for_clipboard_ready(
                         process, records, deadline
@@ -508,6 +474,7 @@ def main() -> int:
                     reader_output = run_reader(
                         args.reader_command,
                         min(args.reader_timeout_seconds, remaining(deadline)),
+                        cleanup_deadline,
                         args.reader_stdout,
                         args.reader_stderr,
                         log,
@@ -527,15 +494,17 @@ def main() -> int:
                     acknowledge(acknowledgement_address, remaining(deadline), log)
                     wait_for_exit(process, deadline, log)
                 finally:
-                    terminate_process_tree(process)
-                    if stdout_thread is not None:
-                        stdout_thread.join()
-                    if stderr_thread is not None:
-                        stderr_thread.join()
-                    cleanup_finished = True
+                    cleanup_attempted = True
+                    cleanup_succeeded = stage1_process.finish_streaming_process(
+                        process,
+                        tuple(started_threads),
+                        cleanup_deadline=cleanup_deadline,
+                    )
 
-                if stdout_thread.is_alive() or stderr_thread.is_alive():
-                    raise HarnessError("clipboard scenario output did not drain after process exit")
+                if not cleanup_succeeded:
+                    raise HarnessError(
+                        "clipboard scenario cleanup exceeded its hard allowance"
+                    )
 
             assert_orderly_clipboard_trace(args.stdout)
             validate_trace(
@@ -550,11 +519,23 @@ def main() -> int:
             log_line(log, "clipboard conformance succeeded")
             return 0
         except (HarnessError, OSError) as error:
-            log_line(log, f"clipboard conformance failed: {error}")
+            detail = str(error)
+            if cleanup_attempted and not cleanup_succeeded:
+                detail = f"{detail}; clipboard scenario cleanup was not confirmed"
+            log_line(log, f"clipboard conformance failed: {detail}")
             return 1
         finally:
-            if process is not None and not cleanup_finished:
-                terminate_process_tree(process)
+            if process is not None and not cleanup_attempted:
+                cleanup_succeeded = stage1_process.finish_streaming_process(
+                    process,
+                    tuple(started_threads),
+                    cleanup_deadline=cleanup_deadline,
+                )
+                if not cleanup_succeeded:
+                    log_line(
+                        log,
+                        "clipboard conformance cleanup failed before scenario execution completed",
+                    )
 
 
 if __name__ == "__main__":
