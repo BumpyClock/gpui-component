@@ -109,9 +109,9 @@ Cross-cutting problems:
 4. **Nobody has window-bounds persistence**; layout persistence solved once (agent-term), settings solved well once (ansible).
 5. gpui fork has unused app primitives the library never wraps — but some are **stubs**:
    review verified URL-scheme registration is unimplemented on Windows
-   (`vendor/gpui/crates/gpui_windows/src/platform.rs:842`) and Linux
-   (`gpui_linux/src/platform.rs:685`), and X11 overlay click-through is a silent no-op
-   (`x11/window.rs:1619`). "Exists in the fork" ≠ "works on 3 OSes".
+   ([`BumpyClock/gpui@67c20f3ae1046aa873591ff4b44953b53df37bc4`](https://github.com/BumpyClock/gpui/blob/67c20f3ae1046aa873591ff4b44953b53df37bc4/crates/gpui_windows/src/platform.rs#L1078)) and Linux
+   ([`gpui_linux/src/linux/platform.rs:723`](https://github.com/BumpyClock/gpui/blob/67c20f3ae1046aa873591ff4b44953b53df37bc4/crates/gpui_linux/src/linux/platform.rs#L723)), and X11 overlay click-through is a silent no-op
+   ([`gpui_linux/src/linux/x11/window.rs:1620`](https://github.com/BumpyClock/gpui/blob/67c20f3ae1046aa873591ff4b44953b53df37bc4/crates/gpui_linux/src/linux/x11/window.rs#L1620)). "Exists in the fork" ≠ "works on 3 OSes".
 
 ## 2. Decisions
 
@@ -285,12 +285,12 @@ Core contracts (each traces to a review finding):
   state. Separately configured: initial activation (`InitialActivation::Passive` for
   tray-first — **no unconditional `activate(true)`**), macOS dock policy, quit policy.
 - **Persistence guarantee is honest**: settings persist continuously within a
-  configured debounce window; orderly shell-mediated shutdown attempts a bounded
-  synchronous final flush **and reports failure** (GPUI quit observers get ~100ms —
-  verified in fork `app.rs`); abrupt termination may lose the debounce window. All
-  platform-owned quit actions route through one `request_quit()` path. Tests cover
-  every *normal* quit path (menu quit, programmatic, last-window-close, tray quit,
-  failed startup after changes, worker shutdown).
+  configured debounce window; orderly shell-mediated shutdown makes one bounded,
+  best-effort final flush pass and reports failure (GPUI quit observers get ~100ms —
+  verified in fork `app.rs`). A blocked store or abrupt termination may lose pending
+  changes. All platform-owned quit actions route through one `request_quit()` path.
+  Tests cover every *normal* quit path (menu quit, programmatic,
+  last-window-close, tray quit, failed startup after changes, worker shutdown).
 - **Windows**: `WindowKey` stable non-localized identity (titles are not persistence
   keys); registry is an app-scoped GPUI global (not a process `OnceLock`); singleton
   state is `Closed | Opening | Open` (prevents async double-create);

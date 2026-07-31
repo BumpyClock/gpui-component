@@ -14,7 +14,7 @@ use crate::{Icon, IndexPath, Selectable, Sizable, StyledExt};
 use crate::{VirtualListScrollHandle, list::ListDelegate, v_virtual_list};
 use gpui::{
     App, AvailableSpace, ClickEvent, Context, DefiniteLength, EdgesRefinement, EventEmitter,
-    ListSizingBehavior, RenderOnce, ScrollStrategy, SharedString, StatefulInteractiveElement,
+    ListSizingBehavior, RenderOnce, Role, ScrollStrategy, SharedString, StatefulInteractiveElement,
     StyleRefinement, Subscription, px, size,
 };
 use gpui::{
@@ -660,6 +660,7 @@ where
         v_flex()
             .key_context("List")
             .id("list-state")
+            .role(Role::ListBox)
             .track_focus(&self.focus_handle)
             .size_full()
             .relative()

@@ -128,9 +128,9 @@ where
                                         let dismiss_duration = if reduced_motion {
                                             std::time::Duration::ZERO
                                         } else {
-                                            std::time::Duration::from_millis(u64::from(
-                                                cx.theme().motion.fade_duration_ms,
-                                            ))
+                                            // Must outlast the exit animation or
+                                            // the menu pops mid-fade.
+                                            crate::animation::exit_duration(&cx.theme().motion)
                                         };
                                         cx.spawn({
                                             let menu_state = menu_state.clone();

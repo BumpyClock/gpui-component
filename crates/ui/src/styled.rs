@@ -173,17 +173,6 @@ pub trait StyledExt: Styled + Sized {
     font_weight!(font_extrabold, EXTRA_BOLD);
     font_weight!(font_black, BLACK);
 
-    /// Set as Popover style
-    #[inline]
-    fn popover_style(self, cx: &App) -> Self {
-        self.bg(cx.theme().popover)
-            .text_color(cx.theme().popover_foreground)
-            .border_1()
-            .border_color(cx.theme().border)
-            .shadow_lg()
-            .rounded(cx.theme().radius)
-    }
-
     /// Apply Fluent caption typography (12/16 Regular).
     fn fluent_caption(self, cx: &App) -> Self {
         let t = &cx.theme().typography.caption;

@@ -6,10 +6,12 @@ use serde::Deserialize;
 
 use crate::section;
 use gpui_component::{
-    ActiveTheme, Disableable, Selectable as _, Sizable as _, Theme,
+    ActiveTheme, Disableable, IconName, Selectable as _, Sizable as _, Theme,
     button::{Button, ButtonVariants as _, DropdownButton},
     checkbox::Checkbox,
-    h_flex, v_flex,
+    h_flex,
+    menu::DropdownMenu as _,
+    v_flex,
 };
 
 #[derive(Clone, Action, PartialEq, Eq, Deserialize)]
@@ -126,35 +128,292 @@ impl Render for DropdownButtonStory {
                     ),
             )
             .child(
-                section("Dropdown Button").child(
-                    DropdownButton::new("btn0")
-                        .primary()
-                        .button(Button::new("btn").label("Primary Dropdown"))
-                        .when(self.compact, |this| this.compact())
-                        .loading(self.loading)
-                        .disabled(self.disabled)
-                        .selected(selected)
-                        .dropdown_menu_with_anchor(Corner::BottomRight, move |this, _, _| {
-                            this.menu_with_check(
-                                "Disabled",
-                                disabled,
-                                Box::new(ButtonAction::Disabled),
+                section("Interactive split")
+                    .sub_title("Tab moves from the primary action to the menu trigger")
+                    .child(
+                        DropdownButton::new("btn0")
+                            .primary()
+                            .button(Button::new("primary-action").label("Run task"))
+                            .when(self.compact, |this| this.compact())
+                            .loading(self.loading)
+                            .disabled(self.disabled)
+                            .selected(selected)
+                            .dropdown_menu_with_anchor(Corner::BottomRight, move |this, _, _| {
+                                this.menu_with_check(
+                                    "Disabled",
+                                    disabled,
+                                    Box::new(ButtonAction::Disabled),
+                                )
+                                .menu_with_check(
+                                    "Loading",
+                                    loading,
+                                    Box::new(ButtonAction::Loading),
+                                )
+                                .menu_with_check(
+                                    "Selected",
+                                    selected,
+                                    Box::new(ButtonAction::Selected),
+                                )
+                                .menu_with_check(
+                                    "Compact",
+                                    compact,
+                                    Box::new(ButtonAction::Compact),
+                                )
+                            }),
+                    ),
+            )
+            .child(
+                section("State review")
+                    .sub_title("Stable states for screenshot comparison")
+                    .child(
+                        h_flex()
+                            .w_full()
+                            .flex_wrap()
+                            .justify_center()
+                            .gap_6()
+                            .child(
+                                v_flex()
+                                    .items_start()
+                                    .gap_2()
+                                    .child(
+                                        gpui::div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child("Default"),
+                                    )
+                                    .child(
+                                        DropdownButton::new("state-default")
+                                            .button(
+                                                Button::new("state-default-action").label("Run"),
+                                            )
+                                            .dropdown_menu(|menu, _, _| {
+                                                menu.menu(
+                                                    "Run with options",
+                                                    Box::new(ButtonAction::Selected),
+                                                )
+                                            }),
+                                    ),
                             )
-                            .menu_with_check("Loading", loading, Box::new(ButtonAction::Loading))
-                            .menu_with_check("Selected", selected, Box::new(ButtonAction::Selected))
-                            .menu_with_check(
-                                "Compact",
-                                compact,
-                                Box::new(ButtonAction::Compact),
+                            .child(
+                                v_flex()
+                                    .items_start()
+                                    .gap_2()
+                                    .child(
+                                        gpui::div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child("Selected"),
+                                    )
+                                    .child(
+                                        DropdownButton::new("state-selected")
+                                            .button(
+                                                Button::new("state-selected-action").label("Run"),
+                                            )
+                                            .selected(true)
+                                            .dropdown_menu(|menu, _, _| {
+                                                menu.menu(
+                                                    "Run with options",
+                                                    Box::new(ButtonAction::Selected),
+                                                )
+                                            }),
+                                    ),
                             )
-                        }),
-                ),
+                            .child(
+                                v_flex()
+                                    .items_start()
+                                    .gap_2()
+                                    .child(
+                                        gpui::div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child("Loading"),
+                                    )
+                                    .child(
+                                        DropdownButton::new("state-loading")
+                                            .button(
+                                                Button::new("state-loading-action")
+                                                    .label("Running"),
+                                            )
+                                            .loading(true)
+                                            .dropdown_menu(|menu, _, _| {
+                                                menu.menu(
+                                                    "Run with options",
+                                                    Box::new(ButtonAction::Selected),
+                                                )
+                                            }),
+                                    ),
+                            )
+                            .child(
+                                v_flex()
+                                    .items_start()
+                                    .gap_2()
+                                    .child(
+                                        gpui::div()
+                                            .text_xs()
+                                            .text_color(cx.theme().muted_foreground)
+                                            .child("Disabled"),
+                                    )
+                                    .child(
+                                        DropdownButton::new("state-disabled")
+                                            .button(
+                                                Button::new("state-disabled-action").label("Run"),
+                                            )
+                                            .disabled(true)
+                                            .dropdown_menu(|menu, _, _| {
+                                                menu.menu(
+                                                    "Run with options",
+                                                    Box::new(ButtonAction::Selected),
+                                                )
+                                            }),
+                                    ),
+                            ),
+                    ),
+            )
+            .child(
+                section("Scale and density")
+                    .sub_title(
+                        "Caret stays optically quiet while the hit area tracks control height",
+                    )
+                    .child(
+                        v_flex()
+                            .items_start()
+                            .gap_2()
+                            .child(
+                                gpui::div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Extra small"),
+                            )
+                            .child(
+                                DropdownButton::new("size-xs")
+                                    .xsmall()
+                                    .button(Button::new("size-xs-action").label("Run"))
+                                    .dropdown_menu(|menu, _, _| {
+                                        menu.menu(
+                                            "Run with options",
+                                            Box::new(ButtonAction::Selected),
+                                        )
+                                    }),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .items_start()
+                            .gap_2()
+                            .child(
+                                gpui::div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Small"),
+                            )
+                            .child(
+                                DropdownButton::new("size-sm")
+                                    .small()
+                                    .button(Button::new("size-sm-action").label("Run"))
+                                    .dropdown_menu(|menu, _, _| {
+                                        menu.menu(
+                                            "Run with options",
+                                            Box::new(ButtonAction::Selected),
+                                        )
+                                    }),
+                            ),
+                    )
+                    .child(
+                        v_flex()
+                            .items_start()
+                            .gap_2()
+                            .child(
+                                gpui::div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Compact"),
+                            )
+                            .child(
+                                DropdownButton::new("size-compact")
+                                    .compact()
+                                    .button(Button::new("size-compact-action").label("Run"))
+                                    .dropdown_menu(|menu, _, _| {
+                                        menu.menu(
+                                            "Run with options",
+                                            Box::new(ButtonAction::Selected),
+                                        )
+                                    }),
+                            ),
+                    ),
+            )
+            .child(
+                section("Borderless Modes")
+                    .child(
+                        DropdownButton::new("btn-borderless")
+                            .ghost()
+                            .bordered(false)
+                            .button(Button::new("borderless-action").label("Borderless Dropdown"))
+                            .when(self.compact, |this| this.compact())
+                            .loading(self.loading)
+                            .disabled(self.disabled)
+                            .selected(selected)
+                            .dropdown_menu(move |this, _, _| {
+                                this.menu_with_check(
+                                    "Disabled",
+                                    disabled,
+                                    Box::new(ButtonAction::Disabled),
+                                )
+                                .menu_with_check(
+                                    "Loading",
+                                    loading,
+                                    Box::new(ButtonAction::Loading),
+                                )
+                                .menu_with_check(
+                                    "Selected",
+                                    selected,
+                                    Box::new(ButtonAction::Selected),
+                                )
+                                .menu_with_check(
+                                    "Compact",
+                                    compact,
+                                    Box::new(ButtonAction::Compact),
+                                )
+                            }),
+                    )
+                    .child(
+                        DropdownButton::new("btn-icon")
+                            .ghost()
+                            .bordered(false)
+                            .icon(IconName::Ellipsis)
+                            .tooltip("More actions")
+                            .when(self.compact, |this| this.compact())
+                            .loading(self.loading)
+                            .disabled(self.disabled)
+                            .selected(selected)
+                            .dropdown_menu(move |this, _, _| {
+                                this.menu_with_check(
+                                    "Disabled",
+                                    disabled,
+                                    Box::new(ButtonAction::Disabled),
+                                )
+                                .menu_with_check(
+                                    "Loading",
+                                    loading,
+                                    Box::new(ButtonAction::Loading),
+                                )
+                                .menu_with_check(
+                                    "Selected",
+                                    selected,
+                                    Box::new(ButtonAction::Selected),
+                                )
+                                .menu_with_check(
+                                    "Compact",
+                                    compact,
+                                    Box::new(ButtonAction::Compact),
+                                )
+                            }),
+                    ),
             )
             .child(
                 section("Small Size").child(
                     DropdownButton::new("btn-sm")
                         .small()
-                        .button(Button::new("btn").label("Small Dropdown"))
+                        .button(Button::new("small-action").label("Small Dropdown"))
                         .when(self.compact, |this| this.compact())
                         .loading(self.loading)
                         .disabled(self.disabled)
@@ -180,7 +439,7 @@ impl Render for DropdownButtonStory {
                     DropdownButton::new("btn-outline")
                         .outline()
                         .danger()
-                        .button(Button::new("btn").label("Outline Dropdown"))
+                        .button(Button::new("outline-action").label("Outline Dropdown"))
                         .when(self.compact, |this| this.compact())
                         .loading(self.loading)
                         .disabled(self.disabled)
@@ -203,9 +462,10 @@ impl Render for DropdownButtonStory {
             )
             .child(
                 section("Ghost").child(
-                    DropdownButton::new("btn-ghost")
+                    Button::new("btn-ghost")
                         .ghost()
-                        .button(Button::new("btn").label("Ghost Dropdown"))
+                        .label("Ghost Dropdown")
+                        .dropdown_caret(true)
                         .when(self.compact, |this| this.compact())
                         .loading(self.loading)
                         .disabled(self.disabled)

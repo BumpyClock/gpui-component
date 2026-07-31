@@ -13,7 +13,7 @@ use rust_i18n::t;
 use crate::{
     ActiveTheme, Disableable, Icon, IconName, Sizable, Size, StyleSized as _, StyledExt as _,
     actions::{Cancel, Confirm},
-    animation::fast_invoke_animation,
+    animation::enter_animation,
     button::{Button, ButtonVariants as _},
     global_state::GlobalState,
     h_flex,
@@ -443,7 +443,7 @@ impl RenderOnce for DatePicker {
             .when(state.open, |this| {
                 let motion = &cx.theme().motion;
                 let reduced_motion = GlobalState::global(cx).reduced_motion();
-                let anim = fast_invoke_animation(motion, reduced_motion);
+                let anim = enter_animation(motion, reduced_motion);
 
                 this.child(
                     deferred(

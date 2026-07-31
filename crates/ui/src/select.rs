@@ -1,17 +1,17 @@
 use gpui::{
-    AbsoluteLength, Anchor, AnimationExt as _, AnyElement, App, AppContext, Bounds, ClickEvent,
-    Context, DefiniteLength, DismissEvent, Edges, ElementId, Entity, EventEmitter, FocusHandle,
-    Focusable, InteractiveElement, IntoElement, KeyBinding, Length, ParentElement, Pixels, Render,
-    RenderOnce, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Subscription,
-    Task, WeakEntity, Window, anchored, deferred, div, point, prelude::FluentBuilder, px, rems,
+    AbsoluteLength, Anchor, AnyElement, App, AppContext, Bounds, ClickEvent, Context,
+    DefiniteLength, DismissEvent, Edges, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
+    InteractiveElement, IntoElement, KeyBinding, Length, ParentElement, Pixels, Render, RenderOnce,
+    SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Subscription, Task,
+    WeakEntity, Window, anchored, deferred, div, point, prelude::FluentBuilder, px, rems,
 };
 use rust_i18n::t;
 
 use crate::{
-    ActiveTheme, Disableable, ElementExt as _, Icon, IconName, IndexPath, Selectable, Sizable,
-    Size, StyleSized, StyledExt, SurfaceContext, SurfacePreset,
+    ActiveTheme, Disableable, ElementExt as _, FlyoutTokens, Icon, IconName, IndexPath, Selectable,
+    Sizable, Size, StyleSized, StyledExt, SurfaceContext, SurfacePreset,
     actions::{Cancel, Confirm, SelectDown, SelectUp},
-    animation::fast_invoke_animation,
+    animation::{FlyoutSlide, PresenceOptions, flyout_motion, flyout_presence},
     global_state::GlobalState,
     h_flex,
     input::clear_button,
@@ -819,10 +819,8 @@ where
         let bounds = self.bounds;
         let allow_open = !(self.open || self.options.disabled);
         let outline_visible = self.open || is_focused && !self.options.disabled;
-        let popup_radius = cx.theme().radius.min(px(8.));
-        let surface_ctx = SurfaceContext {
-            blur_enabled: GlobalState::global(cx).blur_enabled(),
-        };
+        let tokens = FlyoutTokens::sized(self.options.size, cx);
+        let surface_ctx = SurfaceContext::new(cx);
         let base_width = bounds.size.width.into();
         let base_height = bounds.size.height.into();
         let rem_size = window.rem_size();
@@ -923,10 +921,36 @@ where
                         move |bounds, _, cx| state.update(cx, |r, _| r.bounds = bounds)
                     }),
             )
-            .when(self.open, |this| {
-                let motion = &cx.theme().motion;
+            .map(|this| {
+                let motion = cx.theme().motion.clone();
                 let reduced_motion = GlobalState::global(cx).reduced_motion();
-                let anim = fast_invoke_animation(motion, reduced_motion);
+                let presence = flyout_presence(
+                    SharedString::from(format!(
+                        "select-popup-presence-{}",
+                        cx.entity().entity_id()
+                    )),
+                    self.open,
+                    PresenceOptions::default(),
+                    window,
+                    cx,
+                );
+                if !presence.should_render() {
+                    return this;
+                }
+
+                // Anchor::Top* places the menu below the trigger (see
+                // select_menu_placement), which is the same case popover.rs and
+                // hover_card.rs give -1.0 — match them so a flyout opening
+                // downward always slides the same way.
+                let vertical_direction = if matches!(
+                    placement.anchor,
+                    Anchor::TopLeft | Anchor::TopRight | Anchor::TopCenter
+                ) {
+                    -1.0
+                } else {
+                    1.0
+                };
+                let slide = FlyoutSlide::vertical(vertical_direction);
 
                 this.child(
                     deferred(
@@ -936,7 +960,7 @@ where
                                 .w(menu_width)
                                 .child(
                                     SurfacePreset::flyout()
-                                        .with_radius(popup_radius)
+                                        .with_radius(tokens.radius)
                                         .wrap_with_bounds(
                                             v_flex().occlude().child(
                                                 List::new(&self.list)
@@ -948,7 +972,7 @@ where
                                                     )
                                                     .with_size(self.options.size)
                                                     .max_h(rems(20.))
-                                                    .paddings(Edges::all(px(4.))),
+                                                    .paddings(Edges::all(tokens.inset)),
                                             ),
                                             menu_width,
                                             menu_height,
@@ -961,14 +985,14 @@ where
                                     this.escape(&Cancel, window, cx);
                                 }))
                                 .map(|el| {
-                                    if let Some(anim) = anim {
-                                        el.with_animation("select-enter", anim, |el, delta| {
-                                            el.opacity(delta)
-                                        })
-                                        .into_any_element()
-                                    } else {
-                                        el.into_any_element()
-                                    }
+                                    flyout_motion(
+                                        "select",
+                                        presence,
+                                        slide,
+                                        &motion,
+                                        reduced_motion,
+                                        el,
+                                    )
                                 }),
                         ),
                     )

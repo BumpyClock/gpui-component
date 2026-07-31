@@ -59,3 +59,44 @@ pub trait AppPlugin: sealed::Sealed + 'static {
     /// Tear down. Default: no-op. Called in reverse init order.
     fn shutdown(&mut self, _cx: &mut App) {}
 }
+
+#[cfg(feature = "test-support")]
+#[doc(hidden)]
+pub mod test_support {
+    use std::sync::{Arc, Mutex};
+
+    use gpui::App;
+
+    use crate::error::AppShellError;
+
+    use super::{AppPlugin, ShellSeed, sealed};
+
+    /// Creates a sealed plugin that records initialization and shutdown calls.
+    pub fn recording_plugin(name: &'static str, events: Arc<Mutex<Vec<String>>>) -> impl AppPlugin {
+        RecordingPlugin { name, events }
+    }
+
+    struct RecordingPlugin {
+        name: &'static str,
+        events: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl sealed::Sealed for RecordingPlugin {}
+
+    impl AppPlugin for RecordingPlugin {
+        fn init(&mut self, _cx: &mut App, _shell: &ShellSeed) -> Result<(), AppShellError> {
+            self.events
+                .lock()
+                .expect("recording plugin events poisoned")
+                .push(format!("{}:init", self.name));
+            Ok(())
+        }
+
+        fn shutdown(&mut self, _cx: &mut App) {
+            self.events
+                .lock()
+                .expect("recording plugin events poisoned")
+                .push(format!("{}:shutdown", self.name));
+        }
+    }
+}

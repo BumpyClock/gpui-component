@@ -1,5 +1,6 @@
 use crate::{
-    ActiveTheme, Sizable, Size, StyledExt, animation::animation_with_theme_easing,
+    ActiveTheme, Sizable, Size, StyledExt,
+    animation::{enter_duration, standard_animation},
     global_state::GlobalState,
 };
 use gpui::{
@@ -7,7 +8,6 @@ use gpui::{
     ParentElement, RenderOnce, StyleRefinement, Styled, Window, div, prelude::FluentBuilder, px,
     relative,
 };
-use std::time::Duration;
 
 use super::ProgressState;
 
@@ -121,13 +121,13 @@ impl RenderOnce for Progress {
                                     .into_any_element();
                             }
 
-                            let duration = Duration::from_millis(u64::from(
-                                cx.theme().motion.fast_duration_ms,
-                            ));
-                            let animation = animation_with_theme_easing(
-                                Animation::new(duration),
-                                cx.theme().motion.point_to_point_easing.as_ref(),
-                            );
+                            // Take the curve from the shared helper so retuning
+                            // `standard` reaches this control too; the timer
+                            // below still needs the duration on its own.
+                            let motion = cx.theme().motion.clone();
+                            let duration = enter_duration(&motion);
+                            let animation = standard_animation(&motion, false)
+                                .unwrap_or_else(|| Animation::new(duration));
                             cx.spawn({
                                 let state = state.clone();
                                 async move |cx| {

@@ -7,6 +7,7 @@ index.scip
 *.log
 node_modules/
 .ai_agents/
+.pi-subagents/
 .tasque/specs
 .codex/session-context
 .codex/subagent-summaries

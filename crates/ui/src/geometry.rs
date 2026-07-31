@@ -284,7 +284,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use gpui::px;
+    use gpui::{DevicePixels, px, size};
 
     use super::Placement;
     #[test]
@@ -338,6 +338,35 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<Placement>(r#""right""#).unwrap(),
             Placement::Right
+        );
+    }
+
+    #[test]
+    fn logical_device_size_conversion_is_exact_at_common_scales() {
+        for (scale, logical, device) in [
+            (
+                1.25,
+                size(px(8.), px(12.)),
+                size(DevicePixels(10), DevicePixels(15)),
+            ),
+            (
+                1.5,
+                size(px(2.), px(4.)),
+                size(DevicePixels(3), DevicePixels(6)),
+            ),
+            (
+                2.,
+                size(px(1.5), px(2.5)),
+                size(DevicePixels(3), DevicePixels(5)),
+            ),
+        ] {
+            assert_eq!(logical.to_device_pixels(scale), device);
+            assert_eq!(device.to_pixels(scale), logical);
+        }
+
+        assert_eq!(
+            size(px(1.2), px(2.8)).to_device_pixels(1.25),
+            size(DevicePixels(2), DevicePixels(4)),
         );
     }
 

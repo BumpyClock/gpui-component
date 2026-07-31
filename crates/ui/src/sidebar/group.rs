@@ -1,7 +1,7 @@
 use crate::{
     ActiveTheme, Collapsible,
     animation::{
-        PresenceOptions, PresencePhase, SpringPreset, expand_collapse_durations,
+        PresenceOptions, PresencePhase, expand_collapse_durations,
         expand_collapse_layout_animation, keyed_presence,
     },
     global_state::GlobalState,
@@ -70,8 +70,7 @@ impl<E: SidebarItem> SidebarItem for SidebarGroup<E> {
         let id = id.into();
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = cx.theme().motion.clone();
-        let (open_duration, close_duration) =
-            expand_collapse_durations(&motion, reduced_motion, SpringPreset::Mild);
+        let (open_duration, close_duration) = expand_collapse_durations(&motion);
         let label_presence = keyed_presence(
             SharedString::from(format!("{}-group-label-presence", id)),
             !self.collapsed,

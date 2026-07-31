@@ -8,6 +8,8 @@ summary: "A floating overlay that displays rich content relative to a trigger el
 
 Popover component for displaying floating content that appears when interacting with a trigger element. Supports multiple positioning options, custom content, different trigger methods, and automatic dismissal behaviors. Perfect for tooltips, menus, forms, and other contextual information.
 
+Default popovers use the theme's translucent Acrylic flyout material: backdrop blur, theme opacity, a subtle stroke, and flyout elevation. When backdrop blur is unavailable or disabled, the material falls back to an opaque background. Content receives 12 px padding by default.
+
 ## Import
 
 ```rust
@@ -186,11 +188,13 @@ And the `Popover` has implemented the [Styled] trait, so you can use all the sty
 Popover::new("custom-popover")
     .appearance(false)
     .trigger(Button::new("custom").label("Custom Style"))
-    .bg(cx.theme().accent)
-    .text_color(cx.theme().accent_foreground)
-    .p_6()
-    .rounded_xl()
-    .shadow_2xl()
+    .bg(cx.theme().secondary)
+    .text_color(cx.theme().secondary_foreground)
+    .border_1()
+    .border_color(cx.theme().border)
+    .p_2()
+    .rounded(cx.theme().radius)
+    .shadow_sm()
     .child("Fully custom styled popover")
 ```
 
@@ -224,7 +228,7 @@ Popover::new("controlled-popover")
 
 ## Motion
 
-- Enter: popover content uses theme fast-invoke timing with opacity + small vertical translation.
+- Enter: popover content uses the theme mild spring for a restrained 4px vertical translation, while opacity remains monotonic.
 - Exit: popover content uses point-to-point timing for a monotonic dismiss (no bounce overshoot).
 - Reduced motion: transitions are disabled and state changes render immediately.
 - Anchor-aware offset: top anchors drift downward on enter; bottom anchors drift upward.

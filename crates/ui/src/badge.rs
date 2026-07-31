@@ -5,7 +5,7 @@ use gpui::{
 };
 
 use crate::{
-    ActiveTheme, Icon, Sizable, Size, StyledExt, animation::strong_invoke_animation,
+    ActiveTheme, Icon, Sizable, Size, StyledExt, animation::emphasis_animation,
     global_state::GlobalState, h_flex, white,
 };
 
@@ -126,7 +126,7 @@ impl RenderOnce for Badge {
         let animation = self.id.as_ref().and_then(|_| {
             let motion = &cx.theme().motion;
             let reduced_motion = GlobalState::global(cx).reduced_motion();
-            strong_invoke_animation(motion, reduced_motion)
+            emphasis_animation(motion, reduced_motion)
         });
 
         div()

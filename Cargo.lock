@@ -205,7 +205,7 @@ name = "app_assets"
 version = "0.5.1"
 dependencies = [
  "anyhow",
- "gpui",
+ "bumpyclock-gpui",
  "gpui-component",
  "gpui-component-assets",
  "gpui_platform",
@@ -806,7 +806,7 @@ dependencies = [
  "bitflags 2.13.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.11.0",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -982,6 +982,90 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
+name = "bumpyclock-gpui"
+version = "0.1.0"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
+dependencies = [
+ "accesskit",
+ "anyhow",
+ "async-channel 2.5.0",
+ "async-task",
+ "backtrace",
+ "bindgen",
+ "bitflags 2.13.1",
+ "block",
+ "cbindgen",
+ "chrono",
+ "circular-buffer",
+ "cocoa 0.26.0",
+ "cocoa-foundation 0.2.0",
+ "collections",
+ "core-foundation 0.10.0",
+ "core-foundation-sys 0.8.7",
+ "core-graphics 0.24.0",
+ "core-text",
+ "core-video",
+ "ctor",
+ "derive_more",
+ "embed-resource",
+ "etagere",
+ "foreign-types",
+ "futures",
+ "futures-concurrency",
+ "getrandom 0.3.4",
+ "gpui_macros",
+ "gpui_shared_string",
+ "gpui_util",
+ "heapless",
+ "http_client",
+ "image",
+ "inventory",
+ "itertools 0.14.0",
+ "log",
+ "lyon",
+ "mach2",
+ "media",
+ "metal 0.29.0",
+ "num_cpus",
+ "objc",
+ "parking",
+ "parking_lot",
+ "pathfinder_geometry",
+ "pin-project",
+ "pollster 0.4.0",
+ "postage",
+ "profiling",
+ "rand 0.9.5",
+ "raw-window-handle",
+ "refineable",
+ "regex",
+ "resvg",
+ "scheduler",
+ "schemars",
+ "seahash",
+ "serde",
+ "serde_json",
+ "slotmap",
+ "smallvec",
+ "spin 0.10.1",
+ "stacksafe",
+ "strum",
+ "sum_tree",
+ "taffy",
+ "thiserror 2.0.18",
+ "ttf-parser",
+ "unicode-general-category",
+ "usvg",
+ "util_macros",
+ "uuid",
+ "waker-fn",
+ "web-time",
+ "windows 0.61.3",
+ "zed-font-kit",
+ "zed-scap",
+]
+
+[[package]]
 name = "bytecheck"
 version = "0.6.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1068,9 +1152,9 @@ dependencies = [
 
 [[package]]
 name = "calloop"
-version = "0.14.4"
+version = "0.14.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dbf9978365bac10f54d1d4b04f7ce4427e51f71d61f2fe15e3fed5166474df7"
+checksum = "cb9f6e1368bd4621d2c86baa7e37de77a938adf5221e5dd3d6133340101b309e"
 dependencies = [
  "bitflags 2.13.1",
  "polling",
@@ -1312,7 +1396,7 @@ dependencies = [
 [[package]]
 name = "collections"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "gpui_util",
  "indexmap",
@@ -1878,7 +1962,7 @@ dependencies = [
 [[package]]
 name = "derive_refineable"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1896,7 +1980,7 @@ name = "dialog_overlay"
 version = "0.5.1"
 dependencies = [
  "anyhow",
- "gpui",
+ "bumpyclock-gpui",
  "gpui-component",
  "gpui-component-assets",
  "gpui_platform",
@@ -2421,7 +2505,7 @@ name = "focus_trap"
 version = "0.5.0"
 dependencies = [
  "anyhow",
- "gpui",
+ "bumpyclock-gpui",
  "gpui-component",
  "gpui_platform",
 ]
@@ -3067,102 +3151,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui"
-version = "0.2.2"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
-dependencies = [
- "accesskit",
- "anyhow",
- "async-channel 2.5.0",
- "async-task",
- "backtrace",
- "bindgen",
- "bitflags 2.13.1",
- "block",
- "cbindgen",
- "chrono",
- "circular-buffer",
- "cocoa 0.26.0",
- "cocoa-foundation 0.2.0",
- "collections",
- "core-foundation 0.10.0",
- "core-foundation-sys 0.8.7",
- "core-graphics 0.24.0",
- "core-text",
- "core-video",
- "ctor",
- "derive_more",
- "embed-resource",
- "etagere",
- "foreign-types",
- "futures",
- "futures-concurrency",
- "getrandom 0.3.4",
- "gpui_macros",
- "gpui_shared_string",
- "gpui_util",
- "heapless",
- "http_client",
- "image",
- "inventory",
- "itertools 0.14.0",
- "log",
- "lyon",
- "mach2",
- "media",
- "metal 0.29.0",
- "num_cpus",
- "objc",
- "parking",
- "parking_lot",
- "pathfinder_geometry",
- "pin-project",
- "pollster 0.4.0",
- "postage",
- "profiling",
- "rand 0.9.5",
- "raw-window-handle",
- "refineable",
- "regex",
- "resvg",
- "scheduler",
- "schemars",
- "seahash",
- "serde",
- "serde_json",
- "slotmap",
- "smallvec",
- "spin 0.10.1",
- "stacksafe",
- "strum",
- "sum_tree",
- "taffy",
- "thiserror 2.0.18",
- "ttf-parser",
- "unicode-general-category",
- "usvg",
- "util_macros",
- "uuid",
- "waker-fn",
- "web-time",
- "windows 0.61.3",
- "zed-font-kit",
- "zed-scap",
-]
-
-[[package]]
 name = "gpui-component"
 version = "0.7.0"
 dependencies = [
  "aho-corasick",
  "anyhow",
+ "bumpyclock-gpui",
  "chrono",
  "core-text",
  "enum-iterator",
  "fuzzy-matcher",
- "gpui",
  "gpui-component-macros",
- "gpui-macros",
+ "gpui_macros",
  "html5ever 0.27.0",
  "indoc",
  "itertools 0.14.0",
@@ -3185,6 +3185,7 @@ dependencies = [
  "serde_repr",
  "smallvec",
  "smol",
+ "sum_tree",
  "tracing",
  "tree-sitter",
  "tree-sitter-bash",
@@ -3222,7 +3223,6 @@ dependencies = [
  "unicode-segmentation",
  "uuid",
  "windows 0.62.2",
- "zed-sum-tree",
 ]
 
 [[package]]
@@ -3230,8 +3230,8 @@ name = "gpui-component-app"
 version = "0.7.0"
 dependencies = [
  "anyhow",
+ "bumpyclock-gpui",
  "fix-path-env",
- "gpui",
  "gpui-component",
  "gpui-component-manifest",
  "gpui-component-storage",
@@ -3242,6 +3242,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "toml 0.9.12+spec-1.1.0",
+ "wait-timeout",
 ]
 
 [[package]]
@@ -3249,8 +3250,23 @@ name = "gpui-component-assets"
 version = "0.7.0"
 dependencies = [
  "anyhow",
- "gpui",
+ "bumpyclock-gpui",
+ "gpui_platform",
  "rust-embed",
+]
+
+[[package]]
+name = "gpui-component-conformance"
+version = "0.7.0"
+dependencies = [
+ "anyhow",
+ "bumpyclock-gpui",
+ "gpui-component",
+ "gpui-component-app",
+ "gpui-component-manifest",
+ "raw-window-handle",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -3290,12 +3306,12 @@ version = "0.5.1"
 dependencies = [
  "anyhow",
  "autocorrect",
+ "bumpyclock-gpui",
  "chrono",
  "color-lsp",
  "csv",
  "dirs 6.0.0",
  "fake",
- "gpui",
  "gpui-component",
  "gpui-component-app",
  "gpui-component-assets",
@@ -3317,30 +3333,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "gpui-macros"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bcb02dd63a2859714ac7b6b476937617c3c744157af1b49f7c904023a79039be"
-dependencies = [
- "heck 0.5.0",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "gpui-wry"
-version = "0.5.0"
+version = "0.7.0"
 dependencies = [
  "anyhow",
- "gpui",
+ "bumpyclock-gpui",
  "lb-wry",
 ]
 
 [[package]]
 name = "gpui_linux"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -3348,6 +3352,7 @@ dependencies = [
  "as-raw-xcb-connection",
  "ashpd",
  "bitflags 2.13.1",
+ "bumpyclock-gpui",
  "bytemuck",
  "calloop",
  "calloop-wayland-source",
@@ -3355,7 +3360,6 @@ dependencies = [
  "cosmic-text 0.17.2",
  "filedescriptor",
  "futures",
- "gpui",
  "gpui_util",
  "gpui_wgpu",
  "http_client",
@@ -3382,6 +3386,7 @@ dependencies = [
  "wayland-protocols",
  "wayland-protocols-plasma",
  "wayland-protocols-wlr",
+ "wayland-scanner",
  "wgpu",
  "x11-clipboard",
  "x11rb",
@@ -3394,13 +3399,14 @@ dependencies = [
 [[package]]
 name = "gpui_macos"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "accesskit",
  "accesskit_macos",
  "anyhow",
  "async-task",
  "block",
+ "bumpyclock-gpui",
  "cbindgen",
  "cocoa 0.26.0",
  "collections",
@@ -3415,7 +3421,6 @@ dependencies = [
  "etagere",
  "foreign-types",
  "futures",
- "gpui",
  "gpui_util",
  "image",
  "itertools 0.14.0",
@@ -3441,7 +3446,7 @@ dependencies = [
 [[package]]
 name = "gpui_macros"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
@@ -3452,10 +3457,10 @@ dependencies = [
 [[package]]
 name = "gpui_platform"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
+ "bumpyclock-gpui",
  "console_error_panic_hook",
- "gpui",
  "gpui_linux",
  "gpui_macos",
  "gpui_web",
@@ -3465,7 +3470,7 @@ dependencies = [
 [[package]]
 name = "gpui_shared_string"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "schemars",
  "serde",
@@ -3475,7 +3480,7 @@ dependencies = [
 [[package]]
 name = "gpui_util"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "anyhow",
  "log",
@@ -3485,12 +3490,12 @@ dependencies = [
 [[package]]
 name = "gpui_web"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "anyhow",
+ "bumpyclock-gpui",
  "console_error_panic_hook",
  "futures",
- "gpui",
  "gpui_wgpu",
  "http_client",
  "js-sys",
@@ -3509,14 +3514,14 @@ dependencies = [
 [[package]]
 name = "gpui_wgpu"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "anyhow",
+ "bumpyclock-gpui",
  "bytemuck",
  "collections",
  "cosmic-text 0.19.0",
  "etagere",
- "gpui",
  "gpui_util",
  "itertools 0.14.0",
  "js-sys",
@@ -3538,16 +3543,16 @@ dependencies = [
 [[package]]
 name = "gpui_windows"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "accesskit",
  "accesskit_windows",
  "anyhow",
+ "bumpyclock-gpui",
  "collections",
  "dunce",
  "etagere",
  "futures",
- "gpui",
  "gpui_util",
  "image",
  "itertools 0.14.0",
@@ -3742,7 +3747,7 @@ name = "hello_world"
 version = "0.5.1"
 dependencies = [
  "anyhow",
- "gpui",
+ "bumpyclock-gpui",
  "gpui-component",
  "gpui_platform",
 ]
@@ -3854,7 +3859,7 @@ dependencies = [
 [[package]]
 name = "http_client"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -4199,7 +4204,7 @@ name = "input"
 version = "0.5.1"
 dependencies = [
  "anyhow",
- "gpui",
+ "bumpyclock-gpui",
  "gpui-component",
  "gpui-component-assets",
  "gpui_platform",
@@ -4276,15 +4281,6 @@ name = "itertools"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
 dependencies = [
  "either",
 ]
@@ -4868,7 +4864,7 @@ dependencies = [
 [[package]]
 name = "media"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "anyhow",
  "bindgen",
@@ -5338,7 +5334,7 @@ version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "680998035259dcfcafe653688bf2aa6d3e2dc05e98be6ab46afb089dc84f1df8"
 dependencies = [
- "proc-macro-crate 3.5.0",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
  "syn 2.0.119",
@@ -5797,7 +5793,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "perf"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "collections",
  "serde",
@@ -6835,7 +6831,7 @@ dependencies = [
 [[package]]
 name = "refineable"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "derive_refineable",
 ]
@@ -6889,9 +6885,9 @@ name = "reqwest_client"
 version = "0.5.1"
 dependencies = [
  "anyhow",
+ "bumpyclock-gpui",
  "bytes",
  "futures",
- "gpui",
  "log",
  "regex",
  "rustls",
@@ -7291,7 +7287,7 @@ dependencies = [
 [[package]]
 name = "scheduler"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "async-task",
  "backtrace",
@@ -7949,7 +7945,7 @@ checksum = "13c2bddecc57b384dee18652358fb23172facb8a2c51ccc10d74c157bdea3292"
 [[package]]
 name = "sum_tree"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "heapless",
  "log",
@@ -8182,8 +8178,8 @@ version = "0.5.0"
 dependencies = [
  "anyhow",
  "battery",
+ "bumpyclock-gpui",
  "core-foundation 0.10.0",
- "gpui",
  "gpui-component",
  "gpui-component-assets",
  "gpui_platform",
@@ -9334,7 +9330,7 @@ checksum = "b6c140620e7ffbb22c2dee59cafe6084a59b5ffc27a8859a5f0d494b5d52b6be"
 [[package]]
 name = "util"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "anyhow",
  "async-fs",
@@ -9373,7 +9369,7 @@ dependencies = [
 [[package]]
 name = "util_macros"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "perf",
  "quote",
@@ -9485,6 +9481,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "231fdcd7ef3037e8330d8e17e61011a2c244126acc0a982f4040ac3f9f0bc077"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "wait-timeout"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09ac3b126d3914f9849036f826e054cbabdc8519970b8998ddaf3b5bd3c65f11"
+dependencies = [
+ "libc",
 ]
 
 [[package]]
@@ -9799,7 +9804,7 @@ name = "webview"
 version = "0.5.0"
 dependencies = [
  "anyhow",
- "gpui",
+ "bumpyclock-gpui",
  "gpui-component",
  "gpui-wry",
  "gpui_platform",
@@ -10066,7 +10071,7 @@ name = "window_title"
 version = "0.5.1"
 dependencies = [
  "anyhow",
- "gpui",
+ "bumpyclock-gpui",
  "gpui-component",
  "gpui-component-assets",
  "gpui_platform",
@@ -10667,12 +10672,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
 
 [[package]]
-name = "workspace-hack"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "beffa227304dbaea3ad6a06ac674f9bc83a3dec3b7f63eeb442de37e7cb6bb01"
-
-[[package]]
 name = "writeable"
 version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10821,6 +10820,18 @@ name = "xmlwriter"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
+
+[[package]]
+name = "xtask"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml 0.9.12+spec-1.1.0",
+ "wait-timeout",
+]
 
 [[package]]
 name = "y4m"
@@ -11060,18 +11071,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "zed-sum-tree"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d490156d0d7311855564d6e1d6dccab992405a0c0e15e1c8ef18920c02177e35"
-dependencies = [
- "arrayvec",
- "log",
- "rayon",
- "workspace-hack",
-]
-
-[[package]]
 name = "zed-xim"
 version = "0.4.0-zed"
 source = "git+https://github.com/zed-industries/xim-rs.git?rev=16f35a2c881b815a2b6cdfd6687988e84f8447d8#16f35a2c881b815a2b6cdfd6687988e84f8447d8"
@@ -11187,7 +11186,7 @@ dependencies = [
 [[package]]
 name = "zlog"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "anyhow",
  "chrono",
@@ -11204,7 +11203,7 @@ checksum = "29666d0abbfad1e3dc4dcf6144730dd3a3ab225bbbdac83319345b1b44ccfc1b"
 [[package]]
 name = "ztracing"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 dependencies = [
  "tracing",
  "tracing-subscriber",
@@ -11215,7 +11214,7 @@ dependencies = [
 [[package]]
 name = "ztracing_macro"
 version = "0.1.0"
-source = "git+https://github.com/BumpyClock/gpui?rev=5569a8cdb31a12f7ec4b9a825379400edde211c8#5569a8cdb31a12f7ec4b9a825379400edde211c8"
+source = "git+https://github.com/BumpyClock/gpui?rev=198635ca8435c38dd4dfe796089145cdbefae36c#198635ca8435c38dd4dfe796089145cdbefae36c"
 
 [[package]]
 name = "zune-core"

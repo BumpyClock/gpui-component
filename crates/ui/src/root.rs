@@ -1,7 +1,8 @@
 use crate::{
     ActiveTheme, Anchor, ElementExt, Placement, StyledExt,
-    dialog::{Dialog, close_animation_duration},
+    dialog::Dialog,
     focus_trap::FocusTrapManager,
+    global_state::GlobalState,
     input::InputState,
     notification::{Notification, NotificationList},
     sheet::Sheet,
@@ -44,6 +45,7 @@ pub(crate) struct ActiveSheet {
     /// The previous focused handle before opening the Sheet.
     previous_focused_handle: Option<WeakFocusHandle>,
     placement: Placement,
+    closing: bool,
     builder: Rc<dyn Fn(Sheet, &mut Window, &mut App) -> Sheet + 'static>,
 }
 
@@ -170,6 +172,7 @@ impl Root {
             sheet = (active_sheet.builder)(sheet, window, cx);
             sheet.focus_handle = active_sheet.focus_handle.clone();
             sheet.placement = active_sheet.placement;
+            sheet.closing = active_sheet.closing;
 
             let size = sheet.size;
 
@@ -286,19 +289,21 @@ impl Root {
             .and_then(|h| h.upgrade());
         let dialog_id = active_dialog.id;
 
-        let should_animate_close = {
+        let should_defer_close = {
             let mut dialog = Dialog::new(window, cx);
             dialog = (active_dialog.builder)(dialog, window, cx);
-            dialog.should_animate(cx)
+            dialog.should_defer_close(cx)
         };
 
-        if !should_animate_close {
+        if !should_defer_close {
             self.finalize_dialog_close(dialog_id, restore_focus, window, cx);
             return;
         }
 
         active_dialog.closing = true;
-        let duration = close_animation_duration(cx);
+        // The deferral window doubles as the ceiling: teardown happens when it
+        // elapses whether or not the content finished animating.
+        let duration = crate::animation::exit_duration(&cx.theme().motion);
         window
             .spawn(cx, async move |cx| {
                 cx.background_executor().timer(duration).await;
@@ -346,12 +351,13 @@ impl Root {
             focus_handle,
             previous_focused_handle,
             placement,
+            closing: false,
             builder: Rc::new(build),
         });
         cx.notify();
     }
 
-    pub fn close_sheet(&mut self, window: &mut Window, cx: &mut Context<'_, Root>) {
+    fn finalize_sheet_close(&mut self, window: &mut Window, cx: &mut Context<'_, Root>) {
         self.focused_input = None;
         if let Some(previous_handle) = self
             .active_sheet
@@ -362,6 +368,38 @@ impl Root {
             window.focus(&previous_handle, cx);
         }
         self.active_sheet = None;
+        cx.notify();
+    }
+
+    pub fn close_sheet(&mut self, window: &mut Window, cx: &mut Context<'_, Root>) {
+        let Some(active_sheet) = self.active_sheet.as_mut() else {
+            return;
+        };
+        if active_sheet.closing {
+            return;
+        }
+
+        if GlobalState::global(cx).reduced_motion() {
+            self.finalize_sheet_close(window, cx);
+            return;
+        }
+
+        // Keep the sheet mounted for the exit window so it can slide out; the
+        // window is also the ceiling — teardown happens when it elapses.
+        active_sheet.closing = true;
+        let duration = crate::animation::exit_duration(&cx.theme().motion);
+        window
+            .spawn(cx, async move |cx| {
+                cx.background_executor().timer(duration).await;
+                _ = cx.update(|window, cx| {
+                    Root::update(window, cx, |root, window, cx| {
+                        if root.active_sheet.as_ref().is_some_and(|s| s.closing) {
+                            root.finalize_sheet_close(window, cx);
+                        }
+                    });
+                });
+            })
+            .detach();
         cx.notify();
     }
 

@@ -1,8 +1,8 @@
 //! State management for the Command Palette.
 
-use super::REVEAL_QUERY_DELAY;
 use super::matcher::{FuzzyMatcherWrapper, NucleoMatcher};
 use super::provider::CommandPaletteProvider;
+use super::reveal_query_delay;
 use super::types::{
     CommandMatcher, CommandMatcherKind, CommandPaletteConfig, CommandPaletteItem, MatchedItem,
 };
@@ -80,7 +80,7 @@ impl CommandPaletteState {
         let reveal_deadline = if GlobalState::global(cx).reduced_motion() {
             None
         } else {
-            Some(Instant::now() + REVEAL_QUERY_DELAY)
+            Some(Instant::now() + reveal_query_delay(cx))
         };
 
         let mut state = Self {

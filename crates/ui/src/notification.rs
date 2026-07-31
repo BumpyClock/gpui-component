@@ -19,7 +19,7 @@ use smol::Timer;
 
 use crate::{
     ActiveTheme as _, Anchor, Edges, Icon, IconName, Sizable as _, StyledExt, TITLE_BAR_HEIGHT,
-    animation::{fast_invoke_animation, soft_dismiss_animation},
+    animation::{enter_animation, exit_animation},
     button::{Button, ButtonVariants as _},
     global_state::GlobalState,
     h_flex, v_flex,
@@ -255,7 +255,7 @@ impl Notification {
         let dismiss_duration = if reduced_motion {
             Duration::ZERO
         } else {
-            Duration::from_millis(u64::from(cx.theme().motion.soft_dismiss_duration_ms))
+            crate::animation::exit_duration(&cx.theme().motion)
         };
 
         cx.spawn(async move |view, cx| {
@@ -311,9 +311,9 @@ impl Render for Notification {
         let reduced_motion = GlobalState::global(cx).reduced_motion();
         let motion = &cx.theme().motion;
         let animation = if closing {
-            soft_dismiss_animation(motion, reduced_motion)
+            exit_animation(motion, reduced_motion)
         } else {
-            fast_invoke_animation(motion, reduced_motion)
+            enter_animation(motion, reduced_motion)
         };
 
         let notification = h_flex()

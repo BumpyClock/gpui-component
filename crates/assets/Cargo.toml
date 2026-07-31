@@ -9,12 +9,13 @@ repository = "https://github.com/BumpyClock/gpui-component"
 readme = "README.md"
 edition.workspace = true
 publish = true
-version = "0.7.0"
-
-[lib]
-doctest = false
+version.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 anyhow.workspace = true
 gpui.workspace = true
 rust-embed = { version = "8.7.2", features = ["interpolate-folder-path"] }
+
+[dev-dependencies]
+gpui_platform.workspace = true

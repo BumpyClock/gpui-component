@@ -89,7 +89,11 @@ SidebarToggleButton::new()
 ### Floating Sidebar (SidebarShell + Sidebar)
 
 `FloatingSidebar` composes `SidebarShell` with `Sidebar`, handling resize internally.
-It defaults to an 8px inset, uses the theme's panel elevation, and can be resized when expanded.
+It defaults to an 8px inset, the theme's translucent Mica panel material, panel elevation, and can be resized
+when expanded. Backdrop blur follows the global surface policy; call `.blur_enabled(false)` to opt out.
+When blur is unavailable or disabled, the material falls back to an opaque background.
+Collapse and expand animate the complete panel and its content together using theme motion tokens;
+reduced-motion mode applies the final width immediately.
 Call `.elevation(...)` to override the complete panel shadow. Larger elevations may need a larger
 inset near window edges to avoid native-window clipping; the inset is never adjusted automatically.
 

@@ -116,7 +116,10 @@ Button::new("btn")
 // Icon only (no label)
 Button::new("btn")
     .icon(IconName::Search)
+    .tooltip("Search")
 ```
+
+Icon-only buttons should include a tooltip. The tooltip text is also used as the control's accessible label.
 
 #### Spinner Icon
 
@@ -206,9 +209,10 @@ impl InstallButton {
 }
 ```
 
-#### Loading State with Icons
+#### Loading State
 
-When a button is in loading state, it automatically handles icon transitions:
+Loading buttons display a spinner. Existing static icons are replaced while
+spinners and progress indicators remain visible.
 
 ```rust
 // If icon is already a Spinner or ProgressCircle, it will be shown during loading
@@ -222,6 +226,11 @@ Button::new("btn")
     .icon(IconName::Save)
     .label("Saving")
     .loading(true) // Icon will be replaced with Spinner
+
+// A spinner is inserted when no icon is set
+Button::new("btn")
+    .label("Saving")
+    .loading(true)
 ```
 
 ### With a dropdown caret icon

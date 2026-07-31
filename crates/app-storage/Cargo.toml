@@ -3,7 +3,11 @@ name = "gpui-component-storage"
 description = "Foundation storage layer for gpui-component apps: platform paths, atomic writes, schema-versioned envelopes, debounced stores. No GPUI dependency."
 version.workspace = true
 edition.workspace = true
-publish.workspace = true
+publish = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+readme = "README.md"
 
 [dependencies]
 dirs.workspace = true

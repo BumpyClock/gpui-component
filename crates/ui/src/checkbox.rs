@@ -7,8 +7,8 @@ use crate::{
 };
 use gpui::{
     Animation, AnimationExt, AnyElement, App, Div, ElementId, InteractiveElement, IntoElement,
-    ParentElement, RenderOnce, StatefulInteractiveElement, StyleRefinement, Styled, Window, div,
-    prelude::FluentBuilder as _, px, relative, rems, svg,
+    ParentElement, RenderOnce, Role, StatefulInteractiveElement, StyleRefinement, Styled, Toggled,
+    Window, div, prelude::FluentBuilder as _, px, relative, rems, svg,
 };
 
 /// A Checkbox element.
@@ -173,7 +173,8 @@ pub(crate) fn checkbox_check_icon(
             }
 
             if value_changed {
-                let duration = Duration::from_millis(u64::from(cx.theme().motion.fast_duration_ms));
+                let duration =
+                    Duration::from_millis(u64::from(cx.theme().motion.enter_duration_ms));
                 let animation = animation_with_theme_easing(
                     Animation::new(duration),
                     cx.theme().motion.fade_easing.as_ref(),
@@ -204,6 +205,7 @@ pub(crate) fn checkbox_check_icon(
 impl RenderOnce for Checkbox {
     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
         let checked = self.checked;
+        let aria_label = self.label.as_ref().map(|label| label.get_text(cx));
 
         let focus_handle = window
             .use_keyed_state(self.id.clone(), cx, |_, cx| cx.focus_handle())
@@ -226,6 +228,14 @@ impl RenderOnce for Checkbox {
         div().child(
             self.base
                 .id(self.id.clone())
+                .role(Role::CheckBox)
+                .when_some(aria_label, |this, label| this.aria_label(label))
+                .aria_toggled(if checked {
+                    Toggled::True
+                } else {
+                    Toggled::False
+                })
+                .aria_disabled(self.disabled)
                 .when(!self.disabled, |this| {
                     this.track_focus(
                         &focus_handle

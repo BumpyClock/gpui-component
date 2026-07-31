@@ -38,11 +38,12 @@
 //!     .child(sidebar_content)
 //! ```
 
-use std::rc::Rc;
+use std::{cell::Cell, rc::Rc};
 
 use gpui::{
-    AnyElement, App, BoxShadow, Hsla, InteractiveElement, IntoElement, ParentElement, Pixels,
-    RenderOnce, StyleRefinement, Styled, Window, div, hsla, point, prelude::FluentBuilder, px,
+    Animation, AnimationExt as _, AnyElement, App, BoxShadow, Hsla, InteractiveElement,
+    IntoElement, ParentElement, Pixels, RenderOnce, SharedString, StyleRefinement, Styled, Window,
+    div, hsla, point, prelude::FluentBuilder, px,
 };
 use smallvec::SmallVec;
 
@@ -55,6 +56,13 @@ use crate::{
 const DEFAULT_MIN_WIDTH: f32 = 200.0;
 const DEFAULT_MAX_WIDTH: f32 = 400.0;
 const DEFAULT_RESIZER_WIDTH: f32 = 6.0;
+
+struct SidebarShellWidthTransition {
+    from: Pixels,
+    animation_id: SharedString,
+    animation: Animation,
+    current_width: Rc<Cell<Pixels>>,
+}
 
 /// Creates a 3-layer shadow effect for elevated sidebar panels.
 ///
@@ -151,6 +159,8 @@ pub struct SidebarShell {
     /// If `None`, the value is inherited from the parent context (e.g., WindowShell).
     /// If `Some(value)`, the explicit value is used.
     blur_enabled: Option<bool>,
+    /// Optional width transition applied to the complete shell.
+    width_transition: Option<SidebarShellWidthTransition>,
     /// Child elements rendered inside the surface.
     children: SmallVec<[AnyElement; 1]>,
     /// Style refinement for the outer container.
@@ -202,6 +212,7 @@ impl SidebarShell {
             inset: None,
             top_inset: px(0.0),
             blur_enabled: None, // Inherit from context by default
+            width_transition: None,
             children: SmallVec::new(),
             style: StyleRefinement::default(),
         }
@@ -341,6 +352,22 @@ impl SidebarShell {
         self
     }
 
+    pub(crate) fn animate_width_from(
+        mut self,
+        from: Pixels,
+        animation_id: impl Into<SharedString>,
+        animation: Animation,
+        current_width: Rc<Cell<Pixels>>,
+    ) -> Self {
+        self.width_transition = Some(SidebarShellWidthTransition {
+            from,
+            animation_id: animation_id.into(),
+            animation,
+            current_width,
+        });
+        self
+    }
+
     fn surface_preset(&self) -> SurfacePreset {
         let mut surface_preset = SurfacePreset::panel();
         if let Some(elevation) = self.elevation {
@@ -377,6 +404,12 @@ impl RenderOnce for SidebarShell {
         let bottom = inset;
         let sidebar_height = (window_height - (top + bottom)).max(px(0.0));
         let sidebar_width = self.width;
+        let surface_render_width = self
+            .width_transition
+            .as_ref()
+            .map_or(sidebar_width, |transition| {
+                sidebar_width.max(transition.from)
+            });
 
         // Use explicit value if set, otherwise inherit from context
         let blur_enabled = self
@@ -387,7 +420,7 @@ impl RenderOnce for SidebarShell {
             .surface_preset()
             .wrap_with_bounds(
                 div(),
-                sidebar_width,
+                surface_render_width,
                 sidebar_height,
                 window,
                 cx,
@@ -398,11 +431,6 @@ impl RenderOnce for SidebarShell {
             .size_full();
 
         let resizer_half = self.resizer_width / 2.0;
-        let resizer_left = if self.side.is_left() {
-            self.width - resizer_half
-        } else {
-            -resizer_half
-        };
 
         let is_left = self.side.is_left();
         let on_resize_start = self.on_resize_start.clone();
@@ -428,7 +456,8 @@ impl RenderOnce for SidebarShell {
                     .absolute()
                     .top_0()
                     .bottom_0()
-                    .left(resizer_left)
+                    .when(is_left, |this| this.right(-resizer_half))
+                    .when(!is_left, |this| this.left(-resizer_half))
                     .w(self.resizer_width)
                     .rounded(px(999.0))
                     .bg(gpui::transparent_black())
@@ -455,7 +484,23 @@ impl RenderOnce for SidebarShell {
             )
             .refine_style(&self.style);
 
-        outer
+        if let Some(transition) = self.width_transition {
+            let SidebarShellWidthTransition {
+                from,
+                animation_id,
+                animation,
+                current_width,
+            } = transition;
+            outer
+                .with_animation(animation_id, animation, move |this, delta| {
+                    let width = from + (sidebar_width - from) * delta;
+                    current_width.set(width);
+                    this.w(width)
+                })
+                .into_any_element()
+        } else {
+            outer.into_any_element()
+        }
     }
 }
 
@@ -472,6 +517,7 @@ mod tests {
         assert_eq!(default_shell.resizer_width, px(DEFAULT_RESIZER_WIDTH));
         assert_eq!(default_shell.inset, None);
         assert_eq!(default_shell.side, Side::Left);
+        assert!(default_shell.width_transition.is_none());
 
         let no_shadow = SidebarShell::left(px(260.0)).elevation(ElevationToken::None);
         assert_eq!(no_shadow.elevation, Some(ElevationToken::None));
@@ -484,6 +530,22 @@ mod tests {
         assert_eq!(large_shadow.inset, Some(px(12.0)));
         assert_eq!(large_shadow.resizer_width, px(8.0));
         assert_eq!(large_shadow.side, Side::Right);
+
+        let animated = SidebarShell::left(px(48.0)).animate_width_from(
+            px(260.0),
+            "sidebar-shell-width",
+            Animation::new(std::time::Duration::from_millis(187)),
+            Rc::new(Cell::new(px(260.0))),
+        );
+        let transition = animated
+            .width_transition
+            .as_ref()
+            .expect("width transition should be configured");
+        assert_eq!(transition.from, px(260.0));
+        assert_eq!(
+            transition.animation.duration,
+            std::time::Duration::from_millis(187)
+        );
     }
 
     #[test]

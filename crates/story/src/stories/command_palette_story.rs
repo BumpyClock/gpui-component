@@ -49,58 +49,67 @@ impl CommandPaletteStory {
         }
     }
 
-    fn show_static_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let items = vec![
+    fn static_items() -> Vec<CommandPaletteItem> {
+        #[cfg(target_os = "macos")]
+        const PRIMARY_MODIFIER: &str = "cmd";
+        #[cfg(not(target_os = "macos"))]
+        const PRIMARY_MODIFIER: &str = "ctrl";
+
+        let shortcut = |key: &str| format!("{PRIMARY_MODIFIER}-{key}");
+
+        vec![
             CommandPaletteItem::new("file.new", "New File")
                 .category("File")
                 .icon(IconName::Plus)
-                .shortcut("cmd-n")
+                .shortcut(shortcut("n"))
                 .keyword("create"),
             CommandPaletteItem::new("file.open", "Open File")
                 .category("File")
                 .icon(IconName::FolderOpen)
-                .shortcut("cmd-o")
+                .shortcut(shortcut("o"))
                 .keyword("browse"),
             CommandPaletteItem::new("file.save", "Save File")
                 .category("File")
                 .icon(IconName::File)
-                .shortcut("cmd-s"),
+                .shortcut(shortcut("s")),
             CommandPaletteItem::new("file.save-all", "Save All")
                 .category("File")
                 .icon(IconName::File)
-                .shortcut("cmd-shift-s"),
+                .shortcut(shortcut("shift-s")),
             CommandPaletteItem::new("edit.undo", "Undo")
                 .category("Edit")
                 .icon(IconName::Undo)
-                .shortcut("cmd-z"),
+                .shortcut(shortcut("z")),
             CommandPaletteItem::new("edit.redo", "Redo")
                 .category("Edit")
                 .icon(IconName::Redo)
-                .shortcut("cmd-shift-z"),
+                .shortcut(shortcut("shift-z")),
             CommandPaletteItem::new("edit.copy", "Copy")
                 .category("Edit")
                 .icon(IconName::Copy)
-                .shortcut("cmd-c"),
+                .shortcut(shortcut("c")),
             CommandPaletteItem::new("search.find", "Find")
                 .category("Search")
                 .icon(IconName::Search)
-                .shortcut("cmd-f")
+                .shortcut(shortcut("f"))
                 .keyword("locate"),
             CommandPaletteItem::new("search.replace", "Replace")
                 .category("Search")
                 .icon(IconName::Replace)
-                .shortcut("cmd-r"),
+                .shortcut(shortcut("r")),
             CommandPaletteItem::new("view.terminal", "Toggle Terminal")
                 .category("View")
                 .icon(IconName::SquareTerminal)
-                .shortcut("cmd-`"),
+                .shortcut(shortcut("`")),
             CommandPaletteItem::new("view.sidebar", "Toggle Sidebar")
                 .category("View")
                 .icon(IconName::PanelLeft)
-                .shortcut("cmd-b"),
-        ];
+                .shortcut(shortcut("b")),
+        ]
+    }
 
-        let provider = Arc::new(StaticProvider::new(items));
+    fn show_static_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let provider = Arc::new(StaticProvider::new(Self::static_items()));
         let handle = CommandPalette::open(window, cx, provider);
 
         cx.subscribe(&handle.state(), move |this, _state, event, cx| {
@@ -110,6 +119,20 @@ impl CommandPaletteStory {
             }
         })
         .detach();
+    }
+
+    fn show_loading_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let provider = Arc::new(StaticProvider::new(Self::static_items()));
+        let config = CommandPaletteConfig {
+            status_provider: Some(Arc::new(|_| Some("Indexing workspace…".into()))),
+            ..Default::default()
+        };
+        CommandPalette::open_with_config(window, cx, provider, config);
+    }
+
+    fn show_empty_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let provider = Arc::new(StaticProvider::new(Vec::new()));
+        CommandPalette::open(window, cx, provider);
     }
 
     fn show_async_palette(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -178,7 +201,11 @@ impl AsyncDemoProvider {
                 CommandPaletteItem::new("static.settings", "Settings")
                     .category("Static")
                     .icon(IconName::Settings)
-                    .shortcut("cmd-,"),
+                    .shortcut(if cfg!(target_os = "macos") {
+                        "cmd-,"
+                    } else {
+                        "ctrl-,"
+                    }),
                 CommandPaletteItem::new("static.about", "About")
                     .category("Static")
                     .icon(IconName::Info),
@@ -262,15 +289,38 @@ impl Render for CommandPaletteStory {
                 v_flex()
                     .gap_6()
                     .child(
-                        section("Basic Usage")
-                            .child("Open a command palette with static items and fuzzy search.")
+                        section("Visual Review")
                             .child(
-                                Button::new("show-static")
-                                    .outline()
-                                    .label("Open Static Palette")
-                                    .on_click(cx.listener(|this, _, window, cx| {
-                                        this.show_static_palette(window, cx)
-                                    })),
+                                "Replay deterministic states for screenshots and motion recording.",
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .flex_wrap()
+                                    .child(
+                                        Button::new("show-static")
+                                            .outline()
+                                            .label("Replay Open Motion")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.show_static_palette(window, cx)
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("show-loading")
+                                            .outline()
+                                            .label("Review Loading State")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.show_loading_palette(window, cx)
+                                            })),
+                                    )
+                                    .child(
+                                        Button::new("show-empty")
+                                            .outline()
+                                            .label("Review Empty State")
+                                            .on_click(cx.listener(|this, _, window, cx| {
+                                                this.show_empty_palette(window, cx)
+                                            })),
+                                    ),
                             ),
                     )
                     .child(
