@@ -193,23 +193,77 @@ impl AppProxy {
 /// Raw platform events captured before services exist. Shared between the early
 /// listeners (registered pre-`run`) and the main-thread drain.
 #[derive(Default)]
+struct PendingQueue {
+    events: VecDeque<AppEvent>,
+    closed: bool,
+}
+
+#[derive(Default)]
 pub(crate) struct PendingEvents {
-    pub(crate) queue: Mutex<VecDeque<AppEvent>>,
+    queue: Mutex<PendingQueue>,
     /// Set only once the shell is ready; its presence tells post-ready listeners
     /// they may dispatch a drain instead of relying on the startup drain.
     pub(crate) proxy: OnceLock<AppProxy>,
 }
 
 impl PendingEvents {
-    pub(crate) fn push(&self, event: AppEvent) {
+    pub(crate) fn push(&self, event: AppEvent) -> Result<(), AppClosed> {
+        {
+            let mut queue = self.queue.lock().expect("pending queue poisoned");
+            if queue.closed {
+                return Err(AppClosed);
+            }
+            queue.events.push_back(event);
+        }
+
+        if let Some(proxy) = self.proxy.get()
+            && let Err(error) = proxy.dispatch(|cx| {
+                let _ = drain_pending(cx);
+            })
+        {
+            self.close();
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn pop_front(&self) -> Result<Option<AppEvent>, AppClosed> {
+        let mut queue = self.queue.lock().expect("pending queue poisoned");
+        if queue.closed {
+            return Err(AppClosed);
+        }
+        Ok(queue.events.pop_front())
+    }
+
+    pub(crate) fn close(&self) {
+        let mut queue = self.queue.lock().expect("pending queue poisoned");
+        queue.closed = true;
+        queue.events.clear();
+    }
+
+    #[cfg(test)]
+    pub(crate) fn is_empty(&self) -> bool {
         self.queue
             .lock()
             .expect("pending queue poisoned")
-            .push_back(event);
-        if let Some(proxy) = self.proxy.get() {
-            let _ = proxy.dispatch(drain_pending);
-        }
+            .events
+            .is_empty()
     }
+
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.queue
+            .lock()
+            .expect("pending queue poisoned")
+            .events
+            .len()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PendingDrain {
+    Completed,
+    ShutdownRequested,
 }
 
 #[derive(Debug)]
@@ -536,11 +590,7 @@ pub(crate) fn fail_startup(cx: &mut App) {
         state.shutdown_requested = true;
         state.pending.clone()
     };
-    pending
-        .queue
-        .lock()
-        .expect("pending queue poisoned")
-        .clear();
+    pending.close();
     cx.global::<ShellState>().proxy.close();
     deliver_event(
         cx,
@@ -550,19 +600,23 @@ pub(crate) fn fail_startup(cx: &mut App) {
 }
 
 /// Drain events buffered by early platform listeners and deliver them.
-pub(crate) fn drain_pending(cx: &mut App) {
+pub(crate) fn drain_pending(cx: &mut App) -> PendingDrain {
     if !cx.has_global::<ShellState>() {
-        return;
+        return PendingDrain::Completed;
     }
     let pending = cx.global::<ShellState>().pending.clone();
-    let events: Vec<AppEvent> = pending
-        .queue
-        .lock()
-        .expect("pending queue poisoned")
-        .drain(..)
-        .collect();
-    for event in &events {
-        deliver_event(cx, event);
+    loop {
+        if cx.global::<ShellState>().shutdown_requested {
+            pending.close();
+            return PendingDrain::ShutdownRequested;
+        }
+
+        let event = match pending.pop_front() {
+            Ok(Some(event)) => event,
+            Ok(None) => return PendingDrain::Completed,
+            Err(AppClosed) => return PendingDrain::ShutdownRequested,
+        };
+        deliver_event(cx, &event);
     }
 }
 
@@ -627,6 +681,8 @@ pub(crate) fn request_quit_with(cx: &mut App, reason: ShutdownReason) {
     // Stop accepting cross-thread work at the shutdown boundary, before any
     // teardown runs — background producers must not enqueue callbacks that would
     // land mid-shutdown.
+    let pending = cx.global::<ShellState>().pending.clone();
+    pending.close();
     cx.global::<ShellState>().proxy.close();
     deliver_event(cx, &AppEvent::ShutdownRequested(reason));
     // Platform quit fires `on_app_quit`, which runs `run_will_exit`.
@@ -649,6 +705,8 @@ fn run_will_exit(cx: &mut App) {
     // shell boundary. Idempotent: it is already closed on `request_quit`; on a
     // platform-initiated quit this is the earliest shell hook, though GPUI may
     // already have rejected poster sends.
+    let pending = cx.global::<ShellState>().pending.clone();
+    pending.close();
     cx.global::<ShellState>().proxy.close();
     // A platform-initiated quit never went through `request_quit`; surface a
     // uniform `ShutdownRequested` first.
@@ -875,5 +933,20 @@ mod tests {
             !executed.load(Ordering::SeqCst),
             "rejected dispatch must not enqueue a payload"
         );
+    }
+
+    #[test]
+    fn pending_events_close_clears_and_rejects_before_proxy_publication() {
+        let pending = PendingEvents::default();
+        pending
+            .push(AppEvent::Reopened)
+            .expect("pre-ready event is accepted");
+        assert!(!pending.is_empty());
+
+        pending.close();
+
+        assert!(pending.is_empty());
+        assert_eq!(pending.push(AppEvent::Reopened), Err(AppClosed));
+        assert!(pending.proxy.get().is_none());
     }
 }

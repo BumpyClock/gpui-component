@@ -434,7 +434,7 @@ impl AppShellBuilder {
         {
             let pending = Arc::clone(&pending);
             application.on_open_urls(move |urls| {
-                pending.push(handles::open_event(urls));
+                let _ = pending.push(handles::open_event(urls));
             });
         }
         {
@@ -443,7 +443,7 @@ impl AppShellBuilder {
             // global is installed, silently losing a startup-time reopen.
             let pending = Arc::clone(&pending);
             application.on_reopen(move |_cx| {
-                pending.push(AppEvent::Reopened);
+                let _ = pending.push(AppEvent::Reopened);
             });
         }
 
@@ -593,11 +593,7 @@ impl Boot {
         // startup error wins. Successful startup now performs normal shutdown,
         // without publishing readiness events or activating.
         if let Some(reason) = handles::finish_start(cx) {
-            pending
-                .queue
-                .lock()
-                .expect("pending queue poisoned")
-                .clear();
+            pending.close();
             handles::request_quit_with(cx, reason);
             return Ok(());
         }
@@ -610,21 +606,35 @@ impl Boot {
         {
             // A Started handler may request quit synchronously. Do not publish
             // queued launch events or activate after that shutdown boundary.
-            pending
-                .queue
-                .lock()
-                .expect("pending queue poisoned")
-                .clear();
+            pending.close();
             return Ok(());
         }
         let _ = pending.proxy.set(proxy);
-        handles::drain_pending(cx);
+        if handles::drain_pending(cx) == handles::PendingDrain::ShutdownRequested
+            || cx
+                .global::<crate::handles::ShellState>()
+                .is_shutdown_requested()
+        {
+            return Ok(());
+        }
         cx.global_mut::<crate::handles::ShellState>()
             .record_phase(Phase::DrainQueue);
 
         // Activation.
+        if cx
+            .global::<crate::handles::ShellState>()
+            .is_shutdown_requested()
+        {
+            return Ok(());
+        }
         if let Some(force) = activation_force(initial_activation) {
             cx.activate(force);
+        }
+        if cx
+            .global::<crate::handles::ShellState>()
+            .is_shutdown_requested()
+        {
+            return Ok(());
         }
         cx.global_mut::<crate::handles::ShellState>()
             .record_phase(Phase::Activation);
@@ -636,7 +646,12 @@ impl Boot {
         // ever trigger evaluation (which only fires on window-close/hold-drop).
         // No window closed here, so no pending reason is set → attributed to
         // `Requested`.
-        handles::evaluate_exit(cx);
+        if !cx
+            .global::<crate::handles::ShellState>()
+            .is_shutdown_requested()
+        {
+            handles::evaluate_exit(cx);
+        }
         Ok(())
     }
 }
@@ -739,6 +754,10 @@ impl AssetSource for ChainedAssets {
         Ok(out)
     }
 }
+
+#[cfg(test)]
+#[path = "shell_pending_tests.rs"]
+mod pending_tests;
 
 #[cfg(test)]
 mod tests {
@@ -896,7 +915,9 @@ mod tests {
     ) {
         let log = Arc::new(Mutex::new(Vec::new()));
         let pending = Arc::new(PendingEvents::default());
-        pending.push(AppEvent::Reopened);
+        pending
+            .push(AppEvent::Reopened)
+            .expect("pre-ready event is accepted");
         let boot = test_boot(
             vec![
                 recording_plugin("first", false, Arc::clone(&log)),
@@ -934,11 +955,7 @@ mod tests {
             ]
         );
         assert!(
-            pending
-                .queue
-                .lock()
-                .expect("pending queue poisoned")
-                .is_empty(),
+            pending.is_empty(),
             "fatal startup clears queued launch events"
         );
         assert_shutdown_rejects_proxy(cx, Phase::CoreServices);
@@ -948,7 +965,9 @@ mod tests {
     fn start_failure_unwinds_plugins_without_publishing_readiness(cx: &mut gpui::TestAppContext) {
         let log = Arc::new(Mutex::new(Vec::new()));
         let pending = Arc::new(PendingEvents::default());
-        pending.push(AppEvent::Reopened);
+        pending
+            .push(AppEvent::Reopened)
+            .expect("pre-ready event is accepted");
         let start_log = Arc::clone(&log);
         let boot = test_boot(
             vec![
@@ -986,11 +1005,7 @@ mod tests {
             ]
         );
         assert!(
-            pending
-                .queue
-                .lock()
-                .expect("pending queue poisoned")
-                .is_empty(),
+            pending.is_empty(),
             "fatal startup clears queued launch events"
         );
         assert_shutdown_rejects_proxy(cx, Phase::PluginInit);
@@ -1002,7 +1017,9 @@ mod tests {
 
         let log = Arc::new(Mutex::new(Vec::new()));
         let pending = Arc::new(PendingEvents::default());
-        pending.push(AppEvent::Reopened);
+        pending
+            .push(AppEvent::Reopened)
+            .expect("pre-ready event is accepted");
         let boot = test_boot(
             vec![recording_plugin("first", false, Arc::clone(&log))],
             Arc::clone(&pending),
@@ -1017,11 +1034,7 @@ mod tests {
 
         assert!(result.is_ok(), "a successful startup quit is not fatal");
         assert!(
-            pending
-                .queue
-                .lock()
-                .expect("pending queue poisoned")
-                .is_empty(),
+            pending.is_empty(),
             "a startup quit clears queued launch events"
         );
         let events = log.lock().expect("recording plugin log poisoned");
@@ -1038,7 +1051,9 @@ mod tests {
     fn started_quit_discards_pending_events_and_skips_activation(cx: &mut gpui::TestAppContext) {
         let log = Arc::new(Mutex::new(Vec::new()));
         let pending = Arc::new(PendingEvents::default());
-        pending.push(AppEvent::Reopened);
+        pending
+            .push(AppEvent::Reopened)
+            .expect("pre-ready event is accepted");
         let mut boot = test_boot(
             vec![recording_plugin("first", false, Arc::clone(&log))],
             Arc::clone(&pending),
@@ -1064,11 +1079,7 @@ mod tests {
         );
         drop(events);
         assert!(
-            pending
-                .queue
-                .lock()
-                .expect("pending queue poisoned")
-                .is_empty(),
+            pending.is_empty(),
             "Started-triggered quit clears queued launch events"
         );
         assert!(
