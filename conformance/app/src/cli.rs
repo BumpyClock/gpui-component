@@ -10,6 +10,7 @@ pub(crate) enum Scenario {
     WindowCycle,
     MenuCommand,
     Clipboard,
+    InteractionContracts,
 }
 
 impl Scenario {
@@ -21,6 +22,7 @@ impl Scenario {
             Self::WindowCycle => "window-cycle",
             Self::MenuCommand => "menu-command",
             Self::Clipboard => "clipboard",
+            Self::InteractionContracts => "interaction-contracts",
         }
     }
 
@@ -32,6 +34,7 @@ impl Scenario {
             "window-cycle" => Ok(Self::WindowCycle),
             "menu-command" => Ok(Self::MenuCommand),
             "clipboard" => Ok(Self::Clipboard),
+            "interaction-contracts" => Ok(Self::InteractionContracts),
             _ => Err(CliError::InvalidScenario(value.to_owned())),
         }
     }
@@ -119,7 +122,7 @@ impl fmt::Display for CliError {
             }
             Self::InvalidScenario(value) => write!(
                 formatter,
-                "unknown scenario {value:?}; expected lifecycle-clean, lifecycle-startup-failure, lifecycle-background-quit, window-cycle, menu-command, or clipboard"
+                "unknown scenario {value:?}; expected lifecycle-clean, lifecycle-startup-failure, lifecycle-background-quit, window-cycle, menu-command, clipboard, or interaction-contracts"
             ),
             Self::InvalidProfile(value) => write!(
                 formatter,
@@ -232,6 +235,7 @@ Scenarios:
   window-cycle                Close and recreate a native window under Explicit exit policy.
   menu-command                Project and dispatch a registered native menu command.
   clipboard                   Write and externally verify a native clipboard payload.
+  interaction-contracts       Verify focused UI contracts in a presented native window.
 
 Validation profiles:
   macos-metal
@@ -299,10 +303,20 @@ mod tests {
             "clipboard".to_owned(),
         ])
         .expect("clipboard should parse");
+        let interaction_contracts = parse([
+            "conformance".to_owned(),
+            "--scenario".to_owned(),
+            "interaction-contracts".to_owned(),
+        ])
+        .expect("interaction-contracts should parse");
 
         assert!(matches!(window_cycle, Command::Run(Scenario::WindowCycle)));
         assert!(matches!(menu_command, Command::Run(Scenario::MenuCommand)));
         assert!(matches!(clipboard, Command::Run(Scenario::Clipboard)));
+        assert!(matches!(
+            interaction_contracts,
+            Command::Run(Scenario::InteractionContracts)
+        ));
     }
 
     #[test]

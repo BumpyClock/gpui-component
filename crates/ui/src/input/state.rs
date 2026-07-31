@@ -2471,7 +2471,7 @@ mod tests {
     // empty marked-text update. Mouse-caret relocation, Escape, and context-menu blur are
     // intentionally unspecified until an IME cancellation policy is defined.
     #[gpui::test]
-    fn test_input_unmark_text_keeps_composed_value(cx: &mut TestAppContext) {
+    fn stage1_contract_composition_unmark_keeps_composed_value(cx: &mut TestAppContext) {
         let (window, cx) = &mut new_input_state(cx, "abcd");
         let input = window.root(cx).unwrap();
 
@@ -2502,7 +2502,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_input_replacement_ends_composition_history(cx: &mut TestAppContext) {
+    fn stage1_contract_composition_replacement_ends_history(cx: &mut TestAppContext) {
         let (window, cx) = &mut new_input_state(cx, "abcd");
         let input = window.root(cx).unwrap();
 
@@ -2518,7 +2518,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_input_empty_marked_text_ends_composition(cx: &mut TestAppContext) {
+    fn stage1_contract_composition_empty_marked_text_ends_composition(cx: &mut TestAppContext) {
         let (window, cx) = &mut new_input_state(cx, "abcd");
         let input = window.root(cx).unwrap();
         let change_count = Rc::new(Cell::new(0));
@@ -2547,7 +2547,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn test_input_normal_blur_commits_marked_text(cx: &mut TestAppContext) {
+    fn stage1_contract_composition_normal_blur_commits_marked_text(cx: &mut TestAppContext) {
         let (_window, mut cx, input) = new_input_state_in_root(cx, "abcd");
         let change_count = Rc::new(Cell::new(0));
         let _subscription = cx.update(|_, cx| {

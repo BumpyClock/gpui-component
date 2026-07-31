@@ -1,3 +1,5 @@
+mod interaction_contracts;
+
 use std::io::{self, BufRead, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -161,6 +163,7 @@ pub(crate) fn validate_jsonl_with_profile(
         Scenario::WindowCycle => validate_window_cycle(&records),
         Scenario::MenuCommand => validate_menu_command(&records),
         Scenario::Clipboard => validate_clipboard(&records),
+        Scenario::InteractionContracts => interaction_contracts::validate(&records),
     }?;
     validate_no_failure_evidence(&records)?;
     if let Some(profile) = profile {
@@ -194,7 +197,8 @@ fn validate_record_shape(record: &ParsedRecord, scenario: Scenario) -> anyhow::R
             Scenario::LifecycleClean
             | Scenario::LifecycleBackgroundQuit
             | Scenario::MenuCommand
-            | Scenario::Clipboard => {
+            | Scenario::Clipboard
+            | Scenario::InteractionContracts => {
                 matches!(kind, "started" | "shutdown_requested" | "will_exit")
             }
         };
@@ -336,6 +340,24 @@ fn event_allowed_for_scenario(scenario: Scenario, event: &str) -> bool {
                 | "presentation_count_invalid"
                 | "presentation_delivery_failed"
         ),
+        Scenario::InteractionContracts => matches!(
+            event,
+            "startup_transaction_started"
+                | "native_window_handle"
+                | "native_display_handle"
+                | "renderer_info"
+                | "window_opened"
+                | "frame_presented"
+                | "focus_text_verified"
+                | "composition_verified"
+                | "scale_verified"
+                | "accessibility_verified"
+                | "interaction_contracts_failed"
+                | "quit_requested"
+                | "presentation_cancelled"
+                | "presentation_count_invalid"
+                | "presentation_delivery_failed"
+        ),
     }
 }
 
@@ -364,6 +386,7 @@ fn allowed_data_fields(event: &str) -> Option<&'static [&'static str]> {
         | "menu_command_failed"
         | "clipboard_acknowledgement_rejected"
         | "clipboard_failed"
+        | "interaction_contracts_failed"
         | "presentation_cancelled"
         | "presentation_delivery_failed" => &["reason"],
         "background_dispatch_admission" => &["accepted", "result"],
@@ -386,6 +409,26 @@ fn allowed_data_fields(event: &str) -> Option<&'static [&'static str]> {
         "clipboard_ready" => &["expected_payload", "ack_address"],
         "clipboard_acknowledged" => &["acknowledgement"],
         "clipboard_worker_joined" => &["result"],
+        "focus_text_verified" => &["activation_order", "inserted", "selection_utf16", "value"],
+        "composition_verified" => &[
+            "committed_value",
+            "marked_range_utf16",
+            "selection_utf16",
+            "terminal",
+        ],
+        "scale_verified" => &["native_scale_factor", "tested_scale_factors"],
+        "accessibility_verified" => &[
+            "button_label",
+            "button_supports_click",
+            "focused_label",
+            "focused_role",
+            "focused_supports_focus",
+            "focused_value",
+            "node_count",
+            "published",
+            "toggle_label",
+            "toggle_state",
+        ],
         "presentation_count_invalid" => &["count"],
         _ => return None,
     })
@@ -413,7 +456,8 @@ fn validate_event_cardinality(records: &[ParsedRecord], scenario: Scenario) -> a
                 Scenario::LifecycleClean
                 | Scenario::LifecycleBackgroundQuit
                 | Scenario::MenuCommand
-                | Scenario::Clipboard => 3,
+                | Scenario::Clipboard
+                | Scenario::InteractionContracts => 3,
             },
             // Native evidence cardinality belongs to exact profile validation. Generic scenario
             // validation intentionally permits extra evidence so source-blind profile tests can
@@ -454,7 +498,10 @@ fn validate_profile(
     profile: ValidationProfile,
 ) -> anyhow::Result<()> {
     let expected_groups = match scenario {
-        Scenario::LifecycleClean | Scenario::MenuCommand | Scenario::Clipboard => 1,
+        Scenario::LifecycleClean
+        | Scenario::MenuCommand
+        | Scenario::Clipboard
+        | Scenario::InteractionContracts => 1,
         Scenario::LifecycleStartupFailure | Scenario::LifecycleBackgroundQuit => 0,
         Scenario::WindowCycle => 2,
     };
@@ -651,6 +698,7 @@ fn validate_no_failure_evidence(records: &[ParsedRecord]) -> anyhow::Result<()> 
                 | "clipboard_acknowledgement_rejected"
                 | "clipboard_failed"
                 | "menu_command_failed"
+                | "interaction_contracts_failed"
                 | "presentation_cancelled"
                 | "presentation_count_invalid"
                 | "presentation_delivery_failed"
@@ -1802,6 +1850,74 @@ mod tests {
     }
 
     #[test]
+    fn validates_interaction_contracts() {
+        validate_jsonl(
+            trace(valid_interaction_contracts_trace()),
+            Scenario::InteractionContracts,
+        )
+        .expect("interaction-contracts trace should validate");
+
+        for (event, field, wrong_value) in [
+            ("scenario_started", "runner", json!("headless")),
+            ("window_opened", "title", json!("Wrong")),
+        ] {
+            let mut missing = valid_interaction_contracts_trace();
+            first_event_mut(&mut missing, event)["data"]
+                .as_object_mut()
+                .expect("fixture data must be an object")
+                .remove(field);
+            assert!(
+                validate_jsonl(trace(missing), Scenario::InteractionContracts).is_err(),
+                "missing {event}.{field} must fail"
+            );
+
+            let mut wrong = valid_interaction_contracts_trace();
+            first_event_mut(&mut wrong, event)["data"][field] = wrong_value;
+            assert!(
+                validate_jsonl(trace(wrong), Scenario::InteractionContracts).is_err(),
+                "wrong {event}.{field} must fail"
+            );
+        }
+
+        let mut missing_accessibility = valid_interaction_contracts_trace();
+        missing_accessibility.retain(|record| record["event"] != "accessibility_verified");
+        renumber(&mut missing_accessibility);
+        assert!(
+            validate_jsonl(trace(missing_accessibility), Scenario::InteractionContracts,).is_err()
+        );
+
+        let mut wrong_selection = valid_interaction_contracts_trace();
+        first_event_mut(&mut wrong_selection, "focus_text_verified")["data"]["selection_utf16"] =
+            json!([0, 1]);
+        assert!(validate_jsonl(trace(wrong_selection), Scenario::InteractionContracts).is_err());
+
+        let mut wrong_scale = valid_interaction_contracts_trace();
+        first_event_mut(&mut wrong_scale, "scale_verified")["data"]["tested_scale_factors"] =
+            json!([1.0]);
+        assert!(validate_jsonl(trace(wrong_scale), Scenario::InteractionContracts).is_err());
+
+        for field in [
+            "button_label",
+            "button_supports_click",
+            "focused_label",
+            "focused_role",
+            "focused_supports_focus",
+            "focused_value",
+            "node_count",
+            "published",
+            "toggle_label",
+            "toggle_state",
+        ] {
+            let mut invalid = valid_interaction_contracts_trace();
+            first_event_mut(&mut invalid, "accessibility_verified")["data"][field] = Value::Null;
+            assert!(
+                validate_jsonl(trace(invalid), Scenario::InteractionContracts).is_err(),
+                "accessibility field {field} must be exact"
+            );
+        }
+    }
+
+    #[test]
     fn validates_target_profiles_source_blind() {
         for profile in validation_profiles() {
             let valid = profiled_lifecycle_clean_trace(profile);
@@ -1946,6 +2062,10 @@ mod tests {
             (Scenario::WindowCycle, valid_window_cycle_trace()),
             (Scenario::MenuCommand, valid_menu_command_trace()),
             (Scenario::Clipboard, valid_clipboard_trace()),
+            (
+                Scenario::InteractionContracts,
+                valid_interaction_contracts_trace(),
+            ),
         ] {
             apply_profile(&mut records, profile);
             validate_jsonl_with_profile(trace(records), scenario, Some(profile))
@@ -2757,6 +2877,88 @@ mod tests {
                 json!({"outcome": "passed", "exit_code": 0}),
             ),
         ];
+        renumber(&mut records);
+        records
+    }
+
+    fn valid_interaction_contracts_trace() -> Vec<Value> {
+        let scenario = "interaction-contracts";
+        let mut records = normal_lifecycle_prefix(scenario);
+        records[0]["data"] = json!({"runner": "native", "exit_policy": "explicit"});
+        records[5]["data"] = json!({
+            "key": "interaction-contracts",
+            "title": "Interaction Contracts",
+        });
+        records.extend([
+            record(0, scenario, "app_event", json!({"kind": "started"})),
+            record(
+                0,
+                scenario,
+                "frame_presented",
+                json!({"presentation_evidence": "backend_accepted", "count": 1}),
+            ),
+            record(
+                0,
+                scenario,
+                "focus_text_verified",
+                json!({
+                    "activation_order": ["first", "second"],
+                    "inserted": "!",
+                    "selection_utf16": [0, 7],
+                    "value": "!second",
+                }),
+            ),
+            record(
+                0,
+                scenario,
+                "composition_verified",
+                json!({
+                    "committed_value": "漢",
+                    "marked_range_utf16": [0, 1],
+                    "selection_utf16": [0, 1],
+                    "terminal": "unmark",
+                }),
+            ),
+            record(
+                0,
+                scenario,
+                "scale_verified",
+                json!({
+                    "native_scale_factor": 2.0,
+                    "tested_scale_factors": [1.25, 1.5, 2.0],
+                }),
+            ),
+            record(
+                0,
+                scenario,
+                "accessibility_verified",
+                json!({
+                    "button_label": "Interaction action",
+                    "button_supports_click": true,
+                    "focused_label": "Interaction second",
+                    "focused_role": "text_input",
+                    "focused_supports_focus": true,
+                    "focused_value": "!second",
+                    "node_count": 5,
+                    "published": ["button", "switch", "text_input"],
+                    "toggle_label": "Interaction toggle",
+                    "toggle_state": "true",
+                }),
+            ),
+            record(
+                0,
+                scenario,
+                "quit_requested",
+                json!({"source": "interaction_contracts_verified"}),
+            ),
+        ]);
+        records.extend(requested_shutdown_tail(scenario));
+        records.push(record(
+            0,
+            scenario,
+            "terminal",
+            json!({"outcome": "passed", "exit_code": 0}),
+        ));
         renumber(&mut records);
         records
     }

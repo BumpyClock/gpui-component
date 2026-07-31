@@ -1,8 +1,9 @@
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{
-    AccessibleAction, App, AppContext as _, Context, Entity, IntoElement, ParentElement as _,
-    Render, Role, Styled as _, TestAppContext, Toggled, VisualTestContext, Window, accesskit, px,
+    AccessibleAction, App, AppContext as _, Context, Entity, Focusable as _, IntoElement,
+    ParentElement as _, Render, Role, Styled as _, TestAppContext, Toggled, VisualTestContext,
+    Window, accesskit, px,
 };
 
 use crate::{
@@ -93,6 +94,28 @@ impl Render for AccessibilityFixture {
     }
 }
 
+struct FocusTextFixture {
+    first: Entity<InputState>,
+    second: Entity<InputState>,
+}
+
+impl FocusTextFixture {
+    fn new(window: &mut Window, cx: &mut App) -> Self {
+        Self {
+            first: cx.new(|cx| InputState::new(window, cx).default_value("first")),
+            second: cx.new(|cx| InputState::new(window, cx).default_value("second")),
+        }
+    }
+}
+
+impl Render for FocusTextFixture {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .child(Input::new(&self.first).aria_label("First field"))
+            .child(Input::new(&self.second).aria_label("Second field"))
+    }
+}
+
 struct ScaleFixture;
 
 impl Render for ScaleFixture {
@@ -125,7 +148,36 @@ fn node_with_label<'a>(
 }
 
 #[gpui::test]
-fn representative_components_project_accessibility_tree(cx: &mut TestAppContext) {
+fn stage1_contract_focus_traversal_reaches_text_target_before_insertion(cx: &mut TestAppContext) {
+    let fields = Rc::new(RefCell::new(None));
+    let fields_for_root = fields.clone();
+    let window = cx.update(|cx| {
+        crate::init(cx);
+        cx.open_window(Default::default(), |window, cx| {
+            let fixture = FocusTextFixture::new(window, cx);
+            fields_for_root.replace(Some((fixture.first.clone(), fixture.second.clone())));
+            let fixture = cx.new(|_| fixture);
+            cx.new(|cx| crate::Root::new(fixture, window, cx))
+        })
+        .unwrap()
+    });
+    let (first, second) = fields.borrow_mut().take().unwrap();
+    let mut visual_cx = VisualTestContext::from_window(window.into(), cx);
+
+    visual_cx.update(|window, cx| {
+        window.draw(cx).clear();
+        first.update(cx, |input, cx| input.focus(window, cx));
+        assert!(first.focus_handle(cx).is_focused(window));
+
+        window.focus_next(cx);
+        assert!(second.focus_handle(cx).is_focused(window));
+        second.update(cx, |input, cx| input.insert("!", window, cx));
+        assert_eq!(second.read(cx).value(), "!second");
+    });
+}
+
+#[gpui::test]
+fn stage1_contract_representative_components_project_accessibility_tree(cx: &mut TestAppContext) {
     let input_slot = Rc::new(RefCell::new(None));
     let input_for_root = input_slot.clone();
     let window = cx.update(|cx| {
@@ -205,7 +257,9 @@ fn representative_components_project_accessibility_tree(cx: &mut TestAppContext)
 }
 
 #[gpui::test]
-fn component_bounds_round_to_device_pixels_at_common_scales(cx: &mut TestAppContext) {
+fn stage1_contract_component_bounds_round_to_device_pixels_at_common_scales(
+    cx: &mut TestAppContext,
+) {
     let window = cx.update(|cx| {
         crate::init(cx);
         cx.open_window(Default::default(), |window, cx| {

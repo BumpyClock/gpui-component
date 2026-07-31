@@ -74,9 +74,20 @@ pub(crate) fn open_native_window(
     title: &'static str,
     after_first_presentation: impl FnOnce(&mut App) + 'static,
 ) -> anyhow::Result<OpenedWindow<ConformanceView>> {
-    open_native_window_inner(cx, protocol, state, key, title, None, move |_, cx| {
-        after_first_presentation(cx)
-    })
+    open_native_window_with_root(
+        cx,
+        protocol,
+        state,
+        key,
+        title,
+        |_, cx| {
+            cx.new(|cx| ConformanceView {
+                focus_handle: cx.focus_handle(),
+                on_key_down: None,
+            })
+        },
+        move |_, cx| after_first_presentation(cx),
+    )
 }
 
 #[cfg(feature = "wayland-conformance")]
@@ -90,26 +101,34 @@ pub(crate) fn open_native_window_with_key_down(
     after_first_presentation: impl FnOnce(&mut Window, &mut App) + 'static,
 ) -> anyhow::Result<OpenedWindow<ConformanceView>> {
     let on_key_down = Rc::new(on_key_down) as KeyDownHandler;
-    open_native_window_inner(
+    open_native_window_with_root(
         cx,
         protocol,
         state,
         key,
         title,
-        Some(on_key_down),
+        move |window, cx| {
+            let view = cx.new(move |cx| ConformanceView {
+                focus_handle: cx.focus_handle(),
+                on_key_down: Some(on_key_down),
+            });
+            let focus_handle = view.read(cx).focus_handle.clone();
+            focus_handle.focus(window, cx);
+            view
+        },
         after_first_presentation,
     )
 }
 
-fn open_native_window_inner(
+pub(crate) fn open_native_window_with_root<V: 'static + Render>(
     cx: &mut App,
     protocol: Protocol,
     state: ScenarioState,
     key: &'static str,
     title: &'static str,
-    on_key_down: Option<KeyDownHandler>,
+    build_root: impl FnOnce(&mut Window, &mut App) -> gpui_component_app::gpui::Entity<V>,
     after_first_presentation: impl FnOnce(&mut Window, &mut App) + 'static,
-) -> anyhow::Result<OpenedWindow<ConformanceView>> {
+) -> anyhow::Result<OpenedWindow<V>> {
     let observation_protocol = protocol.clone();
     let observation_state = state.clone();
     let opened = WindowManager::open(
@@ -154,18 +173,7 @@ fn open_native_window_inner(
                     after_first_presentation,
                 );
             }),
-        move |window, cx| {
-            let should_focus = on_key_down.is_some();
-            let view = cx.new(move |cx| ConformanceView {
-                focus_handle: cx.focus_handle(),
-                on_key_down,
-            });
-            if should_focus {
-                let focus_handle = view.read(cx).focus_handle.clone();
-                focus_handle.focus(window, cx);
-            }
-            view
-        },
+        build_root,
     )
     .context("open native conformance window")?;
 

@@ -12,7 +12,7 @@ previous_release_gpui_rev = "2a03ae6e789b77e98f9d9bd5489758a082313c75"
 
 [gpui]
 repository = "https://github.com/BumpyClock/gpui"
-rev = "d0959c0b60a5b52460d1ad7369eb73ed71e5b029"
+rev = "198635ca8435c38dd4dfe796089145cdbefae36c"
 zed_repository = "https://github.com/zed-industries/zed"
 zed_upstream_base = "2c4e44704c37ee87e59ac84e3e17388178b28545"
 

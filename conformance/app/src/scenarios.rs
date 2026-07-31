@@ -1,3 +1,5 @@
+mod interaction_contracts;
+
 use std::io::Write as _;
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -174,6 +176,7 @@ pub(crate) fn run(scenario: Scenario, protocol: Protocol) -> anyhow::Result<Scen
         Scenario::WindowCycle => run_window_cycle(protocol),
         Scenario::MenuCommand => run_menu_command(protocol),
         Scenario::Clipboard => run_clipboard(protocol),
+        Scenario::InteractionContracts => interaction_contracts::run(protocol),
     }
 }
 
