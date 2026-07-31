@@ -12,6 +12,7 @@ permissions:
   contents: read
 
 env:
+  PYTHONDONTWRITEBYTECODE: "1"
   RUST_BACKTRACE: "1"
 
 jobs:
@@ -35,6 +36,11 @@ jobs:
             rustup show active-toolchain
             uname -a
           } > "$artifact_dir/target-metadata.log"
+      - name: Record exact source identity
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: record
       - name: Install system dependencies
         run: script/bootstrap
       - name: Run headless lifecycle integration
@@ -48,6 +54,12 @@ jobs:
             --stderr "$artifact_dir/headless.stderr.log" \
             --log "$artifact_dir/headless.watchdog.log" \
             -- cargo test --locked -p gpui-component-app --test headless --features test-support
+      - name: Verify exact source identity
+        if: always()
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: verify
       - name: Upload Stage 1 evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -74,6 +86,14 @@ jobs:
           & cargo -V | Add-Content (Join-Path $artifactDir "target-metadata.log")
           & rustup show active-toolchain | Add-Content (Join-Path $artifactDir "target-metadata.log")
           [System.Environment]::OSVersion.VersionString | Add-Content (Join-Path $artifactDir "target-metadata.log")
+      - name: Record exact source identity
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: record
+      - name: Test bounded Windows Job Object supervision
+        shell: pwsh
+        run: python -m unittest tooling.test_stage1_process_integration
       - name: Run headless lifecycle integration
         shell: pwsh
         run: |
@@ -87,6 +107,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
+      - name: Verify exact source identity
+        if: always()
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: verify
       - name: Upload Stage 1 evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -115,6 +141,11 @@ jobs:
             rustup show active-toolchain
             uname -a
           } > "$artifact_dir/target-metadata.log"
+      - name: Record exact source identity
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: record
       - name: Install system dependencies
         run: script/bootstrap
       - name: Run headless lifecycle integration
@@ -128,6 +159,12 @@ jobs:
             --stderr "$artifact_dir/headless.stderr.log" \
             --log "$artifact_dir/headless.watchdog.log" \
             -- cargo test --locked -p gpui-component-app --test headless --features test-support
+      - name: Verify exact source identity
+        if: always()
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: verify
       - name: Upload Stage 1 evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -139,7 +176,7 @@ jobs:
   stage1-native-macos-metal:
     name: stage1-native-macos-metal
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
       GPUI_RENDERER: default
     steps:
@@ -158,8 +195,23 @@ jobs:
             rustup show active-toolchain
             uname -a
           } > "$artifact_dir/target-metadata.log"
+      - name: Record exact source identity
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: record
       - name: Install system dependencies
         run: script/bootstrap
+      - name: Run focused input and accessibility contracts
+        shell: bash
+        run: |
+          artifact_dir="$RUNNER_TEMP/stage1-${{ github.job }}"
+          python3 tooling/stage1_watchdog.py \
+            --timeout-seconds 600 \
+            --stdout "$artifact_dir/focused-contracts.stdout.log" \
+            --stderr "$artifact_dir/focused-contracts.stderr.log" \
+            --log "$artifact_dir/focused-contracts.watchdog.log" \
+            -- cargo test --locked -p gpui-component stage1_contract_
       - name: Build native conformance runner
         run: cargo build --locked -p gpui-component-conformance
       - name: Run and validate native scenarios
@@ -194,6 +246,7 @@ jobs:
           run_scenario lifecycle-background-quit 0
           run_scenario window-cycle 0
           run_scenario menu-command 0
+          run_scenario interaction-contracts 0
           python3 tooling/stage1_clipboard_harness.py \
             --binary "$binary" \
             --timeout-seconds 120 \
@@ -207,6 +260,12 @@ jobs:
             --validation-log "$artifact_dir/clipboard.validation.watchdog.log" \
             --validation-profile "$validation_profile" \
             --reader-command pbpaste
+      - name: Verify exact source identity
+        if: always()
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: verify
       - name: Upload Stage 1 evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -218,7 +277,7 @@ jobs:
   stage1-native-windows-warp:
     name: stage1-native-windows-warp
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
       GPUI_RENDERER: software
       GPUI_DISABLE_DIRECT_COMPOSITION: "1"
@@ -236,6 +295,24 @@ jobs:
           & cargo -V | Add-Content (Join-Path $artifactDir "target-metadata.log")
           & rustup show active-toolchain | Add-Content (Join-Path $artifactDir "target-metadata.log")
           [System.Environment]::OSVersion.VersionString | Add-Content (Join-Path $artifactDir "target-metadata.log")
+      - name: Record exact source identity
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: record
+      - name: Run focused input and accessibility contracts
+        shell: pwsh
+        run: |
+          $artifactDir = Join-Path $env:RUNNER_TEMP "stage1-${{ github.job }}"
+          & python tooling/stage1_watchdog.py `
+            --timeout-seconds 600 `
+            --stdout (Join-Path $artifactDir "focused-contracts.stdout.log") `
+            --stderr (Join-Path $artifactDir "focused-contracts.stderr.log") `
+            --log (Join-Path $artifactDir "focused-contracts.watchdog.log") `
+            -- cargo test --locked -p gpui-component stage1_contract_
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
       - name: Build native conformance runner
         run: cargo build --locked -p gpui-component-conformance
       - name: Run and validate native scenarios
@@ -274,6 +351,7 @@ jobs:
           Invoke-ConformanceScenario "lifecycle-background-quit" 0
           Invoke-ConformanceScenario "window-cycle" 0
           Invoke-ConformanceScenario "menu-command" 0
+          Invoke-ConformanceScenario "interaction-contracts" 0
           & python tooling/stage1_clipboard_harness.py `
             --binary $binary `
             --timeout-seconds 120 `
@@ -290,6 +368,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }
+      - name: Verify exact source identity
+        if: always()
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: verify
       - name: Upload Stage 1 evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -301,7 +385,7 @@ jobs:
   stage1-native-linux-x11-lavapipe:
     name: stage1-native-linux-x11-lavapipe
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     env:
       GPUI_RENDERER: software
       LIBGL_ALWAYS_SOFTWARE: "1"
@@ -322,6 +406,11 @@ jobs:
             rustup show active-toolchain
             uname -a
           } > "$artifact_dir/target-metadata.log"
+      - name: Record exact source identity
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: record
       - name: Install native runtime dependencies
         shell: bash
         run: |
@@ -333,6 +422,16 @@ jobs:
             x11-utils \
             xclip \
             xvfb
+      - name: Run focused input and accessibility contracts
+        shell: bash
+        run: |
+          artifact_dir="$RUNNER_TEMP/stage1-${{ github.job }}"
+          python3 tooling/stage1_watchdog.py \
+            --timeout-seconds 600 \
+            --stdout "$artifact_dir/focused-contracts.stdout.log" \
+            --stderr "$artifact_dir/focused-contracts.stderr.log" \
+            --log "$artifact_dir/focused-contracts.watchdog.log" \
+            -- cargo test --locked -p gpui-component stage1_contract_
       - name: Build native conformance runner
         run: cargo build --locked -p gpui-component-conformance
       - name: Run and validate native scenarios
@@ -347,67 +446,28 @@ jobs:
           printf '%s\n' "$lavapipe_icd" > "$artifact_dir/lavapipe-icd.path"
           export VK_ICD_FILENAMES="$lavapipe_icd"
 
-          Xvfb "$DISPLAY" -screen 0 1280x1024x24 >"$artifact_dir/xvfb.log" 2>&1 &
-          xvfb_pid=$!
-          cleanup() {
-            if kill -0 "$xvfb_pid" 2>/dev/null; then
-              kill "$xvfb_pid" 2>/dev/null || true
-              wait "$xvfb_pid" || true
-            fi
-          }
-          trap cleanup EXIT
-
-          python3 tooling/stage1_readiness.py \
-            --timeout-seconds 30 \
-            --log "$artifact_dir/xvfb.readiness.log" \
-            -- xdpyinfo -display "$DISPLAY"
-          python3 tooling/stage1_watchdog.py \
-            --timeout-seconds 30 \
-            --stdout "$artifact_dir/vulkaninfo.log" \
-            --stderr "$artifact_dir/vulkaninfo.stderr.log" \
-            --log "$artifact_dir/vulkaninfo.watchdog.log" \
-            -- vulkaninfo --summary
-          grep -Eiq 'lavapipe|llvmpipe' "$artifact_dir/vulkaninfo.log"
-
-          binary="target/debug/gpui-component-conformance"
-          validation_profile="linux-x11-lavapipe"
-          run_scenario() {
-            local scenario="$1"
-            local expected_exit_code="$2"
-            python3 tooling/stage1_watchdog.py \
-              --timeout-seconds 120 \
-              --expected-exit-code "$expected_exit_code" \
-              --stdout "$artifact_dir/$scenario.jsonl" \
-              --stderr "$artifact_dir/$scenario.stderr.log" \
-              --log "$artifact_dir/$scenario.watchdog.log" \
-              -- "$binary" --scenario "$scenario"
-            python3 tooling/stage1_watchdog.py \
-              --timeout-seconds 30 \
-              --stdin "$artifact_dir/$scenario.jsonl" \
-              --stdout "$artifact_dir/$scenario.validation.stdout.log" \
-              --stderr "$artifact_dir/$scenario.validation.stderr.log" \
-              --log "$artifact_dir/$scenario.validation.watchdog.log" \
-              -- "$binary" --validate "$scenario" --profile "$validation_profile"
-          }
-
-          run_scenario lifecycle-clean 0
-          run_scenario lifecycle-startup-failure 2
-          run_scenario lifecycle-background-quit 0
-          run_scenario window-cycle 0
-          run_scenario menu-command 0
-          python3 tooling/stage1_clipboard_harness.py \
-            --binary "$binary" \
-            --timeout-seconds 120 \
-            --stdout "$artifact_dir/clipboard.jsonl" \
-            --stderr "$artifact_dir/clipboard.stderr.log" \
-            --log "$artifact_dir/clipboard.watchdog.log" \
-            --reader-stdout "$artifact_dir/clipboard.reader.stdout.log" \
-            --reader-stderr "$artifact_dir/clipboard.reader.stderr.log" \
-            --validation-stdout "$artifact_dir/clipboard.validation.stdout.log" \
-            --validation-stderr "$artifact_dir/clipboard.validation.stderr.log" \
-            --validation-log "$artifact_dir/clipboard.validation.watchdog.log" \
-            --validation-profile "$validation_profile" \
-            --reader-command xclip -selection clipboard -o
+          export GPUI_STAGE1_ARTIFACT_DIR="$artifact_dir"
+          export GPUI_STAGE1_BINARY="target/debug/gpui-component-conformance"
+          export GPUI_STAGE1_VALIDATION_PROFILE="linux-x11-lavapipe"
+          python3 tooling/stage1_service_harness.py \
+            --timeout-seconds 900 \
+            --service-executable Xvfb \
+            --service-argument "$DISPLAY" \
+            --service-argument=-screen \
+            --service-argument=0 \
+            --service-argument=1280x1024x24 \
+            --service-stdout "$artifact_dir/xvfb.stdout.log" \
+            --service-stderr "$artifact_dir/xvfb.log" \
+            --payload-stdout "$artifact_dir/x11-session.stdout.log" \
+            --payload-stderr "$artifact_dir/x11-session.stderr.log" \
+            --log "$artifact_dir/x11-session.supervisor.log" \
+            -- bash tooling/stage1_x11_session.sh
+      - name: Verify exact source identity
+        if: always()
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: verify
       - name: Upload Stage 1 evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -419,7 +479,7 @@ jobs:
   stage1-native-linux-wayland-lavapipe:
     name: stage1-native-linux-wayland-lavapipe
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     env:
       GPUI_RENDERER: software
       LIBGL_ALWAYS_SOFTWARE: "1"
@@ -440,6 +500,11 @@ jobs:
             rustup show active-toolchain
             uname -a
           } > "$artifact_dir/target-metadata.log"
+      - name: Record exact source identity
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: record
       - name: Install native runtime dependencies
         shell: bash
         run: |
@@ -459,6 +524,16 @@ jobs:
             pkg-config \
             vulkan-tools \
             wayland-utils
+      - name: Run focused input and accessibility contracts
+        shell: bash
+        run: |
+          artifact_dir="$RUNNER_TEMP/stage1-${{ github.job }}"
+          python3 tooling/stage1_watchdog.py \
+            --timeout-seconds 600 \
+            --stdout "$artifact_dir/focused-contracts.stdout.log" \
+            --stderr "$artifact_dir/focused-contracts.stderr.log" \
+            --log "$artifact_dir/focused-contracts.watchdog.log" \
+            -- cargo test --locked -p gpui-component stage1_contract_
       - name: Build native conformance runner
         run: cargo build --locked -p gpui-component-conformance --features wayland-conformance
       - name: Build pinned Weston Wayland fixture
@@ -531,16 +606,19 @@ jobs:
             weston-test-desktop-shell \
             test-gpui-wayland-input \
             gpui-wayland-clipboard-reader
-          echo "GPUI_WESTON_BUILD_DIR=$build_dir" >> "$GITHUB_ENV"
-          echo "GPUI_WESTON_BINARY=$build_dir/frontend/weston" >> "$GITHUB_ENV"
-          echo "GPUI_WESTON_FIXTURE=$build_dir/tests/test-gpui-wayland-input" >> "$GITHUB_ENV"
-          echo "GPUI_WESTON_CLIPBOARD_READER=$build_dir/tests/gpui-wayland-clipboard-reader" >> "$GITHUB_ENV"
+          {
+            echo "GPUI_WESTON_BUILD_DIR=$build_dir"
+            echo "GPUI_WESTON_BINARY=$build_dir/frontend/weston"
+            echo "GPUI_WESTON_FIXTURE=$build_dir/tests/test-gpui-wayland-input"
+            echo "GPUI_WESTON_CLIPBOARD_READER=$build_dir/tests/gpui-wayland-clipboard-reader"
+          } >> "$GITHUB_ENV"
       - name: Run and validate native scenarios
         shell: bash
         run: |
           set -euo pipefail
           artifact_dir="$RUNNER_TEMP/stage1-${{ github.job }}"
-          export XDG_RUNTIME_DIR="$(mktemp -d "$RUNNER_TEMP/stage1-wayland-runtime.XXXXXX")"
+          XDG_RUNTIME_DIR="$(mktemp -d "$RUNNER_TEMP/stage1-wayland-runtime.XXXXXX")"
+          export XDG_RUNTIME_DIR
           chmod 700 "$XDG_RUNTIME_DIR"
           unset DISPLAY
           lavapipe_icd="$(find /usr/share/vulkan/icd.d -type f \( -name 'lvp_icd.json' -o -name 'lvp_icd.*.json' \) -print -quit)"
@@ -552,61 +630,24 @@ jobs:
           normal_socket="stage1-wayland-normal"
           export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
           eval "$(meson devenv -C "$GPUI_WESTON_BUILD_DIR" --dump)"
-          "$GPUI_WESTON_BINARY" \
-            --backend=headless-backend.so \
-            --renderer=pixman \
-            --fake-seat \
-            --idle-time=0 \
-            --socket="$normal_socket" \
-            >"$artifact_dir/weston-normal.log" 2>&1 &
-          weston_pid=$!
-          cleanup() {
-            if kill -0 "$weston_pid" 2>/dev/null; then
-              kill "$weston_pid" 2>/dev/null || true
-              wait "$weston_pid" || true
-            fi
-          }
-          trap cleanup EXIT
           export WAYLAND_DISPLAY="$normal_socket"
-          python3 tooling/stage1_readiness.py \
-            --timeout-seconds 30 \
-            --log "$artifact_dir/weston-normal.readiness.log" \
-            -- wayland-info
-          python3 tooling/stage1_watchdog.py \
-            --timeout-seconds 30 \
-            --stdout "$artifact_dir/vulkaninfo.log" \
-            --stderr "$artifact_dir/vulkaninfo.stderr.log" \
-            --log "$artifact_dir/vulkaninfo.watchdog.log" \
-            -- vulkaninfo --summary
-          grep -Eiq 'lavapipe|llvmpipe' "$artifact_dir/vulkaninfo.log"
-
-          run_scenario() {
-            local scenario="$1"
-            local expected_exit_code="$2"
-            python3 tooling/stage1_watchdog.py \
-              --timeout-seconds 120 \
-              --expected-exit-code "$expected_exit_code" \
-              --stdout "$artifact_dir/$scenario.jsonl" \
-              --stderr "$artifact_dir/$scenario.stderr.log" \
-              --log "$artifact_dir/$scenario.watchdog.log" \
-              -- "$binary" --scenario "$scenario"
-            python3 tooling/stage1_watchdog.py \
-              --timeout-seconds 30 \
-              --stdin "$artifact_dir/$scenario.jsonl" \
-              --stdout "$artifact_dir/$scenario.validation.stdout.log" \
-              --stderr "$artifact_dir/$scenario.validation.stderr.log" \
-              --log "$artifact_dir/$scenario.validation.watchdog.log" \
-              -- "$binary" --validate "$scenario" --profile "$validation_profile"
-          }
-
-          run_scenario lifecycle-clean 0
-          run_scenario lifecycle-startup-failure 2
-          run_scenario lifecycle-background-quit 0
-          run_scenario window-cycle 0
-          run_scenario menu-command 0
-
-          cleanup
-          trap - EXIT
+          export GPUI_STAGE1_ARTIFACT_DIR="$artifact_dir"
+          export GPUI_STAGE1_BINARY="$binary"
+          export GPUI_STAGE1_VALIDATION_PROFILE="$validation_profile"
+          python3 tooling/stage1_service_harness.py \
+            --timeout-seconds 900 \
+            --service-executable "$GPUI_WESTON_BINARY" \
+            --service-argument=--backend=headless-backend.so \
+            --service-argument=--renderer=pixman \
+            --service-argument=--fake-seat \
+            --service-argument=--idle-time=0 \
+            --service-argument="--socket=$normal_socket" \
+            --service-stdout "$artifact_dir/weston-normal.stdout.log" \
+            --service-stderr "$artifact_dir/weston-normal.log" \
+            --payload-stdout "$artifact_dir/wayland-normal-session.stdout.log" \
+            --payload-stderr "$artifact_dir/wayland-normal-session.stderr.log" \
+            --log "$artifact_dir/wayland-normal-session.supervisor.log" \
+            -- bash tooling/stage1_wayland_normal_session.sh
           unset WAYLAND_DISPLAY
           export GPUI_STAGE1_REPO_ROOT="$GITHUB_WORKSPACE"
           export GPUI_STAGE1_ARTIFACT_DIR="$artifact_dir"
@@ -619,6 +660,12 @@ jobs:
             --stderr "$artifact_dir/weston-fixture.stderr.log" \
             --log "$artifact_dir/weston-fixture.watchdog.log" \
             -- "$GPUI_WESTON_FIXTURE"
+      - name: Verify exact source identity
+        if: always()
+        uses: ./.github/actions/stage1-source-identity
+        with:
+          artifact-dir: ${{ runner.temp }}/stage1-${{ github.job }}
+          mode: verify
       - name: Upload Stage 1 evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

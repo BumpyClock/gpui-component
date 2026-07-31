@@ -44,8 +44,11 @@ cargo run -p app_shell -- --smoke
 cargo run -p app_shell_background -- --smoke
 ```
 
-It is not renderer-presentation evidence. Windows retains only its no-window
-transactional-start failure smoke in that legacy job.
+It is ordinary-CI regression coverage, not retained renderer-presentation or
+cross-platform native evidence. Windows retains only its no-window
+transactional-start failure smoke there. Stage 1 exclusively owns maintained
+native platform profiles, strict trace validation, exact-source manifests, and
+runtime artifacts.
 
 ## Stage 1 lifecycle headless
 
@@ -63,6 +66,28 @@ prove lifecycle behavior only: normal return, startup failure, shutdown ordering
 and zero-window liveness. They make no native-event-loop, native-window,
 clipboard, renderer, or presentation claim.
 
+Before Stage 1 build or execution, every job records its exact commit, tree,
+GitHub workflow identity, clean-checkout status, and hashes of the root
+manifests, lockfile, compatibility policy, and workflow in
+`source-manifest.json`. An `always()` step records `source-verification.json`
+and fails if that identity or cleanliness changed. Artifacts lacking a matching
+passed verification are not exact-source evidence.
+
+The watchdog timeout covers process creation and command execution. After that
+single deadline, cleanup has at most five additional seconds to terminate the
+owned process tree, reap the root, and drain captured output. POSIX commands run
+in fresh sessions and receive group-wide `SIGTERM` followed by `SIGKILL` when
+needed. Windows commands enter a kill-on-close Job Object in the same atomic
+`CreateProcessW` call that creates them, before target code can execute. Only an
+explicit stdio handle allowlist is inherited. Cleanup uses retained process and
+Job handles; it deliberately has no PID-based `taskkill` fallback because a
+completed process's PID may be reused. Clipboard reader and scenario cleanup
+share one absolute five-second allowance rather than stacking allowances. Xvfb
+and Weston run with their scenario payload under one supervisor, which retains
+both unreaped session leaders, signals every owned group before reaping either
+root, and shares one cleanup deadline. Cleanup failures are retained and fail the
+scenario step.
+
 ## Stage 1 native runtime conformance
 
 The independently visible native jobs are:
@@ -71,6 +96,20 @@ The independently visible native jobs are:
 - `stage1-native-windows-warp`
 - `stage1-native-linux-x11-lavapipe`
 - `stage1-native-linux-wayland-lavapipe`
+
+They first run and retain the seven `stage1_contract_` TestPlatform checks for
+focus/text, composition terminals, common-scale rounding, and AccessKit tree
+semantics. These checks execute on every native runner but remain deterministic
+contracts, not native input, DPI-transition, adapter-publication, or
+screen-reader evidence.
+
+The `interaction-contracts` scenario also opens and presents a real native
+window. After presentation it drives deterministic GPUI focus/text and
+composition operations, checks common-scale conversions, forces an AccessKit
+tree frame through the platform window, and validates that submitted tree. This
+proves those contracts coexist with each native event loop/window/profile. It
+does not prove physical input, production IME, OS DPI transitions, assistive
+technology activation, or screen-reader behavior.
 
 They are configured to build `gpui-component-conformance`, record target
 metadata, run its native scenarios under the same external watchdog, retain
@@ -90,8 +129,8 @@ Every native window contributes one ordered, pointer-free evidence group:
 The handle records serialize only native kinds, never pointer or integer handle
 values. A display classification proves that GPUI exposed the matching native
 display family; neither handle record proves rendering or presentation. Profile
-validation requires exactly one group for `lifecycle-clean`, `menu-command`, and
-`clipboard`, exactly two for `window-cycle`, and zero for
+validation requires exactly one group for `lifecycle-clean`, `menu-command`,
+`clipboard`, and `interaction-contracts`, exactly two for `window-cycle`, and zero for
 `lifecycle-startup-failure` and `lifecycle-background-quit`. Missing, reordered,
 mismatched, incomplete, or extra groups fail. Unknown record or payload fields,
 scenario-invalid events, duplicate lifecycle milestones, and known failure or
@@ -125,7 +164,8 @@ name evidence. This proves software-GPU selection, not hardware-GPU execution.
 
 Linux Wayland first starts a normal Weston 16 headless/Pixman compositor for
 `lifecycle-clean`, `lifecycle-startup-failure`,
-`lifecycle-background-quit`, `window-cycle`, and `menu-command`. It stops that
+`lifecycle-background-quit`, `window-cycle`, `menu-command`, and
+`interaction-contracts`. It stops that
 compositor before starting the official private client-test fixture. Only the
 clipboard scenario runs inside the 320x240 Pixman test-desktop fixture. Its C
 fixture owns one Bash clipboard-orchestrator child, which owns separate GPUI

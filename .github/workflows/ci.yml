@@ -82,6 +82,10 @@ jobs:
         run: cargo test --workspace --all-targets --locked --features test-support
       - name: Run doctests
         run: cargo test --workspace --doc --locked
+      - name: Run Stage 1 tooling tests
+        run: |
+          python3 -m unittest discover -s tooling -p 'test_*.py'
+          python3 -m unittest discover -s tooling/tests -p 'test_*.py'
 
   compatibility-and-packaging:
     name: Compatibility and package manifests
@@ -99,12 +103,12 @@ jobs:
       - name: Validate compatibility and package artifacts
         run: cargo xtask release-check
 
-  # Native launch smoke test for the app-platform conformance examples
-  # (examples/app_shell single-window, examples/app_shell_background zero-window
-  # background liveness). Each
-  # example boots the real shell, opens its window(s), then `--smoke` requests a
-  # clean quit and exits 0. See docs/learned/app-platform-plan.md §5 Phase 1 and
-  # §6 gate 7. Keep the matrix in sync with the `compile` job above.
+  # Ordinary-CI build and legacy smoke coverage for the app-platform examples.
+  # This job does not retain protocol evidence and is not the cross-platform
+  # native acceptance matrix. `.github/workflows/stage1.yml` owns native macOS,
+  # Windows WARP, Linux X11/lavapipe, and Linux Wayland/lavapipe execution,
+  # validation, exact-source manifests, and artifacts. Keep this build matrix in
+  # sync with `compile`; keep runtime claims in Stage 1 only.
   native-launch-smoke:
     name: Native launch smoke
     strategy:
@@ -131,29 +135,19 @@ jobs:
       # GPU-backed window below.
       - name: Build conformance examples
         run: cargo build --locked -p app_shell -p app_shell_background
-      # Launch smoke runs on macOS only. Platform parity (CLAUDE.md) requires
-      # documenting why the other two are gated off rather than silently skipped:
-      #   - macOS: GitHub arm64 runners provide a working Metal device; the
-      #     `--smoke` launch is verified to reach a ready window and exit 0.
-      #   - Linux: GPUI renders via Vulkan. Stock ubuntu runners have no display
-      #     and no Vulkan device, so a native launch needs both xvfb and a
-      #     software driver (lavapipe) that is not guaranteed present. Gated off
-      #     to avoid flaky reds; enable once the runner image ships them:
-      #         xvfb-run -a cargo run --locked -p app_shell -- --smoke
-      #         xvfb-run -a cargo run --locked -p app_shell_background -- --smoke
-      #   - Windows: GPUI renders via DirectX; headless runners have no reliable
-      #     present surface. Gated off pending a WARP-backed offscreen path:
-      #         cargo run --locked -p app_shell -- --smoke
-      #         cargo run --locked -p app_shell_background -- --smoke
+      # Retain the established macOS example smoke as a fast ordinary-CI
+      # regression. Linux and Windows example binaries are compiled here, while
+      # their configured native runtime coverage belongs to Stage 1's dedicated
+      # lavapipe and WARP jobs. Do not infer Stage 1 evidence from this step.
       - name: Native launch smoke (macOS)
         if: ${{ matrix.run_on == 'macos-latest' }}
         run: |
           cargo run --locked -p app_shell -- --asset-smoke
           cargo run --locked -p app_shell -- --smoke
           cargo run --locked -p app_shell_background -- --smoke
-      # This path opens no window, so it does not require a render surface.
-      # Windows is included because GPUI's Windows `quit` path exits with status
-      # zero; AppShell must preserve a transactional startup failure as nonzero.
+      # This ordinary-CI regression opens no window and checks the legacy example
+      # exit contract. Stage 1 separately validates the protocol startup-failure
+      # scenario on every maintained native profile.
       - name: Transactional startup failure smoke (macOS)
         if: ${{ matrix.run_on == 'macos-latest' }}
         shell: bash
