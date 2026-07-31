@@ -22,9 +22,15 @@ class FakeKernel32:
         self,
         close_result: bool = True,
         active_process_counts: list[int] | None = None,
+        process_id_lists: list[set[int]] | None = None,
+        wait_result: int = launcher.WAIT_OBJECT_0,
+        process_list_query_succeeds: bool = True,
     ) -> None:
         self.close_result = close_result
-        self.active_process_counts = active_process_counts or [1, 0]
+        self.active_process_counts = active_process_counts or [0]
+        self.process_id_lists = process_id_lists or [{77}, {77}, set()]
+        self.wait_result = wait_result
+        self.process_list_query_succeeds = process_list_query_succeeds
         self.closed_handles: list[int] = []
         self.terminated_jobs: list[int] = []
 
@@ -32,9 +38,24 @@ class FakeKernel32:
         self.closed_handles.append(handle)
         return self.close_result
 
+    def OpenProcess(self, access: int, inherit: bool, process_id: int) -> int:
+        return process_id + 1000
+
+    def IsProcessInJob(
+        self,
+        process_handle: int,
+        job_handle: int,
+        result: object,
+    ) -> bool:
+        ctypes.cast(result, ctypes.POINTER(wintypes.BOOL)).contents.value = True
+        return True
+
     def TerminateJobObject(self, handle: int, exit_code: int) -> bool:
         self.terminated_jobs.append(handle)
         return True
+
+    def WaitForSingleObject(self, handle: int, milliseconds: int) -> int:
+        return self.wait_result
 
     def QueryInformationJobObject(
         self,
@@ -44,11 +65,26 @@ class FakeKernel32:
         information_size: int,
         return_length: object,
     ) -> bool:
-        accounting = ctypes.cast(
+        if information_class == launcher.JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION:
+            accounting = ctypes.cast(
+                information,
+                ctypes.POINTER(launcher.BasicAccountingInformation),
+            ).contents
+            accounting.active_processes = self.active_process_counts.pop(0)
+            return True
+
+        if not self.process_list_query_succeeds:
+            raise OSError("process-list query failed")
+        process_ids = self.process_id_lists.pop(0)
+        header = ctypes.cast(information, ctypes.POINTER(wintypes.DWORD))
+        header[0] = len(process_ids)
+        header[1] = len(process_ids)
+        values = (ctypes.c_size_t * len(process_ids)).from_buffer(
             information,
-            ctypes.POINTER(launcher.BasicAccountingInformation),
-        ).contents
-        accounting.active_processes = self.active_process_counts.pop(0)
+            ctypes.sizeof(wintypes.DWORD) * 2,
+        )
+        for index, process_id in enumerate(sorted(process_ids)):
+            values[index] = process_id
         return True
 
 
@@ -103,16 +139,30 @@ class WindowsJobLauncherTests(unittest.TestCase):
             launcher.terminate_job(process, deadline=time.monotonic() + 1)
         )
         self.assertEqual(kernel32.terminated_jobs, [123])
-        self.assertEqual(kernel32.closed_handles, [123])
+        self.assertEqual(kernel32.closed_handles, [1077, 123])
         self.assertIsNone(process._stage1_job_handle)
 
+    def test_tracking_failure_still_terminates_and_retains_job_identity(self) -> None:
+        kernel32 = FakeKernel32(process_list_query_succeeds=False)
+        process = FakeProcess(kernel32, 123)
+
+        self.assertFalse(
+            launcher.terminate_job(process, deadline=time.monotonic() + 1)
+        )
+        self.assertEqual(kernel32.terminated_jobs, [123])
+        self.assertEqual(kernel32.closed_handles, [])
+        self.assertEqual(process._stage1_job_handle, 123)
+
     def test_terminate_job_timeout_retains_job_identity(self) -> None:
-        kernel32 = FakeKernel32(active_process_counts=[1, 1])
+        kernel32 = FakeKernel32(
+            process_id_lists=[{77}, {77}],
+            wait_result=launcher.WAIT_TIMEOUT,
+        )
         process = FakeProcess(kernel32, 123)
 
         self.assertFalse(launcher.terminate_job(process, deadline=0))
         self.assertEqual(kernel32.terminated_jobs, [123])
-        self.assertEqual(kernel32.closed_handles, [])
+        self.assertEqual(kernel32.closed_handles, [1077])
         self.assertEqual(process._stage1_job_handle, 123)
 
     def test_wait_reports_timeout_without_windows_runtime(self) -> None:

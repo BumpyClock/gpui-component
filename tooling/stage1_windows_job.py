@@ -18,16 +18,22 @@ CREATE_NEW_PROCESS_GROUP = 0x00000200
 EXTENDED_STARTUPINFO_PRESENT = 0x00080000
 JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
 JOB_OBJECT_BASIC_ACCOUNTING_INFORMATION = 1
+JOB_OBJECT_BASIC_PROCESS_ID_LIST = 3
 JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 PROC_THREAD_ATTRIBUTE_HANDLE_LIST = 0x00020002
 PROC_THREAD_ATTRIBUTE_JOB_LIST = 0x0002000D
 STARTF_USESTDHANDLES = 0x00000100
 CREATE_UNICODE_ENVIRONMENT = 0x00000400
 ERROR_INSUFFICIENT_BUFFER = 122
+ERROR_INVALID_PARAMETER = 87
+ERROR_MORE_DATA = 234
+PROCESS_QUERY_LIMITED_INFORMATION = 0x00001000
+SYNCHRONIZE = 0x00100000
 WAIT_OBJECT_0 = 0
 WAIT_TIMEOUT = 258
 WAIT_FAILED = 0xFFFFFFFF
 INFINITE = 0xFFFFFFFF
+_MAX_JOB_PROCESSES = 4096
 
 
 class BasicAccountingInformation(ctypes.Structure):
@@ -139,6 +145,8 @@ def _kernel32() -> ctypes.WinDLL:
     kernel32.QueryInformationJobObject.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel32.CloseHandle.restype = wintypes.BOOL
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
     kernel32.InitializeProcThreadAttributeList.argtypes = [
         ctypes.c_void_p,
         wintypes.DWORD,
@@ -384,22 +392,127 @@ def _active_job_processes(
     return accounting.active_processes
 
 
+def _job_process_ids(
+    kernel32: ctypes.WinDLL,
+    handle: wintypes.HANDLE,
+) -> set[int]:
+    capacity = 16
+    header_size = ctypes.sizeof(wintypes.DWORD) * 2
+    while capacity <= _MAX_JOB_PROCESSES:
+        buffer = ctypes.create_string_buffer(
+            header_size + capacity * ctypes.sizeof(ctypes.c_size_t)
+        )
+        return_length = wintypes.DWORD()
+        if kernel32.QueryInformationJobObject(
+            handle,
+            JOB_OBJECT_BASIC_PROCESS_ID_LIST,
+            buffer,
+            ctypes.sizeof(buffer),
+            ctypes.byref(return_length),
+        ):
+            header = ctypes.cast(buffer, ctypes.POINTER(wintypes.DWORD))
+            process_count = int(header[1])
+            if process_count > capacity:
+                raise OSError("Job process list exceeded its reported buffer capacity")
+            process_ids = (ctypes.c_size_t * process_count).from_buffer(
+                buffer,
+                header_size,
+            )
+            return {int(process_id) for process_id in process_ids}
+
+        error = ctypes.get_last_error()
+        if error != ERROR_MORE_DATA:
+            raise ctypes.WinError(error)
+        header = ctypes.cast(buffer, ctypes.POINTER(wintypes.DWORD))
+        assigned_processes = int(header[0])
+        capacity = max(capacity * 2, assigned_processes)
+    raise OSError(f"Job exceeded the {_MAX_JOB_PROCESSES}-process supervision limit")
+
+
+def _track_job_processes(
+    process: WindowsJobProcess,
+    process_handles: dict[int, wintypes.HANDLE],
+) -> bool:
+    job_handle = process._stage1_job_handle
+    if job_handle is None:
+        return False
+    for process_id in _job_process_ids(process._kernel32, job_handle):
+        if process_id in process_handles:
+            continue
+        process_handle = process._kernel32.OpenProcess(
+            SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
+            False,
+            process_id,
+        )
+        if not process_handle:
+            if ctypes.get_last_error() == ERROR_INVALID_PARAMETER:
+                continue
+            return False
+        try:
+            in_job = wintypes.BOOL()
+            if not process._kernel32.IsProcessInJob(
+                process_handle,
+                job_handle,
+                ctypes.byref(in_job),
+            ):
+                return False
+            if not in_job.value:
+                continue
+            process_handles[process_id] = process_handle
+            process_handle = None
+        finally:
+            if process_handle:
+                _close_handle(process._kernel32, process_handle)
+    return True
+
+
 def terminate_job(process: WindowsJobProcess, *, deadline: float) -> bool:
     handle = process._stage1_job_handle
     if handle is None:
         return False
 
+    process_handles: dict[int, wintypes.HANDLE] = {}
     try:
-        if _active_job_processes(process._kernel32, handle) > 0:
-            if not process._kernel32.TerminateJobObject(handle, 1):
+        try:
+            initial_tracking_succeeded = _track_job_processes(
+                process,
+                process_handles,
+            )
+        except OSError:
+            initial_tracking_succeeded = False
+        termination_succeeded = bool(process._kernel32.TerminateJobObject(handle, 1))
+        if not initial_tracking_succeeded or not termination_succeeded:
+            return False
+
+        while True:
+            if not _track_job_processes(process, process_handles):
                 return False
-            while _active_job_processes(process._kernel32, handle) > 0:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
+            for process_id, process_handle in tuple(process_handles.items()):
+                result = process._kernel32.WaitForSingleObject(process_handle, 0)
+                if result == WAIT_OBJECT_0:
+                    if not _close_handle(process._kernel32, process_handle):
+                        return False
+                    del process_handles[process_id]
+                elif result == WAIT_FAILED:
                     return False
-                time.sleep(min(0.01, remaining))
+                elif result != WAIT_TIMEOUT:
+                    return False
+
+            if (
+                not process_handles
+                and _active_job_processes(process._kernel32, handle) == 0
+                and not _job_process_ids(process._kernel32, handle)
+            ):
+                break
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            time.sleep(min(0.01, remaining))
     except OSError:
         return False
+    finally:
+        for process_handle in process_handles.values():
+            _close_handle(process._kernel32, process_handle)
 
     if not _close_handle(process._kernel32, handle):
         return False
