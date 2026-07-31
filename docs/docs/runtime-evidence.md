@@ -103,7 +103,10 @@ owns separate GPUI conformance and clipboard-reader descendants. The prepared
 private fixture relaxes Weston's single-test-client guard while retaining the
 first client as harness owner. The reader uses `weston_test` only to focus its
 own surface, then transfers the selection through the ordinary `wl_data_device`
-protocol. Elapsed time is never treated as readiness.
+protocol. The orchestrator writes an exact success result only after trace
+validation; the fixture uses it if Weston's SIGCHLD handler reaps the Bash child
+before the fixture thread can wait for it. Elapsed time is never treated as
+readiness.
 
 ## Clipboard, input, and accessibility boundaries
 

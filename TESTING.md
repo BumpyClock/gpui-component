@@ -133,7 +133,9 @@ conformance and external clipboard-reader descendants. The prepared fixture
 relaxes Weston's single-test-client guard while retaining the first client as
 harness owner. The reader uses the private protocol only to focus its own
 surface, then transfers the selection through the ordinary `wl_data_device`
-protocol.
+protocol. The orchestrator writes an exact success result only after trace
+validation; the fixture uses it when Weston's SIGCHLD handler reaps the Bash
+child before the fixture thread can wait for it.
 
 After first presentation, the GPUI child asks the private fixture to activate
 its own `wl_surface`, waits for matching `wl_keyboard.enter`, injects pressed and

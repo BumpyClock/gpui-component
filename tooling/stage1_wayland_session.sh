@@ -21,3 +21,4 @@ python3 tooling/stage1_clipboard_harness.py \
   --validation-log "$artifact_dir/clipboard.validation.watchdog.log" \
   --validation-profile "$validation_profile" \
   --reader-command "$reader_command"
+printf 'passed\n' > "$artifact_dir/clipboard.fixture-result"
