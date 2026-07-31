@@ -22,7 +22,9 @@ import stage1_process  # noqa: E402
 TOOLING = Path(__file__).parent
 FIXTURE = TOOLING / "tests" / "fixtures" / "process_tree.py"
 WATCHDOG = TOOLING / "stage1_watchdog.py"
+PROCESS_QUERY_LIMITED_INFORMATION = 0x00001000
 SYNCHRONIZE = 0x00100000
+WAIT_OBJECT_0 = 0
 WAIT_TIMEOUT = 258
 
 
@@ -101,22 +103,85 @@ class WindowsProcessIntegrationTests(unittest.TestCase):
             self.assertFalse(process_running(grandchild_pid))
 
     def test_root_exit_cannot_leave_descendant_holding_stdout(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            pid_file = Path(directory) / "grandchild.pid"
-            started = time.monotonic()
-            result = stage1_process.run_capture(
-                command("spawn-exit", "--pid-file", str(pid_file)),
-                timeout_seconds=5,
-                cleanup_seconds=2,
-            )
-            elapsed = time.monotonic() - started
-            grandchild_pid = int(pid_file.read_text(encoding="utf-8"))
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = wintypes.HANDLE
+        kernel32.IsProcessInJob.argtypes = [
+            wintypes.HANDLE,
+            wintypes.HANDLE,
+            ctypes.POINTER(wintypes.BOOL),
+        ]
+        kernel32.IsProcessInJob.restype = wintypes.BOOL
+        kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+        kernel32.WaitForSingleObject.restype = wintypes.DWORD
+        kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+        kernel32.CloseHandle.restype = wintypes.BOOL
 
-        self.assertEqual(result.returncode, 0)
-        self.assertFalse(result.timed_out)
-        self.assertFalse(result.cleanup_timed_out)
-        self.assertLess(elapsed, 7)
-        self.assertFalse(process_running(grandchild_pid))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pid_file = root / "grandchild.pid"
+            release_file = root / "release-root"
+            started = time.monotonic()
+            process = stage1_process.start_process(
+                command(
+                    "spawn-exit",
+                    "--pid-file",
+                    str(pid_file),
+                    "--release-file",
+                    str(release_file),
+                )
+            )
+            _, _, threads = stage1_process.start_output_pumps(process)
+            grandchild_handle = None
+            cleanup_finished = False
+            try:
+                grandchild_pid = wait_for_pid(pid_file)
+                grandchild_handle = kernel32.OpenProcess(
+                    SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
+                    False,
+                    grandchild_pid,
+                )
+                self.assertTrue(grandchild_handle)
+                in_job = wintypes.BOOL()
+                self.assertTrue(
+                    kernel32.IsProcessInJob(
+                        grandchild_handle,
+                        process._stage1_job_handle,  # type: ignore[attr-defined]
+                        ctypes.byref(in_job),
+                    )
+                )
+                self.assertTrue(in_job.value)
+                self.assertIsNone(process.poll())
+
+                release_file.touch()
+                self.assertTrue(
+                    stage1_process.observe_process_exit(
+                        process,
+                        deadline=started + 5,
+                    )
+                )
+                self.assertEqual(process.returncode, 0)
+                self.assertTrue(any(thread.is_alive() for thread in threads))
+                cleanup_finished = stage1_process.finish_streaming_process(
+                    process,
+                    threads,
+                    cleanup_deadline=time.monotonic() + 2,
+                )
+                self.assertTrue(cleanup_finished)
+                self.assertEqual(
+                    kernel32.WaitForSingleObject(grandchild_handle, 0),
+                    WAIT_OBJECT_0,
+                )
+                self.assertLess(time.monotonic() - started, 7)
+            finally:
+                if not cleanup_finished:
+                    stage1_process.finish_streaming_process(
+                        process,
+                        threads,
+                        cleanup_deadline=time.monotonic() + 2,
+                    )
+                if grandchild_handle:
+                    kernel32.CloseHandle(grandchild_handle)
 
     def test_file_and_pipe_stdin_environment_and_cwd_are_supported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

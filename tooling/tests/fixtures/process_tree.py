@@ -64,6 +64,7 @@ def main() -> int:
         choices=("success", "exit", "membership", "grandchild", "spawn-wait", "spawn-exit"),
     )
     parser.add_argument("--pid-file", type=Path)
+    parser.add_argument("--release-file", type=Path)
     parser.add_argument("--exit-code", type=int, default=0)
     args = parser.parse_args()
 
@@ -97,6 +98,13 @@ def main() -> int:
             if not args.pid_file.exists():
                 sys.stderr.write("grandchild did not publish its PID before root exit\n")
                 return 2
+        if args.release_file is not None:
+            deadline = time.monotonic() + 5
+            while not args.release_file.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            if not args.release_file.exists():
+                sys.stderr.write("root exit was not released\n")
+                return 3
         return 0
     grandchild.wait()
     return grandchild.returncode
