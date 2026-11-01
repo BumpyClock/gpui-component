@@ -9,7 +9,7 @@ permissions:
 jobs:
   release_gate:
     name: Validate registry release prerequisites
-    runs-on: ubuntu-latest
+    runs-on: boat
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

@@ -16,7 +16,8 @@ permissions:
 
 jobs:
   compile:
-    name: Compile and lint
+    # Preserve existing required check names despite the Linux runner change.
+    name: Compile and lint (${{ matrix.target }}, ${{ matrix.run_on == 'boat' && 'ubuntu-latest' || matrix.run_on }})
     strategy:
       fail-fast: false
       matrix:
@@ -24,7 +25,7 @@ jobs:
           - target: aarch64-apple-darwin
             run_on: macos-latest
           - target: x86_64-linux-gnu
-            run_on: ubuntu-latest
+            run_on: boat
           - target: x86_64-windows-msvc
             run_on: windows-latest
     runs-on: ${{ matrix.run_on }}
@@ -62,7 +63,7 @@ jobs:
         if: ${{ matrix.run_on == 'macos-latest' }}
         run: ./script/clippy --locked
       - name: Lint (Linux)
-        if: ${{ matrix.run_on == 'ubuntu-latest' }}
+        if: ${{ runner.os == 'Linux' }}
         run: ./script/clippy --locked
       - name: Lint (Windows)
         if: ${{ matrix.run_on == 'windows-latest' }}
@@ -70,7 +71,7 @@ jobs:
 
   unit-and-headless:
     name: Unit, doctest, and headless tests
-    runs-on: ubuntu-latest
+    runs-on: boat
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -90,7 +91,7 @@ jobs:
   compatibility-and-packaging:
     name: Compatibility and package manifests
     needs: unit-and-headless
-    runs-on: ubuntu-latest
+    runs-on: boat
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -110,7 +111,7 @@ jobs:
   # validation, exact-source manifests, and artifacts. Keep this build matrix in
   # sync with `compile`; keep runtime claims in Stage 1 only.
   native-launch-smoke:
-    name: Native launch smoke
+    name: Native launch smoke (${{ matrix.target }}, ${{ matrix.run_on == 'boat' && 'ubuntu-latest' || matrix.run_on }})
     strategy:
       fail-fast: false
       matrix:
@@ -118,7 +119,7 @@ jobs:
           - target: aarch64-apple-darwin
             run_on: macos-latest
           - target: x86_64-linux-gnu
-            run_on: ubuntu-latest
+            run_on: boat
           - target: x86_64-windows-msvc
             run_on: windows-latest
     runs-on: ${{ matrix.run_on }}

@@ -38,6 +38,42 @@ For Windows, you can run the following command in PowerShell:
 .\script\install-window.ps1
 ```
 
+The Linux installer stops if either `apt update` or `apt install` fails. Preserve
+its output when diagnosing setup delays. This does not establish the cause of
+historical package-install outliers or a setup speedup.
+
+Test that exit contract without provisioning packages:
+
+```bash
+python3 -m unittest discover -s tooling -p 'test_install_linux.py'
+```
+
+### CI runners
+
+Compatible Linux jobs use Boat. The macOS Metal and Windows WARP jobs keep
+native runners. Existing matrix check names deliberately retain their historical
+OS suffixes; actual runner selection is separate. Linux Clippy uses `runner.os`
+so its step still executes on Boat. Stage 1 source-identity receipts, pinned
+Weston checksums, software-renderer profiles and evidence artifacts are unchanged.
+
+Workflow source does not enable public Boat execution or qualify native runtime
+acceptance. Those gates remain separate. Release Gate ordering and both
+unit/headless and compatibility/packaging statuses remain unchanged.
+
+### Documentation build
+
+Use Bun 1.3.14, matching both docs workflows, from a complete repository checkout.
+The VitePress theme also imports `crates/ui/Cargo.toml` outside `docs/`.
+
+```bash
+cd docs
+bun install --frozen-lockfile
+bun run build
+```
+
+Do not regenerate `docs/bun.lock` during validation. The release docs job still
+requires the successful Release Gate and checks out its exact head SHA.
+
 ### Run story
 
 There are a lot of UI test cases in the `crates/story` folder, if you change the existing features you can run the tests to make sure they are working.

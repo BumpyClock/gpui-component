@@ -123,7 +123,7 @@ jobs:
 
   stage1-lifecycle-headless-linux:
     name: stage1-lifecycle-headless-linux
-    runs-on: ubuntu-latest
+    runs-on: boat
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -384,7 +384,7 @@ jobs:
 
   stage1-native-linux-x11-lavapipe:
     name: stage1-native-linux-x11-lavapipe
-    runs-on: ubuntu-latest
+    runs-on: boat
     timeout-minutes: 40
     env:
       GPUI_RENDERER: software
@@ -478,7 +478,7 @@ jobs:
 
   stage1-native-linux-wayland-lavapipe:
     name: stage1-native-linux-wayland-lavapipe
-    runs-on: ubuntu-latest
+    runs-on: boat
     timeout-minutes: 60
     env:
       GPUI_RENDERER: software

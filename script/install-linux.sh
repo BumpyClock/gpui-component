@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
 sudo apt update
 # Test on Ubuntu 24.04
